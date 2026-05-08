@@ -46,6 +46,12 @@
 - 📺 **TV-Shows**: Dedizierter Katalog — automatische Klassifizierung anhand TMDB-Genres (Reality, Talk, News, Soap) oder per RSS-Feed erzwingbar
 - ♾️ **Kataloge ohne Limit**: Native Stremio-Paginierung (100 Items/Seite), keine künstliche Begrenzung
 - ⚡ **In-Memory-Cache**: Katalogantworten werden zwischen Syncs zwischengespeichert — sofortige Antworten für gleichzeitige Nutzer, automatische Invalidierung nach jeder Sync
+- 🖥️ **Moderne WebUI**: Neu gestaltete Oberfläche mit Sidebar, Hell-/Dunkel-Theme, mehrsprachig FR/EN/DE
+- 🎬 **Mediathek**: Poster-Raster mit Suche, Katalog-Filter, konfigurierbarer Paginierung (25/50/100/250), Release-Panel pro Medium
+- 📊 **Quellen-Ansicht**: Statistiken pro RSS-Feed (Releases, Medien, letzter Eintrag) mit benutzerdefinierter Benennung
+- 🔗 **Schnellintegrationen**: Prowlarr- und NZBHydra2-Feeds mit einem Klick hinzufügen (Alle / Filme / Serien)
+- 🏷️ **Feed-Benennung**: Jeder RSS-Feed kann einen angezeigten Namen in den Quellen-Statistiken erhalten
+- 🔌 **Proxy-Test**: Integrierter Verbindungstest direkt aus der WebUI
 
 ---
 
@@ -67,8 +73,11 @@
 | 🖼️ **RPDB** | Bewertungs-Poster (optional) |
 | 🔔 **Discord** | Benachrichtigungen mit Poster-Galerie bei jeder Sync |
 | 🔄 **Auto-Sync** | Konfigurierbare Planung |
-| 🌐 **WebUI** | Vollständige Admin-Oberfläche, 🇫🇷 🇬🇧 🇩🇪 |
-| 🔒 **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 |
+| 🖥️ **Moderne WebUI** | Sidebar, Hell-/Dunkel-Theme, 🇫🇷 🇬🇧 🇩🇪 |
+| 🎬 **Mediathek** | Poster-Raster, Suche, konfigurierbare Paginierung, Release-Panel |
+| 📊 **Quellen** | Feed-Statistiken mit benutzerdefinierter Benennung |
+| 🔗 **Integrationen** | Prowlarr + NZBHydra2 per Klick aus der WebUI einrichten |
+| 🔒 **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + integrierter Verbindungstest |
 | 💾 **SQLite** | Persistente Daten, inkrementelle Inhalte, optimierte Indizes |
 | 🏷️ **Tag-Filterung** | Konfigurierbare erforderliche Tags über die WebUI (FRENCH, MULTi, 1080p…) |
 | 🐳 **Docker** | Multi-Arch-Image `linux/amd64` + `linux/arm64` |
@@ -260,7 +269,6 @@ Alles wird in einer SQLite-Datenbank (`data/addon.db`) gespeichert. Inhalte **ak
 
 ## 💡 Ideen in Überlegung
 
-- **Erweiterte WebUI**: Auflistung von Medien, Releases, Quellen und Hashes
 - **Genre-Filterung** — zur Verfeinerung der Kataloge
 - **Erweiterte Statistiken** — Diagramme und Visualisierungen
 

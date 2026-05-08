@@ -18,7 +18,7 @@ const translations = {
     logout: "Déconnexion",
 
     // Description
-    description_text: 'Stremio RSS Catalog est un addon de création de catalogues Stremio à partir de flux RSS. Il ne permet pas de lire du contenu, il faut pour cela utiliser des addons de stream tels que <a href="https://github.com/Telkaoss/stream-fusion" target="_blank">StreamFusion (BitTorrent)</a> ou <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> avec <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Tutoriels sur <a href="https://upandclear.org" target="_blank">mon blog</a>, <a href="https://github.com/Aerya/Stremio-Stack" target="_blank">exemple de stack</a> à auto-héberger, <a href="https://stremiofr.me/" target="_blank">instances</a> mises à disposition par la communauté StremioFR.',
+    description_text: 'Stremio RSS Catalog est un addon de création de catalogues Stremio à partir de flux RSS. Il ne permet pas de lire du contenu, il faut pour cela utiliser des addons de stream tels que <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> ou <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> avec <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Tutoriels sur <a href="https://upandclear.org" target="_blank">mon blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> mises à disposition par la communauté StremioFR.',
 
     // Stats
     stat_films: "Films",
@@ -131,9 +131,11 @@ const translations = {
 
     // Sources
     sources_url: "Flux RSS",
+    sources_by_cat: "Par catégorie",
     sources_releases: "Releases",
     sources_media: "Médias",
     sources_last_seen: "Dernier ajout",
+    sources_errors: "Fetch",
     sources_none: "Aucune source détectée — lancez une synchronisation d'abord",
 
     // Sync extras
@@ -154,6 +156,11 @@ const translations = {
     config_discord_webhook: "URL du webhook Discord",
     config_discord_enhanced: "Notifications enrichies (galerie d'affiches)",
     config_discord_rpdb: "Affiches RPDB dans Discord",
+
+    // Proxy test
+    config_proxy_test_btn: "🔌 Tester la connexion",
+    config_proxy_test_ok: "Connexion réussie",
+    config_proxy_test_fail: "Connexion échouée",
 
     // Integrations
     integrations_title: "🔗 Intégrations rapides",
@@ -183,7 +190,7 @@ const translations = {
     logout: "Logout",
 
     // Description
-    description_text: 'Stremio RSS Catalog is a Stremio catalog creation addon from RSS feeds. It does not play content; for that, use streaming addons such as <a href="https://github.com/Telkaoss/stream-fusion" target="_blank">StreamFusion (BitTorrent)</a> or <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> with <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Tutorials on <a href="https://upandclear.org" target="_blank">my blog</a>, <a href="https://github.com/Aerya/Stremio-Stack" target="_blank">stack example</a> to self-host, <a href="https://stremiofr.me/" target="_blank">instances</a> shared by the StremioFR community.',
+    description_text: 'Stremio RSS Catalog is a Stremio catalog creation addon from RSS feeds. It does not play content; for that, use streaming addons such as <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> or <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> with <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Tutorials on <a href="https://upandclear.org" target="_blank">my blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> shared by the StremioFR community.',
 
     // Stats
     stat_films: "Movies",
@@ -296,9 +303,11 @@ const translations = {
 
     // Sources
     sources_url: "RSS Feed",
+    sources_by_cat: "By category",
     sources_releases: "Releases",
     sources_media: "Media",
     sources_last_seen: "Last added",
+    sources_errors: "Fetch",
     sources_none: "No source detected — run a sync first",
 
     // Sync extras
@@ -319,6 +328,11 @@ const translations = {
     config_discord_webhook: "Discord webhook URL",
     config_discord_enhanced: "Enhanced notifications (poster gallery)",
     config_discord_rpdb: "RPDB posters in Discord",
+
+    // Proxy test
+    config_proxy_test_btn: "🔌 Test connection",
+    config_proxy_test_ok: "Connection successful",
+    config_proxy_test_fail: "Connection failed",
 
     // Integrations
     integrations_title: "🔗 Quick integrations",
@@ -348,7 +362,7 @@ const translations = {
     logout: "Abmelden",
 
     // Description
-    description_text: 'Stremio RSS Catalog ist ein Stremio-Addon zur Erstellung von Katalogen aus RSS-Feeds. Es spielt keine Inhalte ab; dafür verwenden Sie Streaming-Addons wie <a href="https://github.com/Telkaoss/stream-fusion" target="_blank">StreamFusion (BitTorrent)</a> oder <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> mit <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Anleitungen auf <a href="https://upandclear.org" target="_blank">meinem Blog</a>, <a href="https://github.com/Aerya/Stremio-Stack" target="_blank">Stack-Beispiel</a> zum Selbsthosten, <a href="https://stremiofr.me/" target="_blank">Instanzen</a> von der StremioFR-Community bereitgestellt.',
+    description_text: 'Stremio RSS Catalog ist ein Stremio-Addon zur Erstellung von Katalogen aus RSS-Feeds. Es spielt keine Inhalte ab; dafür verwenden Sie Streaming-Addons wie <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> oder <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> mit <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Anleitungen auf <a href="https://upandclear.org" target="_blank">meinem Blog</a>, <a href="https://stremiofr.me/" target="_blank">Instanzen</a> von der StremioFR-Community bereitgestellt.',
 
     // Stats
     stat_films: "Filme",
@@ -461,9 +475,11 @@ const translations = {
 
     // Sources
     sources_url: "RSS-Feed",
+    sources_by_cat: "Nach Kategorie",
     sources_releases: "Releases",
     sources_media: "Medien",
     sources_last_seen: "Zuletzt hinzugefügt",
+    sources_errors: "Fetch",
     sources_none: "Keine Quelle erkannt — starten Sie zuerst eine Synchronisierung",
 
     // Sync extras
@@ -484,6 +500,11 @@ const translations = {
     config_discord_webhook: "Discord Webhook URL",
     config_discord_enhanced: "Erweiterte Benachrichtigungen (Poster-Galerie)",
     config_discord_rpdb: "RPDB-Poster in Discord",
+
+    // Proxy test
+    config_proxy_test_btn: "🔌 Verbindung testen",
+    config_proxy_test_ok: "Verbindung erfolgreich",
+    config_proxy_test_fail: "Verbindung fehlgeschlagen",
 
     // Integrations
     integrations_title: "🔗 Schnellintegrationen",

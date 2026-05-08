@@ -46,6 +46,12 @@
 - 📺 **TV Shows**: dedicated catalog — auto-classified from TMDB genres (Reality, Talk, News, Soap) or forced per RSS feed
 - ♾️ **Unlimited catalogs**: native Stremio pagination (100 items/page), no artificial cap
 - ⚡ **In-memory cache**: catalog responses are cached between syncs — instant responses for concurrent users, automatically invalidated on each sync
+- 🖥️ **Modern WebUI**: redesigned interface with sidebar, dark/light theme, multilingual FR/EN/DE
+- 🎬 **Media Library**: poster grid with search, catalog filters, configurable pagination (25/50/100/250), per-media releases panel
+- 📊 **Sources view**: per-feed stats (releases, media, last added) with custom naming
+- 🔗 **Quick integrations**: add Prowlarr and NZBHydra2 RSS feeds in one click (All / Movies / Series)
+- 🏷️ **Feed naming**: each RSS feed can have a custom name shown in Sources stats
+- 🔌 **Proxy test**: built-in connection test button directly from the WebUI
 
 ---
 
@@ -67,8 +73,11 @@
 | 🖼️ **RPDB** | Rating posters (optional) |
 | 🔔 **Discord** | Notifications with poster gallery on each sync |
 | 🔄 **Auto sync** | Configurable scheduling |
-| 🌐 **WebUI** | Full admin interface, 🇫🇷 🇬🇧 🇩🇪 |
-| 🔒 **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 |
+| 🖥️ **Modern WebUI** | Sidebar, dark/light theme, 🇫🇷 🇬🇧 🇩🇪 |
+| 🎬 **Media Library** | Poster grid, search, configurable pagination, releases panel |
+| 📊 **Sources** | Per-feed stats with custom naming |
+| 🔗 **Integrations** | Prowlarr + NZBHydra2 one-click setup from WebUI |
+| 🔒 **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
 | 💾 **SQLite** | Persistent data, incremental content, optimized indexes |
 | 🏷️ **Tag filtering** | Configurable required tags from the WebUI (FRENCH, MULTi, 1080p…) |
 | 🐳 **Docker** | Multi-arch image `linux/amd64` + `linux/arm64` |
@@ -260,7 +269,6 @@ Everything is stored in a SQLite database (`data/addon.db`). Content **accumulat
 
 ## 💡 Ideas Under Consideration
 
-- **Enriched WebUI**: listing of media, releases, sources and hashes
 - **Genre filtering** — to refine catalogs
 - **Advanced statistics** — charts and visualizations
 

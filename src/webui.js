@@ -2,6 +2,9 @@ const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
 const path = require('path');
+const axios = require('axios');
+const { SocksProxyAgent } = require('socks-proxy-agent');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 const { sendDiscordNotification } = require('./services/discordService');
 
 class WebUI {
@@ -125,7 +128,31 @@ class WebUI {
 
     // ─── Sources ────────────────────────────────────────────────────────────
     this.app.get('/api/sources/stats', this.authMiddleware.bind(this), (req, res) => {
-      res.json(this.db.getSourceStats());
+      // Map url → nom depuis la config
+      const nameMap = {};
+      const mainUrl  = this.db.getConfig('rss_films_url');
+      const mainName = this.db.getConfig('rss_films_name');
+      if (mainUrl && mainName) nameMap[mainUrl] = mainName;
+      try {
+        const additional = JSON.parse(this.db.getConfig('rss_additional_urls') || '[]');
+        additional.forEach(item => { if (item.url && item.name) nameMap[item.url] = item.name; });
+      } catch (e) {}
+
+      // Flux avec releases
+      const stats = this.db.getSourceStats();
+      stats.forEach(s => { s.name = nameMap[s.source_url] || ''; });
+
+      // Flux en erreur sans aucune release (jamais fonctionné)
+      const errorsOnly = this.db.getFeedErrorsOnly();
+      errorsOnly.forEach(s => {
+        s.name = nameMap[s.source_url] || '';
+        s.release_count = 0; s.media_count = 0;
+        s.films_count = 0; s.documentaires_count = 0;
+        s.series_count = 0; s.emissions_count = 0;
+        s.first_seen = null; s.last_seen = null;
+      });
+
+      res.json([...stats, ...errorsOnly]);
     });
 
     // ─── Sync ───────────────────────────────────────────────────────────────
@@ -213,6 +240,29 @@ class WebUI {
       } finally {
         this.syncInProgress = false;
         this.syncStartedAt  = null;
+      }
+    });
+
+    // ─── Proxy Test ─────────────────────────────────────────────────────────
+    this.app.post('/api/proxy/test', this.authMiddleware.bind(this), async (req, res) => {
+      const { protocol = 'http', host, port, username, password } = req.body;
+      if (!host || !port) return res.status(400).json({ ok: false, error: 'Hôte et port requis' });
+
+      try {
+        let proxyUrl = `${protocol}://`;
+        if (username && password) proxyUrl += `${encodeURIComponent(username)}:${encodeURIComponent(password)}@`;
+        proxyUrl += `${host}:${port}`;
+
+        const agent = protocol.startsWith('socks')
+          ? new SocksProxyAgent(proxyUrl)
+          : new HttpsProxyAgent(proxyUrl);
+
+        const resp = await axios.get('https://api.ipify.org?format=json', {
+          httpsAgent: agent, httpAgent: agent, timeout: 8000
+        });
+        res.json({ ok: true, ip: resp.data.ip });
+      } catch (err) {
+        res.json({ ok: false, error: err.message });
       }
     });
 

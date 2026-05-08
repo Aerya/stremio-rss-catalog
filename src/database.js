@@ -73,6 +73,21 @@ class DatabaseManager {
       )
     `);
 
+    // Table des erreurs de fetch par flux RSS
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS feed_fetch_errors (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_url  TEXT    NOT NULL,
+        error_msg   TEXT,
+        http_status INTEGER,
+        failed_at   INTEGER NOT NULL
+      )
+    `);
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_feed_errors_url ON feed_fetch_errors(source_url);
+    `);
+
     // Table des releases non matchées (pour retry)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS failed_releases (
@@ -152,6 +167,7 @@ class DatabaseManager {
 
   initDefaultConfig() {
     const defaults = {
+      rss_films_name: '',
       rss_films_url: '',
       rss_films_force: 'auto',
       rss_additional_urls: '[]',
@@ -501,18 +517,79 @@ class DatabaseManager {
     };
   }
 
+  recordFeedError(url, errorMsg, httpStatus = null) {
+    try {
+      this.db.prepare(`
+        INSERT INTO feed_fetch_errors (source_url, error_msg, http_status, failed_at)
+        VALUES (?, ?, ?, ?)
+      `).run(url, errorMsg || null, httpStatus || null, Date.now());
+    } catch (e) { console.error('[DB] recordFeedError:', e.message); }
+  }
+
+  recordFeedSuccess(url) {
+    try {
+      // On supprime les erreurs précédentes pour ce flux quand il revient en succès
+      this.db.prepare(`DELETE FROM feed_fetch_errors WHERE source_url = ?`).run(url);
+    } catch (e) { console.error('[DB] recordFeedSuccess:', e.message); }
+  }
+
   getSourceStats() {
+    // Stats principales avec breakdown par catégorie
+    const rows = this.db.prepare(`
+      SELECT
+        r.source_url,
+        COUNT(*)                      AS release_count,
+        COUNT(DISTINCT r.media_imdb_id) AS media_count,
+        MIN(r.added_at)               AS first_seen,
+        MAX(r.added_at)               AS last_seen,
+        SUM(CASE WHEN m.catalog_type = 'films'         THEN 1 ELSE 0 END) AS films_count,
+        SUM(CASE WHEN m.catalog_type = 'documentaires' THEN 1 ELSE 0 END) AS documentaires_count,
+        SUM(CASE WHEN m.catalog_type = 'series'        THEN 1 ELSE 0 END) AS series_count,
+        SUM(CASE WHEN m.catalog_type = 'emissions'     THEN 1 ELSE 0 END) AS emissions_count
+      FROM releases r
+      LEFT JOIN media m ON r.media_imdb_id = m.imdb_id
+      WHERE r.source_url IS NOT NULL AND r.source_url != ''
+      GROUP BY r.source_url
+      ORDER BY release_count DESC
+    `).all();
+
+    // Erreurs de fetch par URL
+    const errors = this.db.prepare(`
+      SELECT
+        source_url,
+        COUNT(*)      AS error_count,
+        MAX(failed_at) AS last_error_at,
+        error_msg     AS last_error_msg,
+        http_status   AS last_http_status
+      FROM feed_fetch_errors
+      GROUP BY source_url
+    `).all();
+
+    const errorMap = {};
+    errors.forEach(e => { errorMap[e.source_url] = e; });
+
+    return rows.map(r => ({
+      ...r,
+      error_count:      errorMap[r.source_url]?.error_count      || 0,
+      last_error_at:    errorMap[r.source_url]?.last_error_at    || null,
+      last_error_msg:   errorMap[r.source_url]?.last_error_msg   || null,
+      last_http_status: errorMap[r.source_url]?.last_http_status || null,
+    }));
+  }
+
+  // Flux configurés sans aucune release (jamais fetchés avec succès)
+  getFeedErrorsOnly() {
     return this.db.prepare(`
       SELECT
         source_url,
-        COUNT(*)                      AS release_count,
-        COUNT(DISTINCT media_imdb_id) AS media_count,
-        MIN(added_at)                 AS first_seen,
-        MAX(added_at)                 AS last_seen
-      FROM releases
-      WHERE source_url IS NOT NULL AND source_url != ''
+        COUNT(*)       AS error_count,
+        MAX(failed_at) AS last_error_at,
+        error_msg      AS last_error_msg,
+        http_status    AS last_http_status
+      FROM feed_fetch_errors
+      WHERE source_url NOT IN (SELECT DISTINCT source_url FROM releases WHERE source_url IS NOT NULL)
       GROUP BY source_url
-      ORDER BY release_count DESC
+      ORDER BY last_error_at DESC
     `).all();
   }
 

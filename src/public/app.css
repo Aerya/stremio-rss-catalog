@@ -264,9 +264,17 @@ a:hover { text-decoration: underline; }
 /* ─── Forms ───────────────────────────────────────────────────────── */
 .field { margin-bottom: 16px; }
 .field > label {
-  display: block; margin-bottom: 6px;
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px;
   font-size: 13px; font-weight: 500; color: var(--text);
 }
+
+.label-link {
+  font-size: 11px; font-weight: 400;
+  color: var(--accent); opacity: .8;
+  margin-left: auto;
+}
+.label-link:hover { opacity: 1; }
 .field > small {
   display: block; margin-top: 4px;
   font-size: 12px; color: var(--text-muted);
@@ -462,7 +470,7 @@ input:checked + .slider::before { transform: translateX(22px); }
 .badge-emissions     { background: rgba(236,72,153,.2); color: #f472b6; }
 
 /* ─── Pager ───────────────────────────────────────────────────────── */
-.pager { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .pager-btn {
   padding: 6px 14px; border-radius: 6px;
   background: var(--surface); border: 1px solid var(--border);
@@ -470,7 +478,15 @@ input:checked + .slider::before { transform: translateX(22px); }
 }
 .pager-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .pager-btn:disabled { opacity: .4; cursor: not-allowed; }
-.pager-info { font-size: 13px; color: var(--text-muted); padding: 0 8px; }
+.pager-info { font-size: 13px; color: var(--text-muted); padding: 0 4px; }
+
+.pager-jump { display: flex; align-items: center; gap: 4px; margin-left: 8px; }
+.pager-jump-input {
+  width: 60px; padding: 5px 8px; font-size: 13px;
+  text-align: center; border-radius: 6px;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+}
+.pager-jump-input:focus { outline: none; border-color: var(--accent); }
 
 /* ─── Sources table ───────────────────────────────────────────────── */
 .sources-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -483,10 +499,25 @@ input:checked + .slider::before { transform: translateX(22px); }
 .sources-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
 .sources-table tr:last-child td { border-bottom: none; }
 .sources-table tr:hover td { background: var(--surface-2); }
-.source-url {
-  font-family: monospace; font-size: 12px; color: var(--accent);
-  word-break: break-all; max-width: 400px; display: block;
+.source-name {
+  display: block; font-size: 13px; font-weight: 600; color: var(--text);
+  margin-bottom: 3px;
 }
+.source-url {
+  font-family: monospace; font-size: 11px; color: var(--text-muted);
+  word-break: break-all; max-width: 340px; display: block;
+}
+
+.src-cat {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 2px 7px; border-radius: 10px; white-space: nowrap;
+}
+
+.source-error-badge {
+  color: var(--danger); font-size: 12px; font-weight: 600;
+}
+.source-row-error td { background: rgba(239,68,68,.06); }
+.source-row-warn  td { background: rgba(245,158,11,.04); }
 .source-num { font-weight: 700; color: var(--text); font-size: 15px; }
 
 /* ─── Drawer (releases) ───────────────────────────────────────────── */
@@ -535,8 +566,11 @@ input:checked + .slider::before { transform: translateX(22px); }
 .hash-mono { font-family: monospace; font-size: 11px; color: var(--text-muted); }
 
 /* ─── RSS field row ───────────────────────────────────────────────── */
-.rss-field-row { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.rss-field-block { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.rss-field-block:last-child { border-bottom: none; margin-bottom: 0; }
+.rss-field-row { display: flex; gap: 8px; align-items: center; }
 .rss-field-row .flex-1 { flex: 1; min-width: 0; }
+.rss-name-input { width: 260px; flex-shrink: 0; font-size: 13px; }
 
 /* ─── Integration block ───────────────────────────────────────────── */
 .integration-block {

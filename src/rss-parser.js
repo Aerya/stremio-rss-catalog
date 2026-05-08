@@ -51,6 +51,8 @@ class RSSParser {
       const parser = new xml2js.Parser({ explicitArray: false });
       const result = await parser.parseStringPromise(response.data);
 
+      this.db.recordFeedSuccess(url);
+
       if (result.rss && result.rss.channel && result.rss.channel.item) {
         const items = Array.isArray(result.rss.channel.item)
           ? result.rss.channel.item
@@ -60,6 +62,8 @@ class RSSParser {
       return [];
     } catch (error) {
       console.error(`Error fetching RSS ${url}:`, error.message);
+      const httpStatus = error.response?.status || null;
+      this.db.recordFeedError(url, error.message, httpStatus);
       return [];
     }
   }

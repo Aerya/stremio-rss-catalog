@@ -46,6 +46,12 @@
 - 📺 **Émissions TV** : catalogue dédié — reclassification automatique depuis TMDB (Reality, Talk, News, Soap) ou forçable par flux RSS
 - ♾️ **Catalogues sans limite** : pagination native Stremio (100 items/page), plus de cap artificielle
 - ⚡ **Cache in-memory** : les réponses catalog sont mises en cache entre les syncs — réponses instantanées pour tous les utilisateurs simultanés, invalidation automatique à chaque sync
+- 🖥️ **WebUI moderne** : interface redessinée avec sidebar, thème sombre/clair, multilingue FR/EN/DE
+- 🎬 **Médiathèque** : grille de posters avec recherche, filtres par catalogue, pagination configurable (25/50/100/250), panneau de releases par média
+- 📊 **Vue Sources** : statistiques par flux RSS (releases, médias, dernier ajout) avec nommage personnalisé
+- 🔗 **Intégrations rapides** : ajout en un clic des flux RSS Prowlarr et NZBHydra2 (Tout / Films / Séries)
+- 🏷️ **Nommage des flux** : chaque flux RSS peut recevoir un nom affiché dans les statistiques Sources
+- 🔌 **Test proxy** : bouton de test de connexion proxy directement depuis la WebUI
 
 ---
 
@@ -67,8 +73,11 @@
 | 🖼️ **RPDB** | Affiches avec notes intégrées (optionnel) |
 | 🔔 **Discord** | Notifications avec galerie d'affiches à chaque sync |
 | 🔄 **Sync auto** | Planification configurable |
-| 🌐 **WebUI** | Interface d'administration complète, 🇫🇷 🇬🇧 🇩🇪 |
-| 🔒 **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 |
+| 🖥️ **WebUI moderne** | Sidebar, thème sombre/clair, 🇫🇷 🇬🇧 🇩🇪 |
+| 🎬 **Médiathèque** | Grille de posters, recherche, pagination configurable, panneau releases |
+| 📊 **Sources** | Stats par flux RSS avec nommage personnalisé |
+| 🔗 **Intégrations** | Prowlarr + NZBHydra2 en un clic depuis la WebUI |
+| 🔒 **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + test de connexion intégré |
 | 💾 **SQLite** | Données persistantes, contenu incrémental, index optimisés |
 | 🏷️ **Filtrage par tags** | Tags requis configurables depuis la WebUI (FRENCH, MULTi, 1080p…) |
 | 🐳 **Docker** | Image multi-arch `linux/amd64` + `linux/arm64` |
@@ -260,7 +269,6 @@ Tout est stocké dans une base SQLite (`data/addon.db`). Les contenus s'**accumu
 
 ## 💡 Idées en réflexion
 
-- **WebUI enrichie** : listing des médias, des releases, des sources et des hashes
 - **Filtrage par genres** — pour affiner les catalogues
 - **Statistiques avancées** — graphiques et visualisations
 

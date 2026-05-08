@@ -87,6 +87,7 @@ window.copyInstallUrl = function () {
 // ═══════════════════════════ LIBRARY ═══════════════════════════════════
 
 let libPage = 1;
+let libLimit = 25;
 let libCatalog = '';
 let libSearch = '';
 let libSearchTimer = null;
@@ -101,6 +102,13 @@ function debounceLibSearch() {
   }, 350);
 }
 window.debounceLibSearch = debounceLibSearch;
+
+function onLimitChange() {
+  libLimit = parseInt(document.getElementById('libLimit').value) || 25;
+  libPage = 1;
+  loadLibrary();
+}
+window.onLimitChange = onLimitChange;
 
 document.querySelectorAll('.tab-btn[data-catalog]').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -119,7 +127,7 @@ async function loadLibrary() {
   grid.innerHTML = '<p class="text-muted" style="padding:20px">' + t('sync_loading') + '</p>';
 
   try {
-    const params = new URLSearchParams({ page: libPage, limit: 24 });
+    const params = new URLSearchParams({ page: libPage, limit: libLimit });
     if (libCatalog) params.append('catalog', libCatalog);
     if (libSearch)  params.append('search',  libSearch);
 
@@ -150,7 +158,7 @@ function renderMediaGrid(data) {
     const phStyle = m.poster ? 'style="display:none"' : '';
     const emoji = { films: '🎬', documentaires: '📽️', series: '📺', emissions: '📡' }[m.catalog_type] || '🎬';
     const badgeCls = 'catalog-badge badge-' + m.catalog_type;
-    const mediaJson = JSON.stringify(m).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const mediaJson = escHtml(JSON.stringify(m));
 
     return `<div class="media-card" onclick="openDrawer('${escHtml(m.imdb_id)}', JSON.parse(this.dataset.media))" data-media="${mediaJson}">
       ${posterHtml}
@@ -168,30 +176,59 @@ function renderMediaGrid(data) {
 
   // Pagination
   pager.innerHTML = '';
-  if (data.pages > 1) {
-    const prev = document.createElement('button');
-    prev.className = 'pager-btn';
-    prev.textContent = '← Préc.';
-    prev.disabled = data.page <= 1;
-    prev.onclick = () => { libPage = data.page - 1; loadLibrary(); };
-    pager.appendChild(prev);
-
-    const info = document.createElement('span');
-    info.className = 'pager-info';
-    info.textContent = `Page ${data.page} / ${data.pages}  (${data.total.toLocaleString()} médias)`;
-    pager.appendChild(info);
-
-    const next = document.createElement('button');
-    next.className = 'pager-btn';
-    next.textContent = 'Suiv. →';
-    next.disabled = data.page >= data.pages;
-    next.onclick = () => { libPage = data.page + 1; loadLibrary(); };
-    pager.appendChild(next);
-  } else if (data.total > 0) {
+  if (data.total > 0) {
     const info = document.createElement('span');
     info.className = 'pager-info';
     info.textContent = `${data.total.toLocaleString()} médias`;
     pager.appendChild(info);
+  }
+
+  if (data.pages > 1) {
+    // Précédent
+    const prev = document.createElement('button');
+    prev.className = 'pager-btn';
+    prev.textContent = '←';
+    prev.title = 'Page précédente';
+    prev.disabled = data.page <= 1;
+    prev.onclick = () => { libPage = data.page - 1; loadLibrary(); };
+    pager.appendChild(prev);
+
+    // Page courante / total
+    const pageInfo = document.createElement('span');
+    pageInfo.className = 'pager-info';
+    pageInfo.textContent = `${data.page} / ${data.pages}`;
+    pager.appendChild(pageInfo);
+
+    // Suivant
+    const next = document.createElement('button');
+    next.className = 'pager-btn';
+    next.textContent = '→';
+    next.title = 'Page suivante';
+    next.disabled = data.page >= data.pages;
+    next.onclick = () => { libPage = data.page + 1; loadLibrary(); };
+    pager.appendChild(next);
+
+    // Saut de page
+    const jumpWrap = document.createElement('span');
+    jumpWrap.className = 'pager-jump';
+    const jumpInput = document.createElement('input');
+    jumpInput.type = 'number';
+    jumpInput.min = 1;
+    jumpInput.max = data.pages;
+    jumpInput.value = data.page;
+    jumpInput.className = 'pager-jump-input';
+    jumpInput.title = 'Aller à la page…';
+    const jumpBtn = document.createElement('button');
+    jumpBtn.className = 'pager-btn';
+    jumpBtn.textContent = 'OK';
+    jumpBtn.onclick = () => {
+      const p = parseInt(jumpInput.value);
+      if (p >= 1 && p <= data.pages) { libPage = p; loadLibrary(); }
+    };
+    jumpInput.addEventListener('keydown', e => { if (e.key === 'Enter') jumpBtn.click(); });
+    jumpWrap.appendChild(jumpInput);
+    jumpWrap.appendChild(jumpBtn);
+    pager.appendChild(jumpWrap);
   }
 }
 
@@ -275,26 +312,47 @@ async function loadSources() {
       return;
     }
 
-    container.innerHTML = `
-      <div style="overflow-x:auto">
-      <table class="sources-table">
-        <thead><tr>
-          <th data-i18n="sources_url">Flux RSS</th>
-          <th data-i18n="sources_releases">Releases</th>
-          <th data-i18n="sources_media">Médias</th>
-          <th data-i18n="sources_last_seen">Dernier ajout</th>
-        </tr></thead>
-        <tbody>
-          ${d.map(s => `<tr>
-            <td><span class="source-url" title="${escHtml(s.source_url)}">${escHtml(trimUrl(s.source_url))}</span></td>
-            <td><span class="source-num">${s.release_count.toLocaleString()}</span></td>
-            <td><span class="source-num">${s.media_count.toLocaleString()}</span></td>
-            <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${fmtDate(s.last_seen)}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-      </div>
-    `;
+    container.innerHTML = `<div style="overflow-x:auto"><table class="sources-table">
+      <thead><tr>
+        <th data-i18n="sources_url">Flux RSS</th>
+        <th data-i18n="sources_by_cat">Par catégorie</th>
+        <th data-i18n="sources_releases">Releases</th>
+        <th data-i18n="sources_media">Médias</th>
+        <th data-i18n="sources_last_seen">Dernier ajout</th>
+        <th data-i18n="sources_errors">Erreurs</th>
+      </tr></thead>
+      <tbody>
+        ${d.map(s => {
+          const hasError = s.error_count > 0;
+          const rowCls = hasError && s.release_count === 0 ? 'source-row-error' : hasError ? 'source-row-warn' : '';
+          const cats = [
+            s.films_count         ? `<span class="src-cat badge-films">Films ${s.films_count}</span>` : '',
+            s.documentaires_count ? `<span class="src-cat badge-documentaires">Docs ${s.documentaires_count}</span>` : '',
+            s.series_count        ? `<span class="src-cat badge-series">Séries ${s.series_count}</span>` : '',
+            s.emissions_count     ? `<span class="src-cat badge-emissions">Émissions ${s.emissions_count}</span>` : '',
+          ].filter(Boolean).join(' ');
+
+          const errCell = hasError
+            ? `<span class="source-error-badge" title="${escHtml(s.last_error_msg || '')}">
+                ${s.error_count} ✗${s.last_http_status ? ` <small>HTTP ${s.last_http_status}</small>` : ''}
+               </span>
+               <br><span style="font-size:11px;color:var(--text-muted)">${fmtDate(s.last_error_at)}</span>`
+            : '<span style="color:var(--success)">✓</span>';
+
+          return `<tr class="${rowCls}">
+            <td>
+              ${s.name ? `<span class="source-name">${escHtml(s.name)}</span>` : ''}
+              <span class="source-url" title="${escHtml(s.source_url)}">${escHtml(trimUrl(s.source_url))}</span>
+            </td>
+            <td>${cats || '<span class="text-muted">—</span>'}</td>
+            <td><span class="source-num">${(s.release_count || 0).toLocaleString()}</span></td>
+            <td><span class="source-num">${(s.media_count || 0).toLocaleString()}</span></td>
+            <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${s.last_seen ? fmtDate(s.last_seen) : '—'}</td>
+            <td>${errCell}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div>`;
     applyI18nToElement(container);
   } catch (e) {
     container.innerHTML = '<p class="text-muted">Erreur de chargement</p>';
@@ -500,32 +558,78 @@ async function clearFailed() {
 }
 window.clearFailed = clearFailed;
 
+// ═══════════════════════════ PROXY TEST ════════════════════════════
+
+async function testProxy() {
+  const result = document.getElementById('proxyTestResult');
+  const btn = document.querySelector('[onclick="testProxy()"]');
+  result.textContent = '⏳ ' + t('sync_loading');
+  result.style.color = 'var(--text-muted)';
+  if (btn) btn.disabled = true;
+
+  try {
+    const r = await fetch('/api/proxy/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        protocol: document.getElementById('proxy_protocol')?.value || 'http',
+        host:     document.getElementById('proxy_host')?.value?.trim(),
+        port:     document.getElementById('proxy_port')?.value?.trim(),
+        username: document.getElementById('proxy_username')?.value?.trim(),
+        password: document.getElementById('proxy_password')?.value?.trim(),
+      })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      result.textContent = `✅ ${t('config_proxy_test_ok')} — IP : ${d.ip}`;
+      result.style.color = 'var(--success)';
+    } else {
+      result.textContent = `❌ ${t('config_proxy_test_fail')} : ${d.error}`;
+      result.style.color = 'var(--danger)';
+    }
+  } catch (e) {
+    result.textContent = '❌ ' + t('login_error_network');
+    result.style.color = 'var(--danger)';
+  } finally {
+    if (btn) btn.disabled = false;
+    setTimeout(() => { result.textContent = ''; }, 10000);
+  }
+}
+window.testProxy = testProxy;
+
 // ═══════════════════════════ CONFIG ════════════════════════════════════
 
 let rssFieldCounter = 0;
 
-window.addRssField = function (value, force) {
+window.addRssField = function (value, force, name) {
   rssFieldCounter++;
   const container = document.getElementById('additionalRssContainer');
   if (!container) return;
   const id  = 'rss-field-' + rssFieldCounter;
   const div = document.createElement('div');
-  div.className = 'rss-field-row';
+  div.className = 'rss-field-block';
   div.id = id;
   div.innerHTML = `
-    <input type="url" class="additional-rss-url flex-1"
-      placeholder="https://domain.tld/rssnew?cats=...&key=..."
-      value="${escHtml(value || '')}">
-    <select class="additional-rss-force select-catalog">
-      <option value="auto"${(!force || force === 'auto') ? ' selected' : ''}>Tout</option>
-      <option value="films"${force === 'films' ? ' selected' : ''}>Films</option>
-      <option value="series"${force === 'series' ? ' selected' : ''}>Séries</option>
-      <option value="documentaires"${force === 'documentaires' ? ' selected' : ''}>Documentaires</option>
-      <option value="emissions"${force === 'emissions' ? ' selected' : ''}>Émissions TV</option>
-    </select>
-    <button type="button" class="btn-sm btn-danger"
-      onclick="document.getElementById('${id}').remove()"
-      data-i18n="config_rss_remove_btn">✕</button>
+    <div class="rss-field-row" style="margin-bottom:5px">
+      <input type="text" class="additional-rss-name rss-name-input"
+        placeholder="Nom du flux (ex: MonTracker)"
+        value="${escHtml(name || '')}">
+    </div>
+    <div class="rss-field-row">
+      <input type="url" class="additional-rss-url flex-1"
+        placeholder="https://domain.tld/rssnew?cats=...&key=..."
+        value="${escHtml(value || '')}">
+      <select class="additional-rss-force select-catalog">
+        <option value="auto"${(!force || force === 'auto') ? ' selected' : ''}>Tout</option>
+        <option value="films"${force === 'films' ? ' selected' : ''}>Films</option>
+        <option value="series"${force === 'series' ? ' selected' : ''}>Séries</option>
+        <option value="documentaires"${force === 'documentaires' ? ' selected' : ''}>Documentaires</option>
+        <option value="emissions"${force === 'emissions' ? ' selected' : ''}>Émissions TV</option>
+      </select>
+      <button type="button" class="btn-sm btn-danger"
+        onclick="document.getElementById('${id}').remove()"
+        data-i18n="config_rss_remove_btn">✕</button>
+    </div>
   `;
   container.appendChild(div);
 };
@@ -555,7 +659,7 @@ async function loadConfig() {
     const r = await fetch('/api/config');
     const cfg = await r.json();
 
-    ['rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
+    ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
      'rpdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
      'proxy_password', 'refresh_interval', 'discord_webhook_url',
      'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey'].forEach(k => {
@@ -576,8 +680,8 @@ async function loadConfig() {
     try {
       const urls = JSON.parse(cfg.rss_additional_urls || '[]');
       urls.forEach(item => {
-        if (typeof item === 'object') addRssField(item.url, item.force);
-        else addRssField(item, 'auto');
+        if (typeof item === 'object') addRssField(item.url, item.force, item.name);
+        else addRssField(item, 'auto', '');
       });
     } catch (e) { console.error('parse rss_additional_urls', e); }
 
@@ -590,7 +694,7 @@ async function saveConfig(e) {
   msg.textContent = '';
 
   const cfg = {};
-  ['rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
+  ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
    'rpdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
    'proxy_password', 'refresh_interval', 'discord_webhook_url',
    'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey'].forEach(k => {
@@ -606,10 +710,11 @@ async function saveConfig(e) {
   });
 
   const urls = [];
-  document.querySelectorAll('.rss-field-row').forEach(row => {
-    const url   = row.querySelector('.additional-rss-url')?.value?.trim();
-    const force = row.querySelector('.additional-rss-force')?.value || 'auto';
-    if (url) urls.push({ url, force });
+  document.querySelectorAll('.rss-field-block').forEach(block => {
+    const url   = block.querySelector('.additional-rss-url')?.value?.trim();
+    const force = block.querySelector('.additional-rss-force')?.value || 'auto';
+    const name  = block.querySelector('.additional-rss-name')?.value?.trim() || '';
+    if (url) urls.push({ url, force, name });
   });
   cfg.rss_additional_urls = JSON.stringify(urls);
 

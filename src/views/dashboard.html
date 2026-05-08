@@ -20,28 +20,22 @@
 
     <nav class="sidebar-nav">
       <button class="nav-item active" data-section="overview">
-        <span class="nav-icon">📊</span>
         <span class="nav-label" data-i18n="nav_overview">Vue d'ensemble</span>
       </button>
       <button class="nav-item" data-section="library">
-        <span class="nav-icon">🎬</span>
         <span class="nav-label" data-i18n="nav_library">Médiathèque</span>
       </button>
       <button class="nav-item" data-section="sources">
-        <span class="nav-icon">📡</span>
         <span class="nav-label" data-i18n="nav_sources">Sources</span>
       </button>
       <button class="nav-item" data-section="sync">
-        <span class="nav-icon">🔄</span>
         <span class="nav-label" data-i18n="nav_sync">Synchronisation</span>
       </button>
       <button class="nav-item" data-section="failures">
-        <span class="nav-icon">❌</span>
         <span class="nav-label" data-i18n="nav_failures">Échecs</span>
         <span class="nav-badge" id="failuresBadge" style="display:none"></span>
       </button>
       <button class="nav-item" data-section="config">
-        <span class="nav-icon">⚙️</span>
         <span class="nav-label" data-i18n="nav_config">Configuration</span>
       </button>
     </nav>
@@ -129,6 +123,12 @@
             data-i18n-placeholder="library_search_placeholder"
             placeholder="Rechercher un titre..."
             oninput="debounceLibSearch()">
+          <select id="libLimit" class="select-sm" onchange="onLimitChange()">
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="250">250</option>
+          </select>
         </div>
       </div>
 
@@ -225,6 +225,10 @@
           <h3 data-i18n="config_rss_films">Flux RSS</h3>
           <div class="field">
             <label data-i18n="config_rss_films">Flux principal</label>
+            <div class="rss-row" style="margin-bottom:6px">
+              <input type="text" id="rss_films_name" name="rss_films_name"
+                placeholder="Nom du flux (ex: MonTracker)" class="rss-name-input">
+            </div>
             <div class="rss-row">
               <input type="url" id="rss_films_url" name="rss_films_url"
                 placeholder="https://domain.tld/rssnew?cats=...&key=..." class="flex-1">
@@ -303,11 +307,17 @@
         <div class="config-section">
           <h3>API</h3>
           <div class="field">
-            <label data-i18n="config_tmdb_key">Clé API TMDB</label>
+            <label>
+              <span data-i18n="config_tmdb_key">Clé API TMDB</span>
+              <a href="https://www.themoviedb.org/settings/api" target="_blank" class="label-link">Obtenir une clé</a>
+            </label>
             <input type="text" id="tmdb_api_key" name="tmdb_api_key">
           </div>
           <div class="field">
-            <label data-i18n="config_tvdb_key">Clé API TVDB (optionnel)</label>
+            <label>
+              <span data-i18n="config_tvdb_key">Clé API TVDB (optionnel)</span>
+              <a href="https://www.thetvdb.com/api-information" target="_blank" class="label-link">Obtenir une clé</a>
+            </label>
             <input type="text" id="tvdb_api_key" name="tvdb_api_key" placeholder="Optionnel">
             <small data-i18n="config_tvdb_hint">
               Améliore la détection des docu-séries. Clé gratuite sur thetvdb.com.
@@ -373,6 +383,10 @@
           <div class="field">
             <label data-i18n="config_proxy_password">Mot de passe (optionnel)</label>
             <input type="password" id="proxy_password" name="proxy_password">
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:4px">
+            <button type="button" class="btn-sm" onclick="testProxy()" data-i18n="config_proxy_test_btn">🔌 Tester la connexion</button>
+            <span id="proxyTestResult" style="font-size:13px"></span>
           </div>
         </div>
 
