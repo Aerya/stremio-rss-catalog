@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  <strong>Verwandeln Sie Ihre RSS-Feeds in Stremio-Kataloge — Filme, Dokumentarfilme und Serien</strong>
+  <strong>Verwandeln Sie Ihre RSS-Feeds, Prowlarr und NZBHydra2 in Stremio-Kataloge — Filme, Dokumentarfilme und Serien</strong>
 </p>
 
 <p align="center">
@@ -15,6 +15,8 @@
   <img src="https://img.shields.io/badge/Stremio-addon-purple?style=flat-square" alt="Stremio">
   <img src="https://img.shields.io/badge/Docker-ready-blue?style=flat-square&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/TMDB%20%2B%20TVDB-matched-green?style=flat-square" alt="TMDB+TVDB">
+  <img src="https://img.shields.io/badge/Prowlarr-compatible-blue?style=flat-square" alt="Prowlarr">
+  <img src="https://img.shields.io/badge/NZBHydra2-compatible-blue?style=flat-square" alt="NZBHydra2">
   <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE-orange?style=flat-square" alt="i18n">
 </p>
 
@@ -26,7 +28,7 @@
 
 ---
 
-> Ein selbst gehostetes Stremio-Addon, das Ihre RSS-Feeds parst, Filme, Dokumentarfilme und Serien automatisch erkennt, sie auf TMDB/TVDB abgleicht und als Kataloge in Stremio bereitstellt.
+> Ein selbst gehostetes Stremio-Addon, das Ihre RSS-Feeds, Prowlarr und NZBHydra2 aggregiert, Filme, Dokumentarfilme und Serien automatisch erkennt, sie auf TMDB/TVDB abgleicht und als Kataloge in Stremio bereitstellt.
 
 ---
 

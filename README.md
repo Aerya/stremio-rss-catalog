@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  <strong>Transformez vos flux RSS en catalogues Stremio — Films, Documentaires et Séries</strong>
+  <strong>Transformez vos flux RSS, Prowlarr et NZBHydra2 en catalogues Stremio — Films, Documentaires et Séries</strong>
 </p>
 
 <p align="center">
@@ -15,6 +15,8 @@
   <img src="https://img.shields.io/badge/Stremio-addon-purple?style=flat-square" alt="Stremio">
   <img src="https://img.shields.io/badge/Docker-ready-blue?style=flat-square&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/TMDB%20%2B%20TVDB-matched-green?style=flat-square" alt="TMDB+TVDB">
+  <img src="https://img.shields.io/badge/Prowlarr-compatible-blue?style=flat-square" alt="Prowlarr">
+  <img src="https://img.shields.io/badge/NZBHydra2-compatible-blue?style=flat-square" alt="NZBHydra2">
   <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE-orange?style=flat-square" alt="i18n">
 </p>
 
@@ -26,7 +28,7 @@
 
 ---
 
-> Addon Stremio auto-hébergé qui parse vos flux RSS, identifie automatiquement Films, Documentaires et Séries, les matche sur TMDB/TVDB et les expose comme catalogues dans Stremio.
+> Addon Stremio auto-hébergé qui agrège vos flux RSS, Prowlarr et NZBHydra2, identifie automatiquement Films, Documentaires et Séries, les matche sur TMDB/TVDB et les expose comme catalogues dans Stremio.
 
 ---
 
