@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stremio RSS Catalog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="app-layout">
+
+  <!-- ═══════════════════════════ SIDEBAR ═══════════════════════════ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <img src="/static/logo.png" alt="Logo" class="brand-logo">
+      <span class="brand-name">Stremio RSS Catalog</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-section="overview">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label" data-i18n="nav_overview">Vue d'ensemble</span>
+      </button>
+      <button class="nav-item" data-section="library">
+        <span class="nav-icon">🎬</span>
+        <span class="nav-label" data-i18n="nav_library">Médiathèque</span>
+      </button>
+      <button class="nav-item" data-section="sources">
+        <span class="nav-icon">📡</span>
+        <span class="nav-label" data-i18n="nav_sources">Sources</span>
+      </button>
+      <button class="nav-item" data-section="sync">
+        <span class="nav-icon">🔄</span>
+        <span class="nav-label" data-i18n="nav_sync">Synchronisation</span>
+      </button>
+      <button class="nav-item" data-section="failures">
+        <span class="nav-icon">❌</span>
+        <span class="nav-label" data-i18n="nav_failures">Échecs</span>
+        <span class="nav-badge" id="failuresBadge" style="display:none"></span>
+      </button>
+      <button class="nav-item" data-section="config">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label" data-i18n="nav_config">Configuration</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="footer-links">
+        <a href="https://github.com/Aerya/stremio-rss-catalogs" target="_blank">GitHub</a>
+        <a href="https://upandclear.org" target="_blank">Blog</a>
+        <a href="https://ko-fi.com/upandclear" target="_blank" data-i18n="donate">Dragibus 🍬</a>
+      </div>
+      <div class="footer-controls">
+        <select id="langSelect" class="lang-select" onchange="setLanguage(this.value)">
+          <option value="fr">🇫🇷 FR</option>
+          <option value="en">🇬🇧 EN</option>
+          <option value="de">🇩🇪 DE</option>
+        </select>
+        <button class="btn-icon" id="themeBtn" onclick="toggleTheme()" title="Thème">🌙</button>
+        <button class="btn-icon btn-danger" onclick="doLogout()" title="Déconnexion">🚪</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════════════ MAIN ══════════════════════════════ -->
+  <main class="main-content">
+
+    <!-- ─── Vue d'ensemble ─────────────────────────────────────────── -->
+    <section id="section-overview" class="page-section active">
+      <div class="page-header">
+        <h2 data-i18n="nav_overview">Vue d'ensemble</h2>
+        <div class="by-line">
+          <span data-i18n="by">Par</span>&nbsp;<strong>Aerya</strong>
+          <img src="https://upandclear.org/wp-content/uploads/2024/06/Logo.detoure1.png.webp" alt="" class="avatar">
+          &nbsp;·&nbsp;
+          <a href="https://github.com/Aerya" target="_blank">GitHub</a>
+          &nbsp;·&nbsp;
+          <a href="https://upandclear.org" target="_blank">Blog</a>
+        </div>
+      </div>
+
+      <p class="desc-text" data-i18n="description_text" data-i18n-html="true">
+        Stremio RSS Catalog est un addon de création de catalogues Stremio à partir de flux RSS.
+      </p>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="stat_films">Films</div>
+          <div class="stat-value" id="statFilms">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="stat_documentaires">Documentaires</div>
+          <div class="stat-value" id="statDocs">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="stat_series">Séries</div>
+          <div class="stat-value" id="statSeries">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="stat_emissions">Émissions TV</div>
+          <div class="stat-value" id="statEmissions">—</div>
+        </div>
+        <div class="stat-card accent">
+          <div class="stat-label" data-i18n="stat_indexed">Total indexés</div>
+          <div class="stat-value" id="statTotal">—</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:24px">
+        <h3 data-i18n="install_title">Installation dans Stremio</h3>
+        <p class="text-muted" style="margin:8px 0 12px" data-i18n="install_desc">
+          Une fois la 1ère synchronisation terminée, (ré)installez l'addon dans Stremio avec cette URL :
+        </p>
+        <div class="install-box">
+          <code id="installUrl" data-i18n="install_loading">Chargement...</code>
+          <button class="btn-sm" onclick="copyInstallUrl()" data-i18n="install_copy">Copier</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Médiathèque ────────────────────────────────────────────── -->
+    <section id="section-library" class="page-section">
+      <div class="page-header">
+        <h2 data-i18n="nav_library">Médiathèque</h2>
+        <div class="library-controls">
+          <input type="search" id="libSearch" class="search-input"
+            data-i18n-placeholder="library_search_placeholder"
+            placeholder="Rechercher un titre..."
+            oninput="debounceLibSearch()">
+        </div>
+      </div>
+
+      <div class="catalog-tabs" id="catalogTabs">
+        <button class="tab-btn active" data-catalog="" data-i18n="library_all">Tous</button>
+        <button class="tab-btn" data-catalog="films" data-i18n="stat_films">Films</button>
+        <button class="tab-btn" data-catalog="documentaires" data-i18n="stat_documentaires">Documentaires</button>
+        <button class="tab-btn" data-catalog="series" data-i18n="stat_series">Séries</button>
+        <button class="tab-btn" data-catalog="emissions" data-i18n="stat_emissions">Émissions TV</button>
+      </div>
+
+      <div id="libraryGrid" class="media-grid"></div>
+      <div id="libraryPager" class="pager"></div>
+    </section>
+
+    <!-- ─── Sources ───────────────────────────────────────────────── -->
+    <section id="section-sources" class="page-section">
+      <div class="page-header">
+        <h2 data-i18n="nav_sources">Sources</h2>
+        <button class="btn-sm" onclick="loadSources()">↺ Actualiser</button>
+      </div>
+      <div id="sourcesContainer" class="card">
+        <p class="text-muted" data-i18n="sync_loading">Chargement...</p>
+      </div>
+    </section>
+
+    <!-- ─── Synchronisation ───────────────────────────────────────── -->
+    <section id="section-sync" class="page-section">
+      <div class="page-header">
+        <h2 data-i18n="nav_sync">Synchronisation</h2>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div id="autoRefreshStatus" class="auto-refresh-status">
+          <strong data-i18n="sync_auto_label">Synchronisation automatique :</strong>
+          <span id="autoRefreshState" data-i18n="sync_loading">Chargement...</span>
+        </div>
+        <div style="text-align:center;margin-top:16px">
+          <button class="btn-primary" onclick="startSync()" data-i18n="sync_start_btn">▶️ Lancer la synchronisation</button>
+        </div>
+        <div id="syncStatusBox" class="sync-status-box" style="display:none;margin-top:20px">
+          <div class="sync-stage" id="syncStage" data-i18n="sync_in_progress">En cours...</div>
+          <div class="progress-track">
+            <div class="progress-bar" id="progressBar" style="width:0%">
+              <span id="progressText">0%</span>
+            </div>
+          </div>
+          <p id="syncDetails" class="sync-details">Matched: 0 | Failed: 0</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 data-i18n="sync_history_title" style="margin-bottom:12px">Historique des synchronisations</h3>
+        <p class="desc-text" data-i18n="sync_history_desc" data-i18n-html="true" style="margin-bottom:16px">
+          Pour chaque release, Stremio RSS Catalog cherche le média correspondant sur TMDB.
+        </p>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+          <label style="margin:0;font-size:14px" data-i18n="sync_browse">Parcourir :</label>
+          <select id="dateFilter" class="select-sm" onchange="loadSyncHistoryByDate()">
+            <option value="" data-i18n="sync_last_3">Les 3 dernières</option>
+          </select>
+        </div>
+        <div id="syncHistoryContainer">
+          <p class="text-muted" data-i18n="sync_loading">Chargement...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Échecs ─────────────────────────────────────────────────── -->
+    <section id="section-failures" class="page-section">
+      <div class="page-header">
+        <h2 data-i18n="nav_failures">Releases échouées</h2>
+        <div style="display:flex;gap:8px">
+          <button class="btn-primary" onclick="retryFailed()" data-i18n="failed_retry_btn">♻️ Retry tout</button>
+          <button class="btn-danger" onclick="clearFailed()" data-i18n="failed_clear_btn">🗑 Vider</button>
+        </div>
+      </div>
+      <div class="card">
+        <p class="text-muted" id="failedCount" style="margin-bottom:12px"></p>
+        <div id="failedContainer">
+          <p class="text-muted" data-i18n="sync_loading">Chargement...</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Configuration ─────────────────────────────────────────── -->
+    <section id="section-config" class="page-section">
+      <div class="page-header">
+        <h2 data-i18n="nav_config">Configuration</h2>
+      </div>
+      <form id="configForm" class="card config-form" onsubmit="saveConfig(event)">
+
+        <div class="config-section">
+          <h3 data-i18n="config_rss_films">Flux RSS</h3>
+          <div class="field">
+            <label data-i18n="config_rss_films">Flux principal</label>
+            <div class="rss-row">
+              <input type="url" id="rss_films_url" name="rss_films_url"
+                placeholder="https://domain.tld/rssnew?cats=...&key=..." class="flex-1">
+              <select id="rss_films_force" name="rss_films_force" class="select-catalog">
+                <option value="auto">Tout</option>
+                <option value="films">Films</option>
+                <option value="series">Séries</option>
+                <option value="documentaires">Documentaires</option>
+                <option value="emissions">Émissions TV</option>
+              </select>
+            </div>
+            <small data-i18n="config_rss_films_hint">Incluant votre clé API ou passkey</small>
+          </div>
+          <div class="field">
+            <h4 data-i18n="config_rss_additional_title" style="margin:0 0 4px">Flux additionnels</h4>
+            <small data-i18n="config_rss_additional_hint" style="display:block;margin-bottom:10px">
+              Même fonctionnement que le flux principal.
+            </small>
+            <div id="additionalRssContainer"></div>
+            <button type="button" class="btn-sm btn-success" onclick="addRssField()"
+              data-i18n="config_rss_add_btn">➕ Ajouter un flux</button>
+          </div>
+          <div class="field">
+            <label>Tags requis (parsing)</label>
+            <input type="text" id="required_tags" name="required_tags"
+              placeholder="FRENCH,MULTi,TRUEFRENCH,VOF,VFF,VFI,VFQ">
+          </div>
+
+          <!-- Intégrations rapides -->
+          <div class="integration-block">
+            <h4 data-i18n="integrations_title">🔗 Intégrations rapides</h4>
+            <small data-i18n="integrations_hint" style="display:block;margin-bottom:14px">
+              Entrez l'URL de base et la clé API pour générer automatiquement les flux RSS et les ajouter à la liste.
+            </small>
+
+            <!-- Prowlarr -->
+            <div class="integration-row">
+              <div class="integration-label">
+                <strong>Prowlarr</strong>
+                <small>Indexeur torrent</small>
+              </div>
+              <div class="integration-inputs">
+                <input type="url" id="prowlarr_url" name="prowlarr_url"
+                  placeholder="http://localhost:9696" data-i18n-placeholder="integrations_url_placeholder">
+                <input type="text" id="prowlarr_apikey" name="prowlarr_apikey"
+                  placeholder="API Key">
+              </div>
+              <div class="integration-actions">
+                <button type="button" class="btn-sm" onclick="addProwlarrFeed('auto')" data-i18n="integrations_add_all">Tout</button>
+                <button type="button" class="btn-sm" onclick="addProwlarrFeed('films')" data-i18n="integrations_add_films">Films</button>
+                <button type="button" class="btn-sm" onclick="addProwlarrFeed('series')" data-i18n="integrations_add_series">Séries</button>
+              </div>
+            </div>
+
+            <!-- NZBHydra2 -->
+            <div class="integration-row" style="margin-top:12px">
+              <div class="integration-label">
+                <strong>NZBHydra2</strong>
+                <small>Indexeur Usenet</small>
+              </div>
+              <div class="integration-inputs">
+                <input type="url" id="nzbhydra2_url" name="nzbhydra2_url"
+                  placeholder="http://localhost:5076" data-i18n-placeholder="integrations_url_placeholder">
+                <input type="text" id="nzbhydra2_apikey" name="nzbhydra2_apikey"
+                  placeholder="API Key">
+              </div>
+              <div class="integration-actions">
+                <button type="button" class="btn-sm" onclick="addNzbHydraFeed('')" data-i18n="integrations_add_all">Tout</button>
+                <button type="button" class="btn-sm" onclick="addNzbHydraFeed('2000')" data-i18n="integrations_add_films">Films</button>
+                <button type="button" class="btn-sm" onclick="addNzbHydraFeed('5000')" data-i18n="integrations_add_series">Séries</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="config-section">
+          <h3>API</h3>
+          <div class="field">
+            <label data-i18n="config_tmdb_key">Clé API TMDB</label>
+            <input type="text" id="tmdb_api_key" name="tmdb_api_key">
+          </div>
+          <div class="field">
+            <label data-i18n="config_tvdb_key">Clé API TVDB (optionnel)</label>
+            <input type="text" id="tvdb_api_key" name="tvdb_api_key" placeholder="Optionnel">
+            <small data-i18n="config_tvdb_hint">
+              Améliore la détection des docu-séries. Clé gratuite sur thetvdb.com.
+            </small>
+          </div>
+        </div>
+
+        <div class="config-section">
+          <h3 data-i18n="config_rpdb_title">RPDB</h3>
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="rpdb_enabled" name="rpdb_enabled">
+              <span class="slider"></span>
+            </label>
+            <label for="rpdb_enabled">
+              <span data-i18n="config_rpdb_enable">Activer</span>
+              (<a href="https://ratingposterdb.com/examples/" target="_blank" data-i18n="config_rpdb_examples">exemples</a>)
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              <a href="https://ratingposterdb.com/api-key/" target="_blank" data-i18n="config_rpdb_get_key">
+                Obtenir une clé gratuite
+              </a>
+            </label>
+            <input type="text" id="rpdb_api_key" name="rpdb_api_key"
+              data-i18n-placeholder="config_rpdb_placeholder" placeholder="Votre clé API RPDB">
+          </div>
+        </div>
+
+        <div class="config-section">
+          <h3 data-i18n="config_proxy_title">Proxy</h3>
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="proxy_enabled" name="proxy_enabled">
+              <span class="slider"></span>
+            </label>
+            <label for="proxy_enabled" data-i18n="config_proxy_enable">Activer</label>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label data-i18n="config_proxy_protocol">Protocole</label>
+              <select id="proxy_protocol" name="proxy_protocol">
+                <option value="http">HTTP</option>
+                <option value="https">HTTPS</option>
+                <option value="socks4">SOCKS4</option>
+                <option value="socks5">SOCKS5</option>
+              </select>
+            </div>
+            <div class="field">
+              <label data-i18n="config_proxy_host">Hôte</label>
+              <input type="text" id="proxy_host" name="proxy_host" placeholder="127.0.0.1">
+            </div>
+            <div class="field">
+              <label data-i18n="config_proxy_port">Port</label>
+              <input type="number" id="proxy_port" name="proxy_port" placeholder="1080">
+            </div>
+            <div class="field">
+              <label data-i18n="config_proxy_username">Utilisateur (optionnel)</label>
+              <input type="text" id="proxy_username" name="proxy_username">
+            </div>
+          </div>
+          <div class="field">
+            <label data-i18n="config_proxy_password">Mot de passe (optionnel)</label>
+            <input type="password" id="proxy_password" name="proxy_password">
+          </div>
+        </div>
+
+        <div class="config-section">
+          <h3 data-i18n="config_auto_sync_title">Synchronisation automatique</h3>
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="auto_refresh_enabled" name="auto_refresh_enabled">
+              <span class="slider"></span>
+            </label>
+            <label for="auto_refresh_enabled" data-i18n="config_auto_sync_enable">Activer</label>
+          </div>
+          <div class="field">
+            <label data-i18n="config_refresh_interval">Intervalle (minutes)</label>
+            <input type="number" id="refresh_interval" name="refresh_interval" min="5" placeholder="60">
+          </div>
+        </div>
+
+        <div class="config-section">
+          <h3 data-i18n="config_discord_title">Discord</h3>
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="discord_notifications_enabled" name="discord_notifications_enabled">
+              <span class="slider"></span>
+            </label>
+            <label for="discord_notifications_enabled" data-i18n="config_discord_enable">
+              Activer les notifications
+            </label>
+          </div>
+          <div class="field">
+            <label data-i18n="config_discord_webhook">URL du webhook Discord</label>
+            <input type="url" id="discord_webhook_url" name="discord_webhook_url"
+              placeholder="https://discord.com/api/webhooks/...">
+          </div>
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="discord_enhanced_notifications_enabled"
+                name="discord_enhanced_notifications_enabled">
+              <span class="slider"></span>
+            </label>
+            <label for="discord_enhanced_notifications_enabled" data-i18n="config_discord_enhanced">
+              Notifications enrichies (galerie d'affiches)
+            </label>
+          </div>
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="discord_rpdb_posters_enabled" name="discord_rpdb_posters_enabled">
+              <span class="slider"></span>
+            </label>
+            <label for="discord_rpdb_posters_enabled" data-i18n="config_discord_rpdb">
+              Affiches RPDB dans Discord
+            </label>
+          </div>
+        </div>
+
+        <div style="padding-top:16px;display:flex;gap:10px;align-items:center">
+          <button type="submit" class="btn-primary" data-i18n="config_save_btn">💾 Enregistrer</button>
+          <span id="configMsg" class="config-msg"></span>
+        </div>
+      </form>
+    </section>
+
+  </main>
+</div>
+
+<!-- ═══════════════════ DRAWER releases ═══════════════════════════ -->
+<div id="drawerBackdrop" class="drawer-backdrop" onclick="closeDrawer()"></div>
+<aside id="releasesDrawer" class="releases-drawer">
+  <div class="drawer-header">
+    <div class="drawer-media-info" id="drawerInfo"></div>
+    <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody">
+    <p class="text-muted" data-i18n="sync_loading">Chargement...</p>
+  </div>
+</aside>
+
+<script src="/static/i18n.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+services:
+  stremio-rss-catalogs:
+    image: ghcr.io/aerya/stremio-rss-catalogs:latest
+    container_name: stremio-rss-catalogs
+    restart: always
+    ports:
+      - "7973:7000"
+    volumes:
+    # À adapter à votre configuration : /chemin/vers/vos/données/:/data
+      - /home/aerya/docker/useflow-fr/:/data
+    environment:
+      - PORT=7000
+      - NODE_ENV=production
+      # À modifier
+      - WEBUI_USERNAME=admin
+      - WEBUI_PASSWORD=admin
+      # Ne pas modifier
+      - DB_PATH=/data/addon.db
+      # Générer avec : openssl rand -hex 32
+      - SESSION_SECRET=changeme

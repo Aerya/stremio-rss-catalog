@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stremio RSS Catalog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-page">
+  <div class="login-wrap">
+    <div class="login-card">
+      <select id="langSelect" class="lang-select-corner" onchange="setLanguage(this.value)">
+        <option value="fr">🇫🇷 FR</option>
+        <option value="en">🇬🇧 EN</option>
+        <option value="de">🇩🇪 DE</option>
+      </select>
+      <img src="/static/logo.png" alt="Logo" class="login-logo">
+      <h1 class="login-title">Stremio RSS Catalog</h1>
+      <p class="login-sub" data-i18n="login_subtitle">Connexion à l'interface d'administration</p>
+      <form id="loginForm" autocomplete="on">
+        <div class="field">
+          <label data-i18n="login_username">Nom d'utilisateur</label>
+          <input type="text" id="username" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label data-i18n="login_password">Mot de passe</label>
+          <input type="password" id="password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn-primary w-full" data-i18n="login_submit">Se connecter</button>
+        <p id="loginError" class="error-msg"></p>
+      </form>
+    </div>
+  </div>
+  <script src="/static/i18n.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', initI18n);
+    document.getElementById('loginForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const err = document.getElementById('loginError');
+      err.textContent = '';
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value
+          })
+        });
+        if (res.ok) window.location.href = '/dashboard';
+        else err.textContent = t('login_error_credentials');
+      } catch { err.textContent = t('login_error_network'); }
+    });
+  </script>
+</body>
+</html>
