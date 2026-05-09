@@ -6,6 +6,7 @@ const axios = require('axios');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const { sendDiscordNotification } = require('./services/discordService');
+const { sendAppriseNotification } = require('./services/appriseService');
 
 class WebUI {
   constructor(db, rssParser, tmdbMatcher, stremioAddon) {
@@ -40,7 +41,10 @@ class WebUI {
       saveUninitialized: false,
       cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
     }));
-    this.app.use('/static', express.static(path.join(__dirname, 'public')));
+    this.app.use('/static', express.static(path.join(__dirname, 'public'), {
+      etag: false,
+      setHeaders: (res) => res.setHeader('Cache-Control', 'no-store')
+    }));
   }
 
   authMiddleware(req, res, next) {
@@ -57,6 +61,7 @@ class WebUI {
 
     this.app.get('/dashboard', (req, res) => {
       if (!req.session.authenticated) return res.redirect('/');
+      res.setHeader('Cache-Control', 'no-store');
       res.sendFile(path.join(__dirname, 'views', 'dashboard.html'));
     });
 
@@ -108,6 +113,26 @@ class WebUI {
       const emissions     = this.db.getMediaCount('emissions');
       const animes        = this.db.getMediaCount('animés');
       res.json({ films, documentaires, series, emissions, animes, total: films + documentaires + series + emissions + animes });
+    });
+
+    // ─── Overview ───────────────────────────────────────────────────────────
+    this.app.get('/api/overview', this.authMiddleware.bind(this), (req, res) => {
+      const lastSync    = this.db.getLatestSync() || null;
+      const failedCount = this.db.getFailedReleasesCount();
+      const sources     = this.db.getSourceStats();
+      const recent      = this.db.db.prepare(
+        'SELECT * FROM media ORDER BY first_seen_at DESC LIMIT 8'
+      ).all().map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+      const rpdbEnabled = this.db.getConfig('rpdb_enabled') === 'true';
+      const rpdbKey     = this.db.getConfig('rpdb_api_key') || '';
+      res.json({
+        lastSync,
+        failedCount,
+        sourcesCount: sources.length,
+        recent,
+        rpdbEnabled,
+        rpdbKey
+      });
     });
 
     // ─── Media Library ──────────────────────────────────────────────────────
@@ -284,6 +309,21 @@ class WebUI {
       }
     });
 
+    // ─── Apprise Test ───────────────────────────────────────────────────────
+    this.app.post('/api/apprise/test', this.authMiddleware.bind(this), async (req, res) => {
+      const serverUrl = req.body.server_url || this.db.getConfig('apprise_server_url');
+      const urls      = req.body.urls       || this.db.getConfig('apprise_urls');
+      if (!serverUrl || !serverUrl.trim()) {
+        return res.status(400).json({ ok: false, error: 'URL du serveur Apprise manquante' });
+      }
+      const ok = await sendAppriseNotification(serverUrl, urls, {
+        title: '✅ Test — Stremio RSS Catalog',
+        body:  'Apprise est correctement configuré et connecté !',
+        type:  'success'
+      });
+      res.json({ ok });
+    });
+
     // ─── Proxy Test ─────────────────────────────────────────────────────────
     this.app.post('/api/proxy/test', this.authMiddleware.bind(this), async (req, res) => {
       const { protocol = 'http', host, port, username, password } = req.body;
@@ -432,6 +472,28 @@ class WebUI {
         }
         await sendDiscordNotification(webhookUrl, notificationData);
       }
+
+      // ─── Apprise ──────────────────────────────────────────────────────────
+      const appriseEnabled   = this.db.getConfig('apprise_enabled') === 'true';
+      const appriseServerUrl = this.db.getConfig('apprise_server_url');
+      if (appriseEnabled && appriseServerUrl) {
+        const added = [
+          filmsAdded         > 0 ? `Films : **+${filmsAdded}**`         : null,
+          documentairesAdded > 0 ? `Docs : **+${documentairesAdded}**`  : null,
+          seriesAdded        > 0 ? `Séries : **+${seriesAdded}**`       : null,
+          emissionsAdded     > 0 ? `Émissions : **+${emissionsAdded}**` : null,
+          animesAdded        > 0 ? `Animés : **+${animesAdded}**`       : null
+        ].filter(Boolean);
+        const body = [
+          added.length ? `**Ajoutés :** ${added.join(' · ')}` : '**Aucun nouveau média ajouté**',
+          `Durée : ${duration}s · Matchées : ${result.matched} · Échecs : ${result.failed}`
+        ].join('\n');
+        await sendAppriseNotification(
+          appriseServerUrl,
+          this.db.getConfig('apprise_urls'),
+          { title: '✅ Stremio RSS Catalog — Sync terminée', body, type: 'success' }
+        );
+      }
     } catch (error) {
       console.error('Sync error:', error);
       console.error('Stack trace:', error.stack);
@@ -451,6 +513,21 @@ class WebUI {
           status: 'error', errorMessage: error.message, duration,
           installUrl: this.baseUrl ? `${this.baseUrl}/manifest.json` : null
         });
+      }
+
+      const appriseEnabled   = this.db.getConfig('apprise_enabled') === 'true';
+      const appriseServerUrl = this.db.getConfig('apprise_server_url');
+      if (appriseEnabled && appriseServerUrl) {
+        const duration = Math.round((Date.now() - startTime) / 1000);
+        await sendAppriseNotification(
+          appriseServerUrl,
+          this.db.getConfig('apprise_urls'),
+          {
+            title: '❌ Stremio RSS Catalog — Sync échouée',
+            body:  `**Erreur :** ${error.message}\nDurée : ${duration}s`,
+            type:  'failure'
+          }
+        );
       }
     }
   }

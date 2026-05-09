@@ -18,7 +18,7 @@ const translations = {
     logout: "Déconnexion",
 
     // Description
-    description_text: 'Stremio RSS Catalog est un addon de création de catalogues Stremio à partir de flux RSS. Il ne permet pas de lire du contenu, il faut pour cela utiliser des addons de stream tels que <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> ou <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> avec <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Tutoriels sur <a href="https://upandclear.org" target="_blank">mon blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> mises à disposition par la communauté StremioFR.',
+    description_text: 'Stremio RSS Catalog est un addon de création de catalogues Stremio à partir de flux RSS. Il ne permet pas de lire du contenu, il faut pour cela utiliser des addons de stream tels que <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> ou <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> avec <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Tutoriels sur <a href="https://upandclear.org" target="_blank">mon blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> mises à disposition par la communauté StremioFR et auto-hébergement simplifié avec le projet <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a>.',
 
     // Stats
     stat_films: "Films",
@@ -27,6 +27,12 @@ const translations = {
     stat_emissions: "Émissions TV",
     stat_animes: "Animés",
     stat_indexed: "Médias indexés",
+    ov_last_sync: "Dernière sync",
+    ov_failed: "Releases en attente",
+    ov_failed_hint: "cliquer pour voir",
+    ov_sources: "Sources RSS",
+    ov_sources_hint: "flux actifs",
+    ov_recent: "Derniers ajouts",
 
     // Sync history
     sync_history_title: "Historique des synchronisations",
@@ -90,6 +96,15 @@ const translations = {
     config_discord_enhanced_hint: "Affiche les 5 dernières affiches",
     config_discord_rpdb: "Utiliser les affiches RPDB pour Discord",
     config_discord_rpdb_hint: "Nécessite une clé API RPDB configurée",
+    config_apprise_title: "Apprise",
+    config_apprise_enable: "Activer les notifications Apprise",
+    config_apprise_server: "URL du serveur Apprise",
+    config_apprise_server_hint: "Ex : http://apprise:8000 — déployez Apprise via Docker (caronc/apprise)",
+    config_apprise_urls: "URLs de notification",
+    config_apprise_urls_hint: "URLs séparées par des virgules : ntfy://ntfy.sh/topic, tgram://token/chatid, slack://...",
+    config_apprise_test: "Tester Apprise",
+    config_apprise_test_ok: "Notification envoyée avec succès",
+    config_apprise_test_fail: "Échec de l'envoi",
     config_save: "Enregistrer",
     config_saved: "✓ Configuration sauvegardée",
     config_error_network: "✗ Erreur réseau",
@@ -200,7 +215,7 @@ const translations = {
     logout: "Logout",
 
     // Description
-    description_text: 'Stremio RSS Catalog is a Stremio catalog creation addon from RSS feeds. It does not play content; for that, use streaming addons such as <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> or <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> with <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Tutorials on <a href="https://upandclear.org" target="_blank">my blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> shared by the StremioFR community.',
+    description_text: 'Stremio RSS Catalog is a Stremio catalog creation addon from RSS feeds. It does not play content; for that, use streaming addons such as <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> or <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> with <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Tutorials on <a href="https://upandclear.org" target="_blank">my blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> shared by the StremioFR community and easy self-hosting with the <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a> project.',
 
     // Stats
     stat_films: "Movies",
@@ -209,6 +224,12 @@ const translations = {
     stat_emissions: "TV Shows",
     stat_animes: "Anime",
     stat_indexed: "Indexed media",
+    ov_last_sync: "Last sync",
+    ov_failed: "Pending releases",
+    ov_failed_hint: "click to view",
+    ov_sources: "RSS Sources",
+    ov_sources_hint: "active feeds",
+    ov_recent: "Recent additions",
 
     // Sync history
     sync_history_title: "Synchronization history",
@@ -272,6 +293,15 @@ const translations = {
     config_discord_enhanced_hint: "Displays the 5 latest posters",
     config_discord_rpdb: "Use RPDB posters for Discord",
     config_discord_rpdb_hint: "Requires a configured RPDB API key",
+    config_apprise_title: "Apprise",
+    config_apprise_enable: "Enable Apprise notifications",
+    config_apprise_server: "Apprise server URL",
+    config_apprise_server_hint: "e.g. http://apprise:8000 — deploy Apprise via Docker (caronc/apprise)",
+    config_apprise_urls: "Notification URLs",
+    config_apprise_urls_hint: "Comma-separated Apprise URLs: ntfy://ntfy.sh/topic, tgram://token/chatid, slack://...",
+    config_apprise_test: "Test Apprise",
+    config_apprise_test_ok: "Notification sent successfully",
+    config_apprise_test_fail: "Failed to send notification",
     config_save: "Save",
     config_saved: "✓ Configuration saved",
     config_error_network: "✗ Network error",
@@ -382,7 +412,7 @@ const translations = {
     logout: "Abmelden",
 
     // Description
-    description_text: 'Stremio RSS Catalog ist ein Stremio-Addon zur Erstellung von Katalogen aus RSS-Feeds. Es spielt keine Inhalte ab; dafür verwenden Sie Streaming-Addons wie <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> oder <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> mit <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Anleitungen auf <a href="https://upandclear.org" target="_blank">meinem Blog</a>, <a href="https://stremiofr.me/" target="_blank">Instanzen</a> von der StremioFR-Community bereitgestellt.',
+    description_text: 'Stremio RSS Catalog ist ein Stremio-Addon zur Erstellung von Katalogen aus RSS-Feeds. Es spielt keine Inhalte ab; dafür verwenden Sie Streaming-Addons wie <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> oder <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> mit <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Anleitungen auf <a href="https://upandclear.org" target="_blank">meinem Blog</a>, <a href="https://stremiofr.me/" target="_blank">Instanzen</a> von der StremioFR-Community bereitgestellt und einfaches Self-Hosting mit dem <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a>-Projekt.',
 
     // Stats
     stat_films: "Filme",
@@ -391,6 +421,12 @@ const translations = {
     stat_emissions: "TV-Sendungen",
     stat_animes: "Anime",
     stat_indexed: "Indexierte Medien",
+    ov_last_sync: "Letzte Sync",
+    ov_failed: "Ausstehende Releases",
+    ov_failed_hint: "klicken zum Anzeigen",
+    ov_sources: "RSS-Quellen",
+    ov_sources_hint: "aktive Feeds",
+    ov_recent: "Letzte Ergänzungen",
 
     // Sync history
     sync_history_title: "Synchronisierungsverlauf",
@@ -454,6 +490,15 @@ const translations = {
     config_discord_enhanced_hint: "Zeigt die 5 letzten Poster an",
     config_discord_rpdb: "RPDB-Poster für Discord verwenden",
     config_discord_rpdb_hint: "Erfordert einen konfigurierten RPDB API-Schlüssel",
+    config_apprise_title: "Apprise",
+    config_apprise_enable: "Apprise-Benachrichtigungen aktivieren",
+    config_apprise_server: "Apprise-Server-URL",
+    config_apprise_server_hint: "z. B. http://apprise:8000 — Apprise via Docker bereitstellen (caronc/apprise)",
+    config_apprise_urls: "Benachrichtigungs-URLs",
+    config_apprise_urls_hint: "Kommagetrennte Apprise-URLs: ntfy://ntfy.sh/topic, tgram://token/chatid, slack://...",
+    config_apprise_test: "Apprise testen",
+    config_apprise_test_ok: "Benachrichtigung erfolgreich gesendet",
+    config_apprise_test_fail: "Senden fehlgeschlagen",
     config_save: "Speichern",
     config_saved: "✓ Konfiguration gespeichert",
     config_error_network: "✗ Netzwerkfehler",

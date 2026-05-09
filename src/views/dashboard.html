@@ -79,6 +79,7 @@
         Stremio RSS Catalog est un addon de création de catalogues Stremio à partir de flux RSS.
       </p>
 
+      <!-- Catalogues -->
       <div class="stats-grid">
         <div class="stat-card">
           <div class="stat-label" data-i18n="stat_films">Films</div>
@@ -106,6 +107,34 @@
         </div>
       </div>
 
+      <!-- Infos rapides -->
+      <div class="overview-info-row" style="margin-top:20px">
+        <div class="overview-info-card" id="ovLastSync">
+          <div class="ov-info-label" data-i18n="ov_last_sync">Dernière sync</div>
+          <div class="ov-info-value" id="ovLastSyncDate">—</div>
+          <div class="ov-info-sub" id="ovLastSyncStats"></div>
+        </div>
+        <div class="overview-info-card clickable" onclick="navigateTo('failures')" id="ovFailed">
+          <div class="ov-info-label" data-i18n="ov_failed">Releases en attente</div>
+          <div class="ov-info-value" id="ovFailedCount">—</div>
+          <div class="ov-info-sub" data-i18n="ov_failed_hint">cliquer pour voir</div>
+        </div>
+        <div class="overview-info-card clickable" onclick="navigateTo('sources')" id="ovSources">
+          <div class="ov-info-label" data-i18n="ov_sources">Sources RSS</div>
+          <div class="ov-info-value" id="ovSourcesCount">—</div>
+          <div class="ov-info-sub" data-i18n="ov_sources_hint">flux actifs</div>
+        </div>
+      </div>
+
+      <!-- Derniers ajouts -->
+      <div style="margin-top:24px">
+        <h3 class="section-label" data-i18n="ov_recent">Derniers ajouts</h3>
+        <div class="ov-recent-grid" id="ovRecentGrid">
+          <p class="text-muted" data-i18n="sync_loading">Chargement...</p>
+        </div>
+      </div>
+
+      <!-- Installation -->
       <div class="card" style="margin-top:24px">
         <h3 data-i18n="install_title">Installation dans Stremio</h3>
         <p class="text-muted" style="margin:8px 0 12px" data-i18n="install_desc">
@@ -509,6 +538,37 @@
             <label for="discord_rpdb_posters_enabled" data-i18n="config_discord_rpdb">
               Affiches RPDB dans Discord
             </label>
+          </div>
+        </div>
+
+        <div class="config-section">
+          <h3 data-i18n="config_apprise_title">Apprise</h3>
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="apprise_enabled" name="apprise_enabled">
+              <span class="slider"></span>
+            </label>
+            <label for="apprise_enabled" data-i18n="config_apprise_enable">
+              Activer les notifications Apprise
+            </label>
+          </div>
+          <div class="field">
+            <label data-i18n="config_apprise_server">URL du serveur Apprise</label>
+            <input type="url" id="apprise_server_url" name="apprise_server_url"
+              placeholder="http://apprise:8000">
+            <small class="field-hint" data-i18n="config_apprise_server_hint"></small>
+          </div>
+          <div class="field">
+            <label data-i18n="config_apprise_urls">URLs de notification</label>
+            <input type="text" id="apprise_urls" name="apprise_urls"
+              placeholder="ntfy://ntfy.sh/topic,tgram://token/chatid">
+            <small class="field-hint" data-i18n="config_apprise_urls_hint"></small>
+          </div>
+          <div>
+            <button type="button" class="btn-secondary" onclick="testApprise()" data-i18n="config_apprise_test">
+              Tester Apprise
+            </button>
+            <span id="appriseTestMsg" style="margin-left:10px;font-size:.85rem"></span>
           </div>
         </div>
 

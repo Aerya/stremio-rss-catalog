@@ -193,7 +193,10 @@ class DatabaseManager {
       prowlarr_apikey: '',
       nzbhydra2_url: '',
       nzbhydra2_apikey: '',
-      mal_client_id: ''
+      mal_client_id: '',
+      apprise_enabled: 'false',
+      apprise_server_url: '',
+      apprise_urls: ''
     };
 
     const stmt = this.db.prepare('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)');

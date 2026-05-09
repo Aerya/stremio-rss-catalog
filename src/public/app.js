@@ -20,7 +20,7 @@ function navigate(sectionId) {
   if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); }
   if (sectionId === 'failures') loadFailed();
   if (sectionId === 'config')   loadConfig();
-  if (sectionId === 'overview') loadStats();
+  if (sectionId === 'overview') { loadStats(); loadOverview(); }
 }
 
 document.querySelectorAll('.nav-item[data-section]').forEach(btn => {
@@ -50,6 +50,64 @@ function applyTheme() {
 async function doLogout() {
   await fetch('/api/logout', { method: 'POST' });
   window.location.href = '/';
+}
+
+// ═══════════════════════════ OVERVIEW ══════════════════════════════════
+
+async function loadOverview() {
+  try {
+    const r = await fetch('/api/overview');
+    const d = await r.json();
+
+    // Dernière sync
+    if (d.lastSync) {
+      const s = d.lastSync;
+      const date = new Date(s.started_at);
+      document.getElementById('ovLastSyncDate').textContent =
+        date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const dur = s.duration_seconds ? `${s.duration_seconds}s` : '—';
+      const ok  = s.status === 'completed';
+      const icon = ok ? '✓' : '✗';
+      document.getElementById('ovLastSyncStats').innerHTML =
+        `<span style="color:var(--${ok ? 'success' : 'danger'})">${icon}</span> ` +
+        `${(s.matched_items || 0)} matchées · ${(s.failed_items || 0)} échecs · ${dur}`;
+    } else {
+      document.getElementById('ovLastSyncDate').textContent = t('sync_none');
+    }
+
+    // Releases en attente
+    const failedEl = document.getElementById('ovFailedCount');
+    failedEl.textContent = d.failedCount.toLocaleString();
+    failedEl.style.color = d.failedCount > 0 ? 'var(--warning)' : 'var(--success)';
+    document.getElementById('ovFailed').classList.toggle('ov-has-alert', d.failedCount > 0);
+
+    // Sources RSS
+    document.getElementById('ovSourcesCount').textContent = d.sourcesCount.toLocaleString();
+
+    // Derniers ajouts
+    const grid = document.getElementById('ovRecentGrid');
+    if (!d.recent || d.recent.length === 0) {
+      grid.innerHTML = `<p class="text-muted">${t('library_no_results')}</p>`;
+      return;
+    }
+    const catalogBadge = { films: 'film', documentaires: 'doc', series: 'serie', emissions: 'emission', 'animés': 'animés' };
+    grid.innerHTML = d.recent.map(m => {
+      const poster = (d.rpdbEnabled && d.rpdbKey && m.imdb_id)
+        ? `https://api.ratingposterdb.com/${d.rpdbKey}/imdb/poster-default/${m.imdb_id}.jpg?fallback=true`
+        : (m.poster || '');
+      const bg = poster ? `style="background-image:url('${poster}')"` : '';
+      const badge = catalogBadge[m.catalog_type] || m.catalog_type;
+      const year  = m.year ? `<span class="ov-recent-year">${m.year}</span>` : '';
+      return `<div class="ov-recent-item" title="${escHtml(m.title || '')}">
+        <div class="ov-recent-poster ${poster ? '' : 'no-poster'}" ${bg}>
+          ${poster ? '' : `<span class="poster-ph-text">${escHtml((m.title || '?').substring(0, 2))}</span>`}
+          <span class="badge badge-${badge} ov-recent-badge">${escHtml(m.catalog_type || '')}</span>
+          ${year}
+        </div>
+        <div class="ov-recent-title">${escHtml(m.title || m.imdb_id || '—')}</div>
+      </div>`;
+    }).join('');
+  } catch (e) { console.error('loadOverview', e); }
 }
 
 // ═══════════════════════════ STATS ═════════════════════════════════════
@@ -662,6 +720,7 @@ function pollSync() {
         clearInterval(syncPoller);
         syncPoller = null;
         loadStats();
+        loadOverview();
         loadSyncHistory();
       }
     } catch (e) { console.error('pollSync', e); }
@@ -925,6 +984,40 @@ async function testProxy() {
 }
 window.testProxy = testProxy;
 
+async function testApprise() {
+  const msg = document.getElementById('appriseTestMsg');
+  const btn = document.querySelector('[onclick="testApprise()"]');
+  msg.textContent = '⏳ ' + t('sync_loading');
+  msg.style.color = 'var(--text-muted)';
+  if (btn) btn.disabled = true;
+
+  try {
+    const r = await fetch('/api/apprise/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        server_url: document.getElementById('apprise_server_url')?.value?.trim(),
+        urls:       document.getElementById('apprise_urls')?.value?.trim()
+      })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      msg.textContent = '✅ ' + t('config_apprise_test_ok');
+      msg.style.color = 'var(--success)';
+    } else {
+      msg.textContent = '❌ ' + (d.error || t('config_apprise_test_fail'));
+      msg.style.color = 'var(--danger)';
+    }
+  } catch (e) {
+    msg.textContent = '❌ ' + t('login_error_network');
+    msg.style.color = 'var(--danger)';
+  } finally {
+    if (btn) btn.disabled = false;
+    setTimeout(() => { msg.textContent = ''; }, 10000);
+  }
+}
+window.testApprise = testApprise;
+
 // ═══════════════════════════ CONFIG ════════════════════════════════════
 
 let rssFieldCounter = 0;
@@ -991,14 +1084,15 @@ async function loadConfig() {
     ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
      'mal_client_id', 'rpdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
      'proxy_password', 'refresh_interval', 'discord_webhook_url',
-     'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey'].forEach(k => {
+     'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey',
+     'apprise_server_url', 'apprise_urls'].forEach(k => {
       const el = document.getElementById(k);
       if (el) el.value = cfg[k] || '';
     });
 
     ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
      'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
-     'discord_rpdb_posters_enabled'].forEach(k => {
+     'discord_rpdb_posters_enabled', 'apprise_enabled'].forEach(k => {
       const el = document.getElementById(k);
       if (el) el.checked = cfg[k] === 'true';
     });
@@ -1026,14 +1120,15 @@ async function saveConfig(e) {
   ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
    'mal_client_id', 'rpdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
    'proxy_password', 'refresh_interval', 'discord_webhook_url',
-   'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey'].forEach(k => {
+   'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey',
+   'apprise_server_url', 'apprise_urls'].forEach(k => {
     const el = document.getElementById(k);
     if (el) cfg[k] = el.value;
   });
 
   ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
    'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
-   'discord_rpdb_posters_enabled'].forEach(k => {
+   'discord_rpdb_posters_enabled', 'apprise_enabled'].forEach(k => {
     const el = document.getElementById(k);
     if (el) cfg[k] = el.checked ? 'true' : 'false';
   });
@@ -1111,6 +1206,7 @@ document.addEventListener('DOMContentLoaded', () => {
   applyTheme();
   initI18n();
   loadStats();
+  loadOverview();
   loadInstallUrl();
 
   // Vérifier si une sync est en cours au chargement

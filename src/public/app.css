@@ -692,6 +692,63 @@ input:checked + .slider::before { transform: translateX(22px); }
 .integration-actions { display: flex; gap: 6px; flex-shrink: 0; }
 .integration-actions .btn-sm { padding: 7px 12px; font-size: 12px; white-space: nowrap; }
 
+/* ─── Overview infos ─────────────────────────────────────────────── */
+.overview-info-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.overview-info-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.overview-info-card.clickable {
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.overview-info-card.clickable:hover { border-color: var(--primary); background: var(--hover-bg); }
+.overview-info-card.ov-has-alert { border-color: var(--warning); }
+.ov-info-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.ov-info-value { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1.1; }
+.ov-info-sub   { font-size: 11px; color: var(--text-muted); }
+
+/* ─── Overview recent grid ───────────────────────────────────────── */
+.section-label { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 10px; }
+.ov-recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px;
+}
+.ov-recent-item { display: flex; flex-direction: column; gap: 5px; }
+.ov-recent-poster {
+  position: relative;
+  width: 100%; aspect-ratio: 2/3;
+  border-radius: 6px;
+  background: var(--hover-bg) center/cover no-repeat;
+  overflow: hidden;
+}
+.ov-recent-poster.no-poster {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--hover-bg);
+}
+.poster-ph-text { font-size: 22px; font-weight: 700; color: var(--text-muted); opacity: .4; }
+.ov-recent-badge {
+  position: absolute; bottom: 5px; left: 5px;
+  font-size: 9px; padding: 2px 5px; border-radius: 4px;
+}
+.ov-recent-year {
+  position: absolute; top: 5px; right: 5px;
+  font-size: 9px; padding: 2px 5px; border-radius: 4px;
+  background: rgba(0,0,0,.55); color: #fff;
+}
+.ov-recent-title {
+  font-size: 11px; color: var(--text); line-height: 1.3;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+
 /* ─── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 900px) {
   .main-content { padding: 16px 20px; }
