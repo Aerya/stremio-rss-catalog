@@ -68,7 +68,8 @@ async function loadOverview() {
       const s = d.lastSync;
       const date = new Date(s.started_at);
       document.getElementById('ovLastSyncDate').textContent =
-        date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        date.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' }) + ' ' +
+        date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
       const dur = s.duration_seconds ? `${s.duration_seconds}s` : '—';
       const ok  = s.status === 'completed';
       const icon = ok ? '✓' : '✗';
@@ -872,7 +873,7 @@ function renderSyncHistory(container, items) {
                     : '✓ ' + t('sync_completed');
     return `<div class="history-item ${cls}">
       <div class="history-meta">
-        ${new Date(s.started_at).toLocaleString()} — ${dur}
+        ${new Date(s.started_at).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })} — ${dur}
         &nbsp;·&nbsp; <strong>${statusStr}</strong>
         ${s.error_message ? `<br><span style="color:var(--danger)">${escHtml(s.error_message)}</span>` : ''}
       </div>
@@ -1427,10 +1428,10 @@ async function loadConfig() {
     const cfg = await r.json();
 
     ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
-     'mal_client_id', 'rpdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
+     'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
      'proxy_password', 'refresh_interval', 'discord_webhook_url',
      'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey',
-     'apprise_server_url', 'apprise_urls'].forEach(k => {
+     'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
       const el = document.getElementById(k);
       if (el) el.value = cfg[k] || '';
     });
@@ -1463,10 +1464,10 @@ async function saveConfig(e) {
 
   const cfg = {};
   ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
-   'mal_client_id', 'rpdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
+   'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
    'proxy_password', 'refresh_interval', 'discord_webhook_url',
    'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey',
-   'apprise_server_url', 'apprise_urls'].forEach(k => {
+   'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
     const el = document.getElementById(k);
     if (el) cfg[k] = el.value;
   });
@@ -1520,8 +1521,8 @@ function escHtml(str) {
 
 function fmtDate(ts) {
   if (!ts) return '—';
-  return new Date(ts).toLocaleDateString(navigator.language, {
-    day: '2-digit', month: '2-digit', year: 'numeric'
+  return new Date(ts).toLocaleDateString('fr-FR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Europe/Paris'
   });
 }
 

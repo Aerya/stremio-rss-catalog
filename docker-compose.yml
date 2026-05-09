@@ -11,6 +11,7 @@ services:
     environment:
       - PORT=7000
       - NODE_ENV=production
+      - TZ=Europe/Paris
       # À modifier
       - WEBUI_USERNAME=admin
       - WEBUI_PASSWORD=admin

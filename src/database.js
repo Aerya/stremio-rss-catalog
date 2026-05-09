@@ -212,7 +212,8 @@ class DatabaseManager {
       apprise_enabled: 'false',
       apprise_server_url: '',
       apprise_urls: '',
-      omdb_api_key: ''
+      omdb_api_key: '',
+      notification_language: 'fr'
     };
 
     const stmt = this.db.prepare('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)');
@@ -500,7 +501,7 @@ class DatabaseManager {
 
   getSyncHistoryDates() {
     return this.db.prepare(`
-      SELECT DATE(started_at / 1000, 'unixepoch') as date, COUNT(*) as count
+      SELECT DATE(started_at / 1000, 'unixepoch', 'localtime') as date, COUNT(*) as count
       FROM sync_history GROUP BY date ORDER BY date DESC
     `).all();
   }
@@ -508,7 +509,7 @@ class DatabaseManager {
   getSyncHistoryByDate(date) {
     return this.db.prepare(`
       SELECT * FROM sync_history
-      WHERE DATE(started_at / 1000, 'unixepoch') = ?
+      WHERE DATE(started_at / 1000, 'unixepoch', 'localtime') = ?
       ORDER BY started_at DESC
     `).all(date);
   }

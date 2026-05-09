@@ -7,6 +7,7 @@ const { SocksProxyAgent } = require('socks-proxy-agent');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const { sendDiscordNotification } = require('./services/discordService');
 const { sendAppriseNotification } = require('./services/appriseService');
+const { getStrings }              = require('./services/notifStrings');
 
 class WebUI {
   constructor(db, rssParser, tmdbMatcher, stremioAddon) {
@@ -22,7 +23,7 @@ class WebUI {
 
     this.setupMiddleware();
     this.setupRoutes();
-    this.startAutoRefresh();
+    this.startAutoRefresh(true);
   }
 
   setupMiddleware() {
@@ -603,9 +604,10 @@ class WebUI {
       if (!serverUrl || !serverUrl.trim()) {
         return res.status(400).json({ ok: false, error: 'URL du serveur Apprise manquante' });
       }
+      const ns = getStrings(this.db.getConfig('notification_language') || 'fr');
       const ok = await sendAppriseNotification(serverUrl, urls, {
-        title: '✅ Test — Stremio RSS Catalog',
-        body:  'Apprise est correctement configuré et connecté !',
+        title: `✅ ${ns.syncTest}`,
+        body:  ns.appriseTestBody,
         type:  'success'
       });
       res.json({ ok });
@@ -657,12 +659,15 @@ class WebUI {
   async runSync() {
     let syncId = null;
     const startTime = Date.now();
+    const notifLang = this.db.getConfig('notification_language') || 'fr';
     const catalogsBefore = {
       films:          this.db.getMediaCount('films'),
       documentaires:  this.db.getMediaCount('documentaires'),
       series:         this.db.getMediaCount('series'),
       emissions:      this.db.getMediaCount('emissions'),
-      animes:         this.db.getMediaCount('animés')
+      animes:         this.db.getMediaCount('animés'),
+      concerts:       this.db.getMediaCount('concerts'),
+      spectacles:     this.db.getMediaCount('spectacles')
     };
 
     try {
@@ -695,7 +700,9 @@ class WebUI {
         documentaires: this.db.getMediaCount('documentaires'),
         series:        this.db.getMediaCount('series'),
         emissions:     this.db.getMediaCount('emissions'),
-        animes:        this.db.getMediaCount('animés')
+        animes:        this.db.getMediaCount('animés'),
+        concerts:      this.db.getMediaCount('concerts'),
+        spectacles:    this.db.getMediaCount('spectacles')
       };
 
       const filmsAdded         = catalogsAfter.films         - catalogsBefore.films;
@@ -703,6 +710,8 @@ class WebUI {
       const seriesAdded        = catalogsAfter.series        - catalogsBefore.series;
       const emissionsAdded     = catalogsAfter.emissions     - catalogsBefore.emissions;
       const animesAdded        = catalogsAfter.animes        - catalogsBefore.animes;
+      const concertsAdded      = catalogsAfter.concerts      - catalogsBefore.concerts;
+      const spectaclesAdded    = catalogsAfter.spectacles    - catalogsBefore.spectacles;
 
       this.db.updateSyncHistory(syncId, {
         matched_items:        result.matched,
@@ -711,6 +720,8 @@ class WebUI {
         films_added:          filmsAdded,
         documentaires_added:  documentairesAdded,
         series_added:         seriesAdded,
+        concerts_added:       concertsAdded,
+        spectacles_added:     spectaclesAdded,
         status:               'completed',
         finished_at:          Date.now()
       });
@@ -725,6 +736,8 @@ class WebUI {
       this.syncStatus.seriesAdded        = seriesAdded;
       this.syncStatus.emissionsAdded     = emissionsAdded;
       this.syncStatus.animesAdded        = animesAdded;
+      this.syncStatus.concertsAdded      = concertsAdded;
+      this.syncStatus.spectaclesAdded    = spectaclesAdded;
 
       console.log('Sync completed:', result);
       this.stremioAddon.clearCache();
@@ -734,51 +747,58 @@ class WebUI {
       if (discordEnabled && webhookUrl) {
         const notificationData = {
           status: 'completed',
-          filmsAdded, documentairesAdded, seriesAdded, emissionsAdded, animesAdded,
-          totalFilms:     catalogsAfter.films,
-          totalDocs:      catalogsAfter.documentaires,
-          totalSeries:    catalogsAfter.series,
-          totalEmissions: catalogsAfter.emissions,
-          totalAnimes:    catalogsAfter.animes,
-          matched:        result.matched,
-          failed:         result.failed,
+          filmsAdded, documentairesAdded, seriesAdded, emissionsAdded, animesAdded, concertsAdded, spectaclesAdded,
+          totalFilms:      catalogsAfter.films,
+          totalDocs:       catalogsAfter.documentaires,
+          totalSeries:     catalogsAfter.series,
+          totalEmissions:  catalogsAfter.emissions,
+          totalAnimes:     catalogsAfter.animes,
+          totalConcerts:   catalogsAfter.concerts,
+          totalSpectacles: catalogsAfter.spectacles,
+          matched:         result.matched,
+          failed:          result.failed,
           duration,
           installUrl:  this.baseUrl ? `${this.baseUrl}/manifest.json` : null,
           rpdbEnabled: this.db.getConfig('discord_rpdb_posters_enabled') === 'true',
           rpdbKey:     this.db.getConfig('rpdb_api_key')
         };
         const enhancedEnabled = this.db.getConfig('discord_enhanced_notifications_enabled') === 'true';
-        if (enhancedEnabled && (filmsAdded > 0 || documentairesAdded > 0 || seriesAdded > 0 || emissionsAdded > 0 || animesAdded > 0)) {
+        if (enhancedEnabled && (filmsAdded > 0 || documentairesAdded > 0 || seriesAdded > 0 || emissionsAdded > 0 || animesAdded > 0 || concertsAdded > 0 || spectaclesAdded > 0)) {
           notificationData.recentAdditions = {
             films:         filmsAdded         > 0 ? this.db.getRecentCatalogAdditions('films', 5)         : [],
             documentaires: documentairesAdded > 0 ? this.db.getRecentCatalogAdditions('documentaires', 5) : [],
             series:        seriesAdded        > 0 ? this.db.getRecentCatalogAdditions('series', 5)        : [],
             emissions:     emissionsAdded     > 0 ? this.db.getRecentCatalogAdditions('emissions', 5)     : [],
-            animes:        animesAdded        > 0 ? this.db.getRecentCatalogAdditions('animés', 5)        : []
+            animes:        animesAdded        > 0 ? this.db.getRecentCatalogAdditions('animés', 5)        : [],
+            concerts:      concertsAdded      > 0 ? this.db.getRecentCatalogAdditions('concerts', 5)      : [],
+            spectacles:    spectaclesAdded    > 0 ? this.db.getRecentCatalogAdditions('spectacles', 5)    : []
           };
         }
-        await sendDiscordNotification(webhookUrl, notificationData);
+        await sendDiscordNotification(webhookUrl, notificationData, notifLang);
       }
 
       // ─── Apprise ──────────────────────────────────────────────────────────
       const appriseEnabled   = this.db.getConfig('apprise_enabled') === 'true';
       const appriseServerUrl = this.db.getConfig('apprise_server_url');
       if (appriseEnabled && appriseServerUrl) {
+        const ns = getStrings(notifLang);
         const added = [
-          filmsAdded         > 0 ? `Films : **+${filmsAdded}**`         : null,
-          documentairesAdded > 0 ? `Docs : **+${documentairesAdded}**`  : null,
-          seriesAdded        > 0 ? `Séries : **+${seriesAdded}**`       : null,
-          emissionsAdded     > 0 ? `Émissions : **+${emissionsAdded}**` : null,
-          animesAdded        > 0 ? `Animés : **+${animesAdded}**`       : null
+          filmsAdded         > 0 ? `${ns.films}         : **+${filmsAdded}**`         : null,
+          documentairesAdded > 0 ? `${ns.documentaires} : **+${documentairesAdded}**` : null,
+          seriesAdded        > 0 ? `${ns.series}        : **+${seriesAdded}**`        : null,
+          emissionsAdded     > 0 ? `${ns.emissions}     : **+${emissionsAdded}**`     : null,
+          animesAdded        > 0 ? `${ns.animes}        : **+${animesAdded}**`        : null,
+          concertsAdded      > 0 ? `${ns.concerts}      : **+${concertsAdded}**`      : null,
+          spectaclesAdded    > 0 ? `${ns.spectacles}    : **+${spectaclesAdded}**`    : null
         ].filter(Boolean);
         const body = [
-          added.length ? `**Ajoutés :** ${added.join(' · ')}` : '**Aucun nouveau média ajouté**',
-          `Durée : ${duration}s · Matchées : ${result.matched} · Échecs : ${result.failed}`
+          added.length ? `**${ns.appriseAdded} :** ${added.join(' · ')}` : `**${ns.noneAdded}**`,
+          `${ns.duration} : ${duration}${ns.seconds} · ${ns.matched} : ${result.matched} · ${ns.failed} : ${result.failed}`
         ].join('\n');
         await sendAppriseNotification(
           appriseServerUrl,
           this.db.getConfig('apprise_urls'),
-          { title: '✅ Stremio RSS Catalog — Sync terminée', body, type: 'success' }
+          { title: `✅ Stremio RSS Catalog — ${ns.syncSuccess}`, body, type: 'success' }
         );
       }
     } catch (error) {
@@ -799,19 +819,20 @@ class WebUI {
         await sendDiscordNotification(webhookUrl, {
           status: 'error', errorMessage: error.message, duration,
           installUrl: this.baseUrl ? `${this.baseUrl}/manifest.json` : null
-        });
+        }, notifLang);
       }
 
       const appriseEnabled   = this.db.getConfig('apprise_enabled') === 'true';
       const appriseServerUrl = this.db.getConfig('apprise_server_url');
       if (appriseEnabled && appriseServerUrl) {
+        const ns = getStrings(notifLang);
         const duration = Math.round((Date.now() - startTime) / 1000);
         await sendAppriseNotification(
           appriseServerUrl,
           this.db.getConfig('apprise_urls'),
           {
-            title: '❌ Stremio RSS Catalog — Sync échouée',
-            body:  `**Erreur :** ${error.message}\nDurée : ${duration}s`,
+            title: `❌ Stremio RSS Catalog — ${ns.syncError}`,
+            body:  `**${ns.fieldError} :** ${error.message}\n${ns.duration} : ${duration}${ns.seconds}`,
             type:  'failure'
           }
         );
@@ -847,7 +868,7 @@ class WebUI {
     }
   }
 
-  startAutoRefresh() {
+  startAutoRefresh(triggerImmediate = false) {
     if (this.autoRefreshInterval) {
       clearInterval(this.autoRefreshInterval);
       this.autoRefreshInterval = null;
@@ -856,8 +877,12 @@ class WebUI {
     if (!enabled) { console.log('[Auto-Refresh] Désactivé'); return; }
     const interval   = parseInt(this.db.getConfig('refresh_interval')) || 180;
     const intervalMs = interval * 60 * 1000;
-    console.log('[Auto-Refresh] Activé - Intervalle: ' + interval + ' minutes - Sync immédiate au démarrage');
-    this.runAutoSync();
+    if (triggerImmediate) {
+      console.log('[Auto-Refresh] Activé - Intervalle: ' + interval + ' minutes - Sync immédiate au démarrage');
+      this.runAutoSync();
+    } else {
+      console.log('[Auto-Refresh] Intervalle mis à jour : ' + interval + ' minutes (prochaine sync dans ' + interval + ' min)');
+    }
     this.autoRefreshInterval = setInterval(() => this.runAutoSync(), intervalMs);
   }
 
