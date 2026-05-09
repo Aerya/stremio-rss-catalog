@@ -655,6 +655,7 @@ async function loadSources() {
             s.documentaires_count ? `<span class="src-cat badge-documentaires">Docs ${s.documentaires_count}</span>` : '',
             s.series_count        ? `<span class="src-cat badge-series">Séries ${s.series_count}</span>` : '',
             s.emissions_count     ? `<span class="src-cat badge-emissions">Émissions ${s.emissions_count}</span>` : '',
+            s.animes_count        ? `<span class="src-cat badge-animés">Animés ${s.animes_count}</span>` : '',
           ].filter(Boolean).join(' ');
 
           const errCell = hasError
