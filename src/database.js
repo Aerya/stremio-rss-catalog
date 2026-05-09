@@ -682,6 +682,21 @@ class DatabaseManager {
   getCatalogCount(catalogType) { return this.getMediaCount(catalogType); }
   searchCatalog(catalogType, query, skip, limit) { return this.searchMedia(catalogType, query, skip, limit); }
   getRecentCatalogAdditions(catalogType, limit) { return this.getRecentMediaAdditions(catalogType, limit); }
+
+  getAnimeCandidatesForReclassify() {
+    return this.db.prepare(`
+      SELECT imdb_id, tmdb_id, type, name
+      FROM media
+      WHERE catalog_type IN ('films', 'series')
+        AND tmdb_id IS NOT NULL
+        AND genres IS NOT NULL
+        AND EXISTS (SELECT 1 FROM json_each(genres) WHERE value = 16)
+    `).all();
+  }
+
+  reclassifyMediaCatalogType(imdbId, catalogType) {
+    this.db.prepare(`UPDATE media SET catalog_type = ? WHERE imdb_id = ?`).run(catalogType, imdbId);
+  }
   getItemByImdbId(imdbId) { return this.getMediaByImdbId(imdbId); }
 
   close() {

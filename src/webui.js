@@ -330,14 +330,7 @@ class WebUI {
       if (!apiKey) return res.status(400).json({ error: 'Clé TMDB non configurée' });
 
       // Candidats : films/séries ayant le genre 16 (Animation) en base
-      const candidates = this.db.prepare(`
-        SELECT imdb_id, tmdb_id, type, name
-        FROM media
-        WHERE catalog_type IN ('films', 'series')
-          AND tmdb_id IS NOT NULL
-          AND genres IS NOT NULL
-          AND EXISTS (SELECT 1 FROM json_each(genres) WHERE value = 16)
-      `).all();
+      const candidates = this.db.getAnimeCandidatesForReclassify();
 
       if (candidates.length === 0) {
         return res.json({ candidates: 0, reclassified: 0, skipped: 0, errors: [] });
@@ -366,7 +359,7 @@ class WebUI {
           const isJapanese = lang === 'ja' || countries.includes('JP');
 
           if (isJapanese) {
-            this.db.prepare(`UPDATE media SET catalog_type = 'animés' WHERE imdb_id = ?`).run(item.imdb_id);
+            this.db.reclassifyMediaCatalogType(item.imdb_id, 'animés');
             console.log(`[Reclassify] ✓ animé : ${item.name}`);
             reclassified++;
           } else {
