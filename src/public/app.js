@@ -91,11 +91,11 @@ async function loadOverview() {
     // Derniers ajouts par catégorie — vue liste compacte
     const container = document.getElementById('ovRecentGrid');
     const cats = [
-      { key: 'films',         label: t('stat_films'),         badge: 'film',     items: d.recentByCat?.films         || [] },
-      { key: 'documentaires', label: t('stat_documentaires'), badge: 'doc',      items: d.recentByCat?.documentaires || [] },
-      { key: 'series',        label: t('stat_series'),        badge: 'serie',    items: d.recentByCat?.series        || [] },
-      { key: 'emissions',     label: t('stat_emissions'),     badge: 'emission', items: d.recentByCat?.emissions     || [] },
-      { key: 'animés',        label: t('stat_animes'),        badge: 'animés',   items: d.recentByCat?.animes        || [] }
+      { key: 'films',         label: t('stat_films'),         badge: 'films',         items: d.recentByCat?.films         || [] },
+      { key: 'documentaires', label: t('stat_documentaires'), badge: 'documentaires', items: d.recentByCat?.documentaires || [] },
+      { key: 'series',        label: t('stat_series'),        badge: 'series',        items: d.recentByCat?.series        || [] },
+      { key: 'emissions',     label: t('stat_emissions'),     badge: 'emissions',     items: d.recentByCat?.emissions     || [] },
+      { key: 'animés',        label: t('stat_animes'),        badge: 'animés',        items: d.recentByCat?.animes        || [] }
     ].filter(c => c.items.length > 0);
 
     if (cats.length === 0) {
