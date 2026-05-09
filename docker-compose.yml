@@ -1,13 +1,13 @@
 services:
-  stremio-rss-catalogs:
-    image: ghcr.io/aerya/stremio-rss-catalogs:latest
-    container_name: stremio-rss-catalogs
+  stremio-rss-catalog:
+    image: ghcr.io/aerya/stremio-rss-catalog:latest
+    container_name: stremio-rss-catalog
     restart: always
     ports:
       - "7973:7000"
     volumes:
     # À adapter à votre configuration : /chemin/vers/vos/données/:/data
-      - /home/aerya/docker/useflow-fr/:/data
+      - /home/aerya/docker/stremio-rss-catalog/:/data
     environment:
       - PORT=7000
       - NODE_ENV=production

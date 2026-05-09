@@ -57,7 +57,6 @@
 | **Manual release override** | Force IMDB/TMDB/TVDB ID on a failed release directly from the WebUI |
 | **Deduplication** | By IMDB ID (media) + by RSS GUID + by torrent hash when available (releases) |
 | **Hashes** | Automatic infohash extraction from magnet/torrent links |
-| **Quality** | 4K, HDR, DV, 1080p, WEB-DL, TVRip, DVDRip, CAM… detected per release |
 | **Retry** | Unmatched releases stored and retriable |
 | **Cache** | Catalog responses cached in memory, auto-invalidated on sync |
 | **RPDB** | Rating posters (optional) |
@@ -86,24 +85,26 @@ Copy or create [docker-compose.yml](./docker-compose.yml):
 
 ```yaml
 services:
-  useflow-fr:
-    image: ghcr.io/aerya/stremio-rss-catalogs:latest
-    container_name: useflow-fr
+  stremio-rss-catalog:
+    image: ghcr.io/aerya/stremio-rss-catalog:latest
+    container_name: stremio-rss-catalog
     restart: always
     ports:
       - "7973:7000"
     volumes:
-      - /home/aerya/docker/useflow-fr/:/data
+    # Adapt to your setup: /path/to/your/data/:/data
+      - /home/aerya/docker/stremio-rss-catalog/:/data
     environment:
       - PORT=7000
       - NODE_ENV=production
       - TZ=Europe/Paris
-      - WEBUI_USERNAME=admin        # Change this
-      - WEBUI_PASSWORD=admin        # Change this
+      # Change these
+      - WEBUI_USERNAME=admin
+      - WEBUI_PASSWORD=admin
+      # Do not change
       - DB_PATH=/data/addon.db
-      - SESSION_SECRET=changeme     # openssl rand -hex 32
-    labels:
-      - com.centurylinklabs.watchtower.enable=true
+      # Generate with: openssl rand -hex 32
+      - SESSION_SECRET=changeme
 ```
 
 Then open the WebUI at `http://localhost:7973`, configure your RSS feed(s) + TMDB API key, run a first sync, and install the addon in Stremio using the provided URL.
@@ -118,18 +119,31 @@ The tool accepts any standard RSS feed. In addition to your trackers' native fee
 
 ### Prowlarr (BitTorrent)
 
-- **Per indexer**: `http://prowlarr:9696/{id}/api?apikey=XXXX&t=rss`
-- **Aggregated**: `http://prowlarr:9696/api/v1/indexer/all/newznab?apikey=XXXX&t=rss`
-- **Movies only** (category 2000): `http://prowlarr:9696/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=2000`
-- **Series only** (category 5000): `http://prowlarr:9696/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=5000`
+The quick integration buttons generate **aggregated** feeds (all your indexers):
+
+| Button | Generated URL |
+|---|---|
+| All | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss` |
+| Movies | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=2000` |
+| Series | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=5000` |
+
+To target a **specific indexer**, add its URL directly in the RSS feeds list:
+```
+http://prowlarr:9696/{id}/api?apikey=XXXX&t=rss
+```
+*(replace `{id}` with the numeric indexer ID in Prowlarr)*
 
 ### NZBHydra2 (Usenet)
 
-- **All content**: `http://nzbhydra2:5076/api?t=rss&apikey=XXXX`
-- **Movies only**: `http://nzbhydra2:5076/api?t=rss&apikey=XXXX&cat=2000`
-- **Series only**: `http://nzbhydra2:5076/api?t=rss&apikey=XXXX&cat=5000`
+The buttons generate **aggregated** feeds (all your sources):
 
-> The WebUI provides **quick integrations** in the Configuration section: enter the base URL and API key, then click *All*, *Movies* or *Series* to automatically generate and add the corresponding RSS feed.
+| Button | Generated URL |
+|---|---|
+| All | `/api?t=rss&apikey=XXXX` |
+| Movies | `/api?t=rss&apikey=XXXX&cat=2000` |
+| Series | `/api?t=rss&apikey=XXXX&cat=5000` |
+
+> Each button adds a **new row** to the RSS feeds list — you can click several to have Movies and Series as separate feeds. The saved base URL is only used by the quick integration, it is not an RSS feed by itself.
 
 ---
 
@@ -184,7 +198,6 @@ Each release title is analyzed to extract:
 - The **clean name** (technical tags stripped: resolution, codec, language, team…)
 - The **year** of release
 - The **type**: movie or series — with priority: anime > concert > live show > documentary > TV show > series > movie
-- The **quality**: 4K, HDR, DV, 1080p, WEB-DL, BluRay…
 - The **infohash**: extracted from magnet/torrent links in the RSS feed
 
 ### Category Detection
@@ -277,7 +290,7 @@ From **Configuration → Maintenance** in the WebUI, 8 actions are available:
 
 - The first sync may take several minutes depending on feed size — do it **before** installing the addon in Stremio
 - Catalogs are paginated in pages of 100 media — Stremio loads them as you scroll, with no limit
-- Only content with a valid IMDB ID is indexed
+- Only content with a valid IMDB ID is indexed — Stremio only accepts IMDB IDs
 - Concert and live show detection requires an OMDb API key (free, 1000 req/day at omdbapi.com)
 - AniList is enabled by default and requires no key — it can be disabled from the config
 - Media indexed before the new categories were added will remain in their old category — use the maintenance buttons to reclassify them
@@ -298,11 +311,6 @@ The maintenance tools (manual reclassification, false positive correction) and t
 
 ---
 
-## Blog Post
-
-[Stremio RSS Catalog: my RSS-to-Stremio-catalogs addon](https://upandclear.org/2025/11/20/useflow-fr-mon-addon-de-conversion-de-rss-en-catalogures-stremio/) (French)
-
----
 
 ## License
 
