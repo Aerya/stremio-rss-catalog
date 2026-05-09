@@ -121,11 +121,11 @@ class WebUI {
       const failedCount = this.db.getFailedReleasesCount();
       const sources     = this.db.getSourceStats();
       const recentByCat = {
-        films:         this.db.getRecentCatalogAdditions('films', 8),
-        documentaires: this.db.getRecentCatalogAdditions('documentaires', 8),
-        series:        this.db.getRecentCatalogAdditions('series', 8),
-        emissions:     this.db.getRecentCatalogAdditions('emissions', 8),
-        animes:        this.db.getRecentCatalogAdditions('animés', 8)
+        films:         this.db.getRecentCatalogAdditions('films', 10),
+        documentaires: this.db.getRecentCatalogAdditions('documentaires', 10),
+        series:        this.db.getRecentCatalogAdditions('series', 10),
+        emissions:     this.db.getRecentCatalogAdditions('emissions', 10),
+        animes:        this.db.getRecentCatalogAdditions('animés', 10)
       };
       const rpdbEnabled = this.db.getConfig('rpdb_enabled') === 'true';
       const rpdbKey     = this.db.getConfig('rpdb_api_key') || '';

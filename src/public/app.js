@@ -84,7 +84,7 @@ async function loadOverview() {
     // Sources RSS
     document.getElementById('ovSourcesCount').textContent = d.sourcesCount.toLocaleString();
 
-    // Derniers ajouts par catégorie
+    // Derniers ajouts par catégorie — vue liste compacte
     const container = document.getElementById('ovRecentGrid');
     const cats = [
       { key: 'films',         label: t('stat_films'),         badge: 'film',     items: d.recentByCat?.films         || [] },
@@ -99,27 +99,23 @@ async function loadOverview() {
       return;
     }
 
-    const renderPoster = (m) => {
-      const poster = (d.rpdbEnabled && d.rpdbKey && m.imdb_id)
-        ? `https://api.ratingposterdb.com/${d.rpdbKey}/imdb/poster-default/${m.imdb_id}.jpg?fallback=true`
-        : (m.poster || '');
-      const bg   = poster ? `style="background-image:url('${poster}')"` : '';
-      const year = m.year ? `<span class="ov-recent-year">${m.year}</span>` : '';
-      return `<div class="ov-recent-item" title="${escHtml(m.title || '')}">
-        <div class="ov-recent-poster ${poster ? '' : 'no-poster'}" ${bg}>
-          ${poster ? '' : `<span class="poster-ph-text">${escHtml((m.title || '?').substring(0, 2))}</span>`}
-          ${year}
-        </div>
-        <div class="ov-recent-title">${escHtml(m.title || m.imdb_id || '—')}</div>
-      </div>`;
+    const renderRow = (m) => {
+      const title = escHtml(m.title || m.name || m.imdb_id || '—');
+      const year  = m.year ? `<span class="ov-row-year">${m.year}</span>` : '';
+      const imdb  = m.imdb_id
+        ? `<a class="ov-row-imdb" href="https://www.imdb.com/title/${escHtml(m.imdb_id)}" target="_blank">${escHtml(m.imdb_id)}</a>`
+        : '';
+      return `<li class="ov-row">
+        <span class="ov-row-title" title="${title}">${title}</span>
+        <span class="ov-row-meta">${year}${imdb}</span>
+      </li>`;
     };
 
     container.innerHTML = cats.map(c => `
       <div class="ov-cat-section">
-        <h4 class="ov-cat-label">
-          <span class="badge badge-${c.badge}">${escHtml(c.label)}</span>
-        </h4>
-        <div class="ov-recent-grid">${c.items.map(renderPoster).join('')}</div>
+        <h4 class="ov-cat-label"><span class="badge badge-${c.badge}">${escHtml(c.label)}</span>
+          <span class="ov-cat-count">${c.items.length}</span></h4>
+        <ul class="ov-list">${c.items.slice(0, 10).map(renderRow).join('')}</ul>
       </div>
     `).join('');
   } catch (e) { console.error('loadOverview', e); }
