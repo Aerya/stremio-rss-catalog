@@ -15,7 +15,11 @@ function navigate(sectionId) {
   const navBtn = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
   if (navBtn) navBtn.classList.add('active');
 
-  if (sectionId === 'library')  { loadRpdbConfig().then(() => loadLibrary()); loadLibraryCounts(); loadYearsFilter(); }
+  if (sectionId === 'library')  {
+    const limitEl = document.getElementById('libLimit');
+    if (limitEl) limitEl.value = libLimit;
+    loadRpdbConfig().then(() => loadLibrary()); loadLibraryCounts(); loadYearsFilter();
+  }
   if (sectionId === 'sources')  loadSources();
   if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); }
   if (sectionId === 'failures') loadFailed();
@@ -160,7 +164,7 @@ window.copyInstallUrl = function () {
 // ═══════════════════════════ LIBRARY ═══════════════════════════════════
 
 let libPage = 1;
-let libLimit = 25;
+let libLimit = parseInt(localStorage.getItem('libLimit')) || 25;
 let libCatalog = '';
 let libSearch = '';
 let libSort = 'date_desc';
@@ -211,6 +215,7 @@ window.debounceLibSearch = debounceLibSearch;
 
 function onLimitChange() {
   const val = parseInt(document.getElementById('libLimit').value) || 25;
+  localStorage.setItem('libLimit', val);
   if (libMode === 'releases') {
     libRlzLimit = val; libRlzPage = 1; loadReleases();
   } else {
