@@ -173,6 +173,7 @@ let libView = 'grid';     // 'grid' | 'list'
 let libMode = 'media';    // 'media' | 'releases'
 let libSearchTimer = null;
 let libLoading = false;
+let libLoadingPending = false; // un chargement a été demandé pendant qu'un autre était en cours
 
 // RPDB
 let rpdbEnabled = false;
@@ -285,9 +286,10 @@ document.querySelectorAll('.tab-btn[data-catalog]').forEach(btn => {
 });
 
 async function loadLibrary() {
-  if (libLoading) return;
+  if (libLoading) { libLoadingPending = true; return; }
   if (libMode === 'releases') { loadReleases(); return; }
   libLoading = true;
+  libLoadingPending = false;
   // Always sync limit from DOM to avoid state drift after tab switching
   const limitEl = document.getElementById('libLimit');
   if (limitEl) libLimit = parseInt(limitEl.value) || libLimit;
@@ -306,7 +308,11 @@ async function loadLibrary() {
   } catch (e) {
     grid.innerHTML = '<p class="text-muted">Erreur de chargement</p>';
     console.error('loadLibrary', e);
-  } finally { libLoading = false; }
+  } finally {
+    libLoading = false;
+    // Si un changement de filtre est survenu pendant le chargement, relancer
+    if (libLoadingPending) { libLoadingPending = false; loadLibrary(); }
+  }
 }
 
 async function loadLibraryCounts() {
@@ -423,13 +429,12 @@ function renderMediaGrid(data) {
            onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
       : '';
     const phStyle = poster ? 'style="display:none"' : '';
-    const emoji = { films: '🎬', documentaires: '📽️', series: '📺', emissions: '📡' }[m.catalog_type] || '🎬';
     const badgeCls = 'catalog-badge badge-' + m.catalog_type;
     const mediaJson = escHtml(JSON.stringify(m));
 
     return `<div class="media-card" onclick="openDrawer('${escHtml(m.imdb_id)}', JSON.parse(this.dataset.media))" data-media="${mediaJson}">
       ${posterHtml}
-      <div class="media-poster-placeholder" ${phStyle}>${emoji}</div>
+      <div class="media-poster-placeholder" ${phStyle}></div>
       <div class="media-info">
         <div class="media-title" title="${escHtml(m.name)}">${escHtml(m.name)}</div>
         <div class="media-meta">
@@ -568,14 +573,30 @@ function openDrawer(imdbId, media) {
   const body     = document.getElementById('drawerBody');
 
   const badgeCls = 'catalog-badge badge-' + media.catalog_type;
+  const cats = [
+    { v: 'films',         l: 'Films' },
+    { v: 'series',        l: 'Séries' },
+    { v: 'documentaires', l: 'Documentaires' },
+    { v: 'emissions',     l: 'Émissions' },
+    { v: 'animés',        l: 'Animés' }
+  ];
+  const catOptions = cats.map(c =>
+    `<option value="${c.v}"${media.catalog_type === c.v ? ' selected' : ''}>${c.l}</option>`
+  ).join('');
+
   info.innerHTML = `
     <div class="drawer-title">${escHtml(media.name)}${media.year ? ` <span style="font-weight:400;color:var(--text-muted)">(${media.year})</span>` : ''}</div>
     <div class="drawer-subtitle" style="margin-top:6px">
-      <span class="${badgeCls}" style="margin-right:8px">${media.catalog_type}</span>
+      <span class="${badgeCls}" style="margin-right:8px" id="drawerCatalogBadge">${media.catalog_type}</span>
       ${media.vote_average ? `⭐ ${Number(media.vote_average).toFixed(1)} &nbsp;·&nbsp; ` : ''}
       IMDB: <a href="https://www.imdb.com/title/${escHtml(imdbId)}" target="_blank">${escHtml(imdbId)}</a>
     </div>
     ${media.description ? `<p style="margin-top:10px;font-size:13px;color:var(--text-muted);line-height:1.6">${escHtml(media.description.substring(0, 220))}${media.description.length > 220 ? '…' : ''}</p>` : ''}
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="drawerCatalogSelect" class="select-sm" style="font-size:12px">${catOptions}</select>
+      <button class="btn-sm" onclick="changeCatalog('${escHtml(imdbId)}')" style="font-size:12px">Appliquer</button>
+      <span id="drawerCatalogMsg" style="font-size:12px"></span>
+    </div>
   `;
 
   body.innerHTML = '<p class="text-muted">' + t('sync_loading') + '</p>';
@@ -621,6 +642,46 @@ function closeDrawer() {
   document.getElementById('drawerBackdrop').classList.remove('open');
 }
 window.closeDrawer = closeDrawer;
+
+async function changeCatalog(imdbId) {
+  const select = document.getElementById('drawerCatalogSelect');
+  const msg    = document.getElementById('drawerCatalogMsg');
+  const badge  = document.getElementById('drawerCatalogBadge');
+  if (!select || !msg) return;
+
+  const newCat = select.value;
+  msg.textContent = '…';
+  msg.style.color = 'var(--text-muted)';
+
+  try {
+    const r = await fetch('/api/media/' + encodeURIComponent(imdbId) + '/catalog', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ catalog_type: newCat })
+    });
+    const d = await r.json();
+    if (r.ok) {
+      msg.style.color  = 'var(--success)';
+      msg.textContent  = '✓ Modifié';
+      // Mettre à jour le badge sans fermer le drawer
+      if (badge) {
+        badge.className = 'catalog-badge badge-' + newCat;
+        badge.textContent = newCat;
+      }
+      loadStats();
+      loadLibraryCounts();
+      // Recharger la grille en arrière-plan pour refléter le changement
+      setTimeout(() => loadLibrary(), 400);
+    } else {
+      msg.style.color = 'var(--danger)';
+      msg.textContent = '✗ ' + (d.error || 'Erreur');
+    }
+  } catch (e) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = '✗ Erreur réseau';
+  }
+}
+window.changeCatalog = changeCatalog;
 
 // ═══════════════════════════ SOURCES ═══════════════════════════════════
 
@@ -1178,15 +1239,17 @@ async function reclassifyAll() {
     if (!r.ok) {
       result.innerHTML = `<span style="color:var(--danger)">✗ ${escHtml(d.error || 'Erreur')}</span>`;
     } else if (d.reclassified === 0) {
-      result.innerHTML = `<span style="color:var(--success)">✓ Aucun changement — les ${d.total} médias sont déjà correctement classés.</span>`;
+      const skippedNote = d.skipped > 0 ? ` (${d.skipped} conservés — catégorie plus précise)` : '';
+      result.innerHTML = `<span style="color:var(--success)">✓ Aucun changement — les ${d.total} médias sont déjà correctement classés${skippedNote}.</span>`;
     } else {
       const cats = { films: 'Films', documentaires: 'Docs', series: 'Séries', emissions: 'Émissions', 'animés': 'Animés' };
       const breakdown = Object.entries(d.byCategory || {})
         .map(([c, n]) => `${cats[c] || c} : +${n}`).join(' · ');
+      const skippedNote = d.skipped > 0 ? ` · ${d.skipped} conservés (catégorie plus précise)` : '';
       result.innerHTML = `
         <span style="color:var(--success)">✓ Terminé.</span>
         <span style="color:var(--text-muted);margin-left:8px"><strong>${d.reclassified}</strong> reclassifié(s) sur ${d.total}</span>
-        ${breakdown ? `<br><small style="color:var(--text-muted)">${breakdown}</small>` : ''}`;
+        ${breakdown ? `<br><small style="color:var(--text-muted)">${breakdown}${skippedNote}</small>` : ''}`;
     }
     result.style.display = 'block';
     if (d.reclassified > 0) { loadStats(); loadLibraryCounts(); }

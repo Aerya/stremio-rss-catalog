@@ -184,6 +184,19 @@ class WebUI {
       res.json(releases);
     });
 
+    this.app.post('/api/media/:imdbId/catalog', this.authMiddleware.bind(this), (req, res) => {
+      const { imdbId } = req.params;
+      const { catalog_type } = req.body;
+      const valid = ['films', 'series', 'documentaires', 'emissions', 'animés'];
+      if (!valid.includes(catalog_type)) {
+        return res.status(400).json({ error: 'Catégorie invalide' });
+      }
+      this.db.batchUpdateCatalogTypes([{ imdb_id: imdbId, catalog_type }]);
+      this.stremioAddon.clearCache();
+      console.log(`[Manual] ${imdbId} → ${catalog_type}`);
+      res.json({ success: true });
+    });
+
     // ─── Sources ────────────────────────────────────────────────────────────
     this.app.get('/api/sources/stats', this.authMiddleware.bind(this), (req, res) => {
       // Map url → nom depuis la config
@@ -337,9 +350,14 @@ class WebUI {
           additional.forEach(f => { if (f.url) feedMap[f.url] = f.force || 'auto'; });
         } catch (e) { /* silencieux */ }
 
+        // Hiérarchie de spécificité : plus la valeur est haute, plus la catégorie est précise.
+        // Une reclassification automatique (non forcée) ne peut PAS faire descendre la spécificité.
+        const CATALOG_SPECIFICITY = { films: 1, series: 2, emissions: 3, documentaires: 3, 'animés': 4 };
+
         const allMedia = this.db.getAllMediaWithPrimarySource();
         const updates  = [];
         const byCategory = {};
+        let skipped = 0;
 
         for (const media of allMedia) {
           const sourceUrl    = media.primary_source_url;
@@ -361,17 +379,27 @@ class WebUI {
           const detected = this.rssParser.applyForce(detectedCatalog, info.isSeries ? 'series' : 'movie', effectiveForce);
 
           if (detected.catalogType !== media.catalog_type) {
-            updates.push({ imdb_id: media.imdb_id, catalog_type: detected.catalogType });
-            byCategory[detected.catalogType] = (byCategory[detected.catalogType] || 0) + 1;
-            console.log(`[Reclassify] ${media.catalog_type} → ${detected.catalogType} : ${media.release_name || media.imdb_id}`);
+            const currentSpec = CATALOG_SPECIFICITY[media.catalog_type] ?? 1;
+            const newSpec     = CATALOG_SPECIFICITY[detected.catalogType] ?? 1;
+
+            // En mode auto/hint URL, on ne rétrograde jamais une catégorie plus spécifique.
+            // Seule une force explicite configurée par l'utilisateur peut forcer le changement.
+            if (configForce !== 'auto' || newSpec > currentSpec) {
+              updates.push({ imdb_id: media.imdb_id, catalog_type: detected.catalogType });
+              byCategory[detected.catalogType] = (byCategory[detected.catalogType] || 0) + 1;
+              console.log(`[Reclassify] ${media.catalog_type} (spec=${currentSpec}) → ${detected.catalogType} (spec=${newSpec}) : ${media.release_name || media.imdb_id}`);
+            } else {
+              skipped++;
+              console.log(`[Reclassify] Conservé ${media.catalog_type} (spec=${currentSpec}) — ignoré ${detected.catalogType} (spec=${newSpec}) : ${media.release_name || media.imdb_id}`);
+            }
           }
         }
 
         const reclassified = updates.length > 0 ? this.db.batchUpdateCatalogTypes(updates) : 0;
         if (reclassified > 0) this.stremioAddon.clearCache();
 
-        console.log(`[Reclassify] ${reclassified}/${allMedia.length} médias reclassifiés`);
-        res.json({ success: true, total: allMedia.length, reclassified, byCategory });
+        console.log(`[Reclassify] ${reclassified}/${allMedia.length} médias reclassifiés, ${skipped} conservés (spécificité supérieure)`);
+        res.json({ success: true, total: allMedia.length, reclassified, skipped, byCategory });
       } catch (err) {
         console.error('[Reclassify]', err);
         res.status(500).json({ error: err.message });
