@@ -83,11 +83,10 @@
 
 | | |
 |---|---|
-| ![Mediathek](screens/Mediatheque.png) | ![Übersicht](screens/Vue.d.Ensemble.png) |
-| ![Synchronisierung](screens/Synchronisation.png) | ![Fehlgeschlagene Releases](screens/Echecs.png) |
-| ![Quellen](screens/Sources.png) | ![Konfiguration](screens/Configuration.png) |
-
-![Discord-Benachrichtigung](screens/DiscordNotif.png)
+| ![Médiathèque](screens/Mediatheque.png) | ![Vue d'ensemble](screens/Vue.d.Ensemble.png) |
+| ![Configuration](screens/Configuration.png) | ![Échecs](screens/Echecs.png) |
+| ![Sources](screens/Sources.png) | ![Synchronisation](screens/Synchronisation.png) |
+![Notification Discord](screens/DiscordNotif.png)
 
 ---
 

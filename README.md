@@ -84,9 +84,8 @@
 | | |
 |---|---|
 | ![Médiathèque](screens/Mediatheque.png) | ![Vue d'ensemble](screens/Vue.d.Ensemble.png) |
-| ![Synchronisation](screens/Synchronisation.png) | ![Échecs](screens/Echecs.png) |
-| ![Sources](screens/Sources.png) | ![Configuration](screens/Configuration.png) |
-
+| ![Configuration](screens/Configuration.png) | ![Échecs](screens/Echecs.png) |
+| ![Sources](screens/Sources.png) | ![Synchronisation](screens/Synchronisation.png) |
 ![Notification Discord](screens/DiscordNotif.png)
 
 ---
