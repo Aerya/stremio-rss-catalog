@@ -209,6 +209,7 @@ class DatabaseManager {
       nzbhydra2_url: '',
       nzbhydra2_apikey: '',
       mal_client_id: '',
+      anilist_enabled: 'true',
       apprise_enabled: 'false',
       apprise_server_url: '',
       apprise_urls: '',

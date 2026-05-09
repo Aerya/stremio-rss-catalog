@@ -1,8 +1,9 @@
 const axios = require('axios');
 const { SocksProxyAgent } = require('socks-proxy-agent');
-const TVDBService  = require('./services/tvdbService');
-const MALService   = require('./services/malService');
-const OMDbService  = require('./services/omdbService');
+const TVDBService     = require('./services/tvdbService');
+const MALService      = require('./services/malService');
+const AniListService  = require('./services/anilistService');
+const OMDbService     = require('./services/omdbService');
 
 // Genres TMDB qui indiquent une émission TV plutôt qu'une série narrative
 const EMISSIONS_GENRE_IDS = new Set([10763, 10764, 10766, 10767]); // News, Reality, Soap, Talk
@@ -32,9 +33,10 @@ class TMDBMatcher {
   constructor(db) {
     this.db   = db;
     this.baseUrl = 'https://api.themoviedb.org/3';
-    this.tvdb = new TVDBService(db);
-    this.mal  = new MALService(db);
-    this.omdb = new OMDbService(db);
+    this.tvdb    = new TVDBService(db);
+    this.mal     = new MALService(db);
+    this.anilist = new AniListService(db);
+    this.omdb    = new OMDbService(db);
   }
 
   getApiKey() {
@@ -219,49 +221,103 @@ class TMDBMatcher {
    * 3. Si MAL non configuré ou échec MAL : fallback sur matchItem() standard
    */
   async matchAnimeItem(item) {
+    let malResult    = null;
+    let anilistResult = null;
+
+    // ── 1. MAL (si clé configurée) ────────────────────────────────────────────
     if (this.mal.isConfigured()) {
       try {
-        const malResult = await this.mal.search(item.cleanName, item.year);
+        malResult = await this.mal.search(item.cleanName, item.year);
         if (malResult) {
-          console.log(`[MAL] ✓ "${item.cleanName}" → "${malResult.title}" (${malResult.mal_id}, type: ${malResult.type})`);
-
-          // Déduire le type Stremio depuis MAL si le RSS n'a pas bien détecté
-          const isTV = malResult.stremio_type === 'series' || item.type === 'series';
-          const search = isTV
-            ? (t, y, l) => this.searchTVShow(t, y, l)
-            : (t, y, l) => this.searchMovie(t, y, l);
-
-          // On cherche avec le titre EN canonique MAL, plus fiable pour TMDB
-          const attempts = [
-            () => search(malResult.title, malResult.year || item.year, 'en-US'),
-            () => search(malResult.title, null, 'en-US'),
-            () => malResult.title_ja !== malResult.title ? search(malResult.title_ja, null, 'en-US') : null,
-            // Fallback sur le cleanName original si MAL title ne matche pas
-            () => search(item.cleanName, item.year, 'en-US'),
-            () => search(item.cleanName, null, 'en-US'),
-          ];
-
-          for (let i = 0; i < attempts.length; i++) {
-            const match = await attempts[i]();
-            if (match && match.imdb_id) {
-              if (i > 0) console.log(`[MAL→TMDB] Matched tentative ${i + 1} : "${match.name}"`);
-              // Enrichir avec le score MAL si TMDB n'a pas de note
-              if (!match.vote_average && malResult.score) match.vote_average = malResult.score;
-              // Utiliser le poster MAL si TMDB n'en a pas
-              if (!match.poster && malResult.poster) match.poster = malResult.poster;
-              return match;
-            }
-            if (i < attempts.length - 1) await new Promise(r => setTimeout(r, 150));
-          }
-
-          console.log(`[MAL→TMDB] Aucun résultat TMDB pour "${malResult.title}" (MAL: ${malResult.mal_id})`);
+          console.log(`[MAL] ✓ "${item.cleanName}" → "${malResult.title}" (id:${malResult.mal_id}, type:${malResult.type})`);
         }
       } catch (err) {
-        console.error(`[MAL] Erreur inattendue pour "${item.cleanName}":`, err.message);
+        console.error(`[MAL] Erreur pour "${item.cleanName}":`, err.message);
       }
     }
 
-    // Fallback : matching standard TMDB
+    // ── 2. AniList (si activé, anonyme) ──────────────────────────────────────
+    if (this.anilist.isEnabled()) {
+      try {
+        anilistResult = await this.anilist.search(item.cleanName, item.year);
+        if (anilistResult) {
+          console.log(`[AniList] ✓ "${item.cleanName}" → "${anilistResult.title}" (id:${anilistResult.anilist_id}, format:${anilistResult.format})`);
+        }
+      } catch (err) {
+        console.error(`[AniList] Erreur pour "${item.cleanName}":`, err.message);
+      }
+    }
+
+    // ── 3. Matching TMDB avec titres normalisés ───────────────────────────────
+    if (malResult || anilistResult) {
+      // Priorité MAL, AniList en complément
+      const primary   = malResult || anilistResult;
+      const secondary = malResult ? anilistResult : null;
+
+      const isTV = (primary.stremio_type === 'series') || item.type === 'series';
+      const search = isTV
+        ? (t, y, l) => this.searchTVShow(t, y, l)
+        : (t, y, l) => this.searchMovie(t, y, l);
+
+      // Construire la liste des titres uniques à tenter (en préservant la priorité)
+      const seen   = new Set();
+      const titles = [];
+      const addTitle = (t) => {
+        if (t && !seen.has(t.toLowerCase().trim())) {
+          seen.add(t.toLowerCase().trim());
+          titles.push(t);
+        }
+      };
+
+      // Titres principaux (MAL prioritaire)
+      addTitle(primary.title);
+      if (secondary) addTitle(secondary.title);
+
+      // Titres alternatifs
+      addTitle(primary.title_romaji ?? primary.title_ja);
+      if (secondary) {
+        addTitle(secondary.title_romaji);
+        addTitle(secondary.title_ja);
+      }
+      addTitle(primary.title_ja);
+      addTitle(item.cleanName); // toujours en dernier fallback
+
+      const bestYear = primary.year || (secondary && secondary.year) || item.year;
+
+      // Tentatives : premier titre + année, puis tous les titres sans année
+      const attempts = [
+        () => search(titles[0], bestYear, 'en-US'),
+        ...titles.map(t => () => search(t, null, 'en-US')),
+        // si cleanName diffère du premier titre, retenter avec année
+        ...(item.cleanName !== titles[0] ? [() => search(item.cleanName, item.year, 'en-US')] : [])
+      ];
+
+      for (let i = 0; i < attempts.length; i++) {
+        const fn = attempts[i];
+        if (!fn) continue;
+        const match = await fn();
+        if (match && match.imdb_id) {
+          if (i > 0) console.log(`[Anime→TMDB] Tentative ${i + 1} réussie : "${match.name}"`);
+
+          // Enrichir score (MAL > AniList > TMDB)
+          if (!match.vote_average) {
+            if (malResult?.score)      match.vote_average = malResult.score;
+            else if (anilistResult?.score) match.vote_average = anilistResult.score;
+          }
+          // Enrichir poster (MAL > AniList > TMDB)
+          if (!match.poster) {
+            if (malResult?.poster)      match.poster = malResult.poster;
+            else if (anilistResult?.poster) match.poster = anilistResult.poster;
+          }
+          return match;
+        }
+        if (i < attempts.length - 1) await new Promise(r => setTimeout(r, 150));
+      }
+
+      console.log(`[Anime→TMDB] Aucun résultat TMDB pour "${primary.title}" (${item.cleanName})`);
+    }
+
+    // Fallback : matching standard TMDB sans normalisateur
     return this.matchItem(item);
   }
 

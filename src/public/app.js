@@ -1438,7 +1438,7 @@ async function loadConfig() {
 
     ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
      'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
-     'discord_rpdb_posters_enabled', 'apprise_enabled'].forEach(k => {
+     'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled'].forEach(k => {
       const el = document.getElementById(k);
       if (el) el.checked = cfg[k] === 'true';
     });
@@ -1474,7 +1474,7 @@ async function saveConfig(e) {
 
   ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
    'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
-   'discord_rpdb_posters_enabled', 'apprise_enabled'].forEach(k => {
+   'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled'].forEach(k => {
     const el = document.getElementById(k);
     if (el) cfg[k] = el.checked ? 'true' : 'false';
   });

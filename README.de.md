@@ -19,6 +19,7 @@
   <img src="https://img.shields.io/badge/NZBHydra2-compatible-blue?style=flat-square" alt="NZBHydra2">
   <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE-orange?style=flat-square" alt="i18n">
   <img src="https://img.shields.io/badge/MyAnimeList-integriert-blue?style=flat-square" alt="MAL">
+  <img src="https://img.shields.io/badge/AniList-integriert-teal?style=flat-square" alt="AniList">
 </p>
 
 ---
@@ -29,7 +30,7 @@
 
 ---
 
-> Ein selbst gehostetes Stremio-Addon, das Ihre RSS-Feeds, Prowlarr und NZBHydra2 aggregiert, **9 Inhaltskategorien** automatisch erkennt (Filme, Dokumentarfilme, Serien, TV-Sendungen, Anime, Konzerte, Aufführungen), sie auf TMDB/TVDB/OMDb (und MAL für Anime) abgleicht und als Kataloge in Stremio bereitstellt.
+> Ein selbst gehostetes Stremio-Addon, das Ihre RSS-Feeds, Prowlarr und NZBHydra2 aggregiert, **9 Inhaltskategorien** automatisch erkennt (Filme, Dokumentarfilme, Serien, TV-Sendungen, Anime, Konzerte, Aufführungen), sie auf TMDB/TVDB/OMDb (und MAL + AniList für Anime) abgleicht und als Kataloge in Stremio bereitstellt.
 
 ---
 
@@ -41,7 +42,8 @@
 | **Auto-Erkennung** | Kategorie aus Release-Name, Feed-URL-Schlüsselwörtern oder TMDB/OMDb-Genres ermittelt |
 | **Feed-URL-Erkennung** | Kategorie wird im Auto-Modus automatisch aus Schlüsselwörtern in der RSS-Feed-URL abgeleitet (`concert`, `anime`, `docu`, `serie`…) |
 | **Anime** | Via TMDB-Genre 16 + japanische Herkunft, OVA/OAV im Titel oder per Feed erzwungen |
-| **MAL** | MyAnimeList API v2 — EN-Titel-Normalisierer für besseren TMDB-Abgleich bei Anime (optional) |
+| **MAL** | MyAnimeList API v2 — EN-Titel-Normalisierer für besseren TMDB-Abgleich bei Anime (optional, kostenloser Schlüssel) |
+| **AniList** | AniList GraphQL-API — ergänzender Titel-Normalisierer (Romaji + Originaltitel), vollständig kostenlos und anonym, keine Registrierung erforderlich |
 | **Konzerte** | Via TMDB-Genre 10402 (Music) + OMDb-Bestätigung, ohne narrative Genres (Drama, Action…) |
 | **Aufführungen** | Via Titel-Schlüsselwörter (Stand-up, One Man Show, Theater, Zirkus…) + OMDb-Bestätigung |
 | **OMDb** | OMDb-API nach jedem TMDB-Match abgefragt, um Konzert- und Aufführungsklassifizierung zu bestätigen |
@@ -61,7 +63,8 @@
 | **RPDB** | Bewertungs-Poster (optional) |
 | **Discord** | Erweiterte Benachrichtigungen mit Poster-Galerie bei jeder Sync |
 | **Apprise** | Multi-Service-Benachrichtigungen via Apprise-Server (optional) |
-| **Auto-Sync** | Konfigurierbare Planung |
+| **Benachrichtigungssprache** | Discord/Apprise-Sprache unabhängig von der WebUI konfigurierbar (FR/EN/DE) |
+| **Auto-Sync** | Konfigurierbare Planung — Auslösung nur beim Start und per Timer, nie beim Konfigurationsspeichern |
 | **Moderne WebUI** | Sidebar, Hell-/Dunkel-Theme, mehrsprachig FR/EN/DE |
 | **Mediathek** | Poster-/Listenansicht, Sortierung, Jahresfilter (Schnellauswahl + freie Eingabe/Bereich), Releases inline, RPDB-Poster, persistente Paginierung |
 | **Übersicht** | Neueste Hinzufügungen in ausklappbaren Kategorie-Akkordeons (Titel + Jahr + IMDB-Link) |
@@ -94,6 +97,7 @@ services:
     environment:
       - PORT=7000
       - NODE_ENV=production
+      - TZ=Europe/Paris
       - WEBUI_USERNAME=admin        # Ändern
       - WEBUI_PASSWORD=admin        # Ändern
       - DB_PATH=/data/addon.db
@@ -103,6 +107,8 @@ services:
 ```
 
 Dann die WebUI unter `http://localhost:7973` öffnen, RSS-Feed(s) + TMDB-API-Schlüssel konfigurieren, eine erste Synchronisierung starten und das Addon in Stremio mit der angegebenen URL installieren.
+
+> **`TZ`** legt die Zeitzone des Containers fest. Passen Sie diese an Ihre eigene Zeitzone an (z. B. `Europe/Berlin`) für eine korrekte Datumsanzeige in der WebUI und eine korrekte Gruppierung des Sync-Verlaufs.
 
 ---
 
@@ -159,6 +165,7 @@ Die Datenbankmigration wird beim ersten Start automatisch durchgeführt. Ihre ge
 
 - **TVDB API-Schlüssel** — verbessert die Erkennung von Doku-Serien (kostenlos auf [thetvdb.com](https://thetvdb.com))
 - **MAL Client-ID** — verbessert den Anime-Abgleich (kostenlos auf [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig))
+- **AniList** — standardmäßig aktiviert, kein Schlüssel erforderlich
 - **OMDb API-Schlüssel** — aktiviert die Konzert- und Aufführungserkennung (kostenlos auf [omdbapi.com](https://www.omdbapi.com/apikey.aspx), 1000 Anfragen/Tag)
 
 **5. Addon in Stremio neu installieren**, falls Sie den Port geändert haben.
@@ -196,14 +203,18 @@ RSS-Release
   → Tag-Filter
   → Parsing (Typ + Kategorie aus Titel + Feed-URL)
   → Anime erkannt?
-      ja  → MAL (kanonischer EN-Titel, falls konfiguriert) → TMDB (5 Versuche) → OMDb → DB
-      nein → TMDB (5 Versuche) → OMDb → Genre-Reklassifizierung → DB
+      ja  → MAL (falls konfiguriert) + AniList (falls aktiviert) → normalisierte Titel → TMDB → OMDb → DB
+      nein → TMDB (5 Versuche FR/EN) → OMDb → Genre-Reklassifizierung → DB
                   ↓ Fehlschlag (Serie)
               TVDB-Fallback → DB
   → Vollständiger Fehlschlag → failed_releases (manueller oder automatischer Retry)
 ```
 
-**TMDB — 5 Versuche der Reihe nach:**
+**Anime-Titel-Normalisierung (MAL + AniList):**
+
+MAL und AniList werden kombiniert eingesetzt, um vor der TMDB-Suche den kanonischen englischen Titel zu ermitteln. MAL hat Priorität, wenn ein Schlüssel konfiguriert ist; AniList ergänzt ihn (oder agiert allein, wenn MAL nicht konfiguriert ist). Die TMDB-Suchversuche werden aus den Titeln beider Quellen aufgebaut, dedupliziert und nach Relevanz geordnet (EN-Titel, Romaji, Originaltitel, cleanName-Fallback).
+
+**TMDB — 5 Versuche der Reihe nach (Nicht-Anime):**
 1. Genauer Titel + Jahr, Französisch
 2. Genauer Titel ohne Jahr, Französisch
 3. Genauer Titel ohne Jahr, Englisch
@@ -268,16 +279,18 @@ Unter **Konfiguration → Wartung** in der WebUI sind 8 Aktionen verfügbar:
 - Kataloge werden in Seiten von 100 Medien paginiert — Stremio lädt sie beim Scrollen, ohne Limit
 - Nur Inhalte mit einer gültigen IMDB-ID werden indexiert
 - Konzert- und Aufführungserkennung erfordert einen OMDb API-Schlüssel (kostenlos, 1000 Anfragen/Tag auf omdbapi.com)
+- AniList ist standardmäßig aktiviert und erfordert keinen Schlüssel — es kann in der Konfiguration deaktiviert werden
 - Vor Hinzufügung der neuen Kategorien indizierte Medien bleiben in ihrer alten Kategorie — verwenden Sie die Wartungsschaltflächen zur Reklassifizierung
 
 ### Inhärente Grenzen von Drittanbieter-APIs
 
-Die gesamte Klassifizierung basiert auf Community-Datenbanken und Drittanbieter-APIs — **IMDB**, **TMDB**, **OMDb**, **TVDB** und **MyAnimeList**. Diese Quellen sind von Natur aus unvollständig:
+Die gesamte Klassifizierung basiert auf Community-Datenbanken und Drittanbieter-APIs — **IMDB**, **TMDB**, **OMDb**, **TVDB**, **MyAnimeList** und **AniList**. Diese Quellen sind von Natur aus unvollständig:
 
 - Ein Titel kann in einer oder mehreren Datenbanken **fehlen** und bleibt dann ohne Match (er landet in `failed_releases`)
 - **Genres und Metadaten** werden von der Community eingepflegt: Ein Dokumentarfilm kann Genre 99 fehlen, einem Anime kann Genre 16 fehlen, ein Konzertfilm kann als Drama getaggt sein
 - Die **Originalsprache** (für die Anime-Erkennung verwendet) kann in TMDB fehlen oder falsch sein
 - OMDb kann für denselben Titel andere Genres als TMDB zurückgeben oder gar keinen Eintrag haben
+- MAL und AniList können für denselben Anime unterschiedliche englische Titel zurückgeben oder den Titel gar nicht haben
 - Ein **falscher TMDB-Treffer** (Namensvetter, ungefährer Titel) kann zu einer falschen Klassifizierung führen
 - Gefilmte Konzerte, TV-Specials und Musik-Dokumentarfilme haben ähnliche Merkmale — **Falsch-Positive oder Falsch-Negative** sind in diesen Kategorien möglich
 
