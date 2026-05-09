@@ -95,7 +95,9 @@ async function loadOverview() {
       { key: 'documentaires', label: t('stat_documentaires'), badge: 'documentaires', items: d.recentByCat?.documentaires || [] },
       { key: 'series',        label: t('stat_series'),        badge: 'series',        items: d.recentByCat?.series        || [] },
       { key: 'emissions',     label: t('stat_emissions'),     badge: 'emissions',     items: d.recentByCat?.emissions     || [] },
-      { key: 'animés',        label: t('stat_animes'),        badge: 'animés',        items: d.recentByCat?.animes        || [] }
+      { key: 'animés',        label: t('stat_animes'),        badge: 'animés',        items: d.recentByCat?.animes        || [] },
+      { key: 'concerts',      label: t('stat_concerts'),      badge: 'concerts',      items: d.recentByCat?.concerts      || [] },
+      { key: 'spectacles',    label: t('stat_spectacles'),    badge: 'spectacles',    items: d.recentByCat?.spectacles    || [] }
     ].filter(c => c.items.length > 0);
 
     if (cats.length === 0) {
@@ -137,9 +139,11 @@ async function loadStats() {
     document.getElementById('statFilms').textContent     = d.films.toLocaleString();
     document.getElementById('statDocs').textContent      = d.documentaires.toLocaleString();
     document.getElementById('statSeries').textContent    = d.series.toLocaleString();
-    document.getElementById('statEmissions').textContent = d.emissions.toLocaleString();
-    document.getElementById('statAnimes').textContent    = (d.animes || 0).toLocaleString();
-    document.getElementById('statTotal').textContent     = d.total.toLocaleString();
+    document.getElementById('statEmissions').textContent  = d.emissions.toLocaleString();
+    document.getElementById('statAnimes').textContent     = (d.animes || 0).toLocaleString();
+    document.getElementById('statConcerts').textContent   = (d.concerts || 0).toLocaleString();
+    document.getElementById('statSpectacles').textContent = (d.spectacles || 0).toLocaleString();
+    document.getElementById('statTotal').textContent      = d.total.toLocaleString();
   } catch (e) { console.error('loadStats', e); }
 }
 
@@ -326,9 +330,15 @@ async function loadLibraryCounts() {
       'documentaires': d.documentaires || 0,
       'series': d.series || 0,
       'emissions': d.emissions || 0,
-      'animés': d.animes || 0
+      'animés': d.animes || 0,
+      'concerts': d.concerts || 0,
+      'spectacles': d.spectacles || 0
     };
-    const ids = { '': 'tabCountAll', 'films': 'tabCountFilms', 'documentaires': 'tabCountDocs', 'series': 'tabCountSeries', 'emissions': 'tabCountEmissions', 'animés': 'tabCountAnimes' };
+    const ids = {
+      '': 'tabCountAll', 'films': 'tabCountFilms', 'documentaires': 'tabCountDocs',
+      'series': 'tabCountSeries', 'emissions': 'tabCountEmissions', 'animés': 'tabCountAnimes',
+      'concerts': 'tabCountConcerts', 'spectacles': 'tabCountSpectacles'
+    };
     for (const [cat, id] of Object.entries(ids)) {
       const el = document.getElementById(id);
       if (el) el.textContent = counts[cat] ? counts[cat].toLocaleString() : '';
@@ -578,7 +588,9 @@ function openDrawer(imdbId, media) {
     { v: 'series',        l: 'Séries' },
     { v: 'documentaires', l: 'Documentaires' },
     { v: 'emissions',     l: 'Émissions' },
-    { v: 'animés',        l: 'Animés' }
+    { v: 'animés',        l: 'Animés' },
+    { v: 'concerts',      l: 'Concerts' },
+    { v: 'spectacles',    l: 'Spectacles' }
   ];
   const catOptions = cats.map(c =>
     `<option value="${c.v}"${media.catalog_type === c.v ? ' selected' : ''}>${c.l}</option>`
@@ -717,6 +729,8 @@ async function loadSources() {
             s.series_count        ? `<span class="src-cat badge-series">Séries ${s.series_count}</span>` : '',
             s.emissions_count     ? `<span class="src-cat badge-emissions">Émissions ${s.emissions_count}</span>` : '',
             s.animes_count        ? `<span class="src-cat badge-animés">Animés ${s.animes_count}</span>` : '',
+            s.concerts_count      ? `<span class="src-cat badge-concerts">Concerts ${s.concerts_count}</span>` : '',
+            s.spectacles_count    ? `<span class="src-cat badge-spectacles">Spectacles ${s.spectacles_count}</span>` : '',
           ].filter(Boolean).join(' ');
 
           const errCell = hasError
@@ -1263,6 +1277,90 @@ async function reclassifyAll() {
 }
 window.reclassifyAll = reclassifyAll;
 
+async function reclassifyConcerts() {
+  const btn    = document.getElementById('reclassifyConcertsBtn');
+  const result = document.getElementById('reclassifyConcertsResult');
+  btn.disabled = true;
+  btn.textContent = '⏳ En cours…';
+  result.style.display = 'none';
+  try {
+    const r = await fetch('/api/admin/reclassify-concerts', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) {
+      result.innerHTML = `<span style="color:var(--danger)">✗ ${escHtml(d.error || 'Erreur')}</span>`;
+    } else if (d.reclassified === 0) {
+      result.innerHTML = `<span style="color:var(--success)">✓ Aucun concert détecté parmi les ${d.candidates} candidats.</span>`;
+    } else {
+      result.innerHTML = `<span style="color:var(--success)">✓ ${d.reclassified} média(s) reclassifié(s) en concerts.</span>`;
+      loadStats(); loadLibraryCounts();
+    }
+    result.style.display = 'block';
+  } catch (e) {
+    result.innerHTML = `<span style="color:var(--danger)">✗ Erreur réseau</span>`;
+    result.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Lancer';
+  }
+}
+window.reclassifyConcerts = reclassifyConcerts;
+
+async function fixFalseConcerts() {
+  const btn    = document.getElementById('fixFalseConcertsBtn');
+  const result = document.getElementById('fixFalseConcertsResult');
+  btn.disabled = true;
+  btn.textContent = '⏳ En cours…';
+  result.style.display = 'none';
+  try {
+    const r = await fetch('/api/admin/fix-false-concerts', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) {
+      result.innerHTML = `<span style="color:var(--danger)">✗ ${escHtml(d.error || 'Erreur')}</span>`;
+    } else if (d.fixed === 0) {
+      result.innerHTML = `<span style="color:var(--success)">✓ Aucun faux concert détecté parmi les ${d.candidates} candidats.</span>`;
+    } else {
+      result.innerHTML = `<span style="color:var(--success)">✓ ${d.fixed} faux concert(s) remis en Films/Séries.</span>`;
+      loadStats(); loadLibraryCounts();
+    }
+    result.style.display = 'block';
+  } catch (e) {
+    result.innerHTML = `<span style="color:var(--danger)">✗ Erreur réseau</span>`;
+    result.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Lancer';
+  }
+}
+window.fixFalseConcerts = fixFalseConcerts;
+
+async function reclassifySpectacles() {
+  const btn    = document.getElementById('reclassifySpectaclesBtn');
+  const result = document.getElementById('reclassifySpectaclesResult');
+  btn.disabled = true;
+  btn.textContent = '⏳ En cours…';
+  result.style.display = 'none';
+  try {
+    const r = await fetch('/api/admin/reclassify-spectacles', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) {
+      result.innerHTML = `<span style="color:var(--danger)">✗ ${escHtml(d.error || 'Erreur')}</span>`;
+    } else if (d.reclassified === 0) {
+      result.innerHTML = `<span style="color:var(--success)">✓ Aucun spectacle détecté parmi les ${d.candidates} candidats.</span>`;
+    } else {
+      result.innerHTML = `<span style="color:var(--success)">✓ ${d.reclassified} média(s) reclassifié(s) en spectacles.</span>`;
+      loadStats(); loadLibraryCounts();
+    }
+    result.style.display = 'block';
+  } catch (e) {
+    result.innerHTML = `<span style="color:var(--danger)">✗ Erreur réseau</span>`;
+    result.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Lancer';
+  }
+}
+window.reclassifySpectacles = reclassifySpectacles;
+
 // ═══════════════════════════ CONFIG ════════════════════════════════════
 
 let rssFieldCounter = 0;
@@ -1292,6 +1390,8 @@ window.addRssField = function (value, force, name) {
         <option value="documentaires"${force === 'documentaires' ? ' selected' : ''}>Documentaires</option>
         <option value="emissions"${force === 'emissions' ? ' selected' : ''}>Émissions TV</option>
         <option value="animés"${force === 'animés' ? ' selected' : ''}>Animés</option>
+        <option value="concerts"${force === 'concerts' ? ' selected' : ''}>Concerts</option>
+        <option value="spectacles"${force === 'spectacles' ? ' selected' : ''}>Spectacles</option>
       </select>
       <button type="button" class="btn-sm btn-danger"
         onclick="document.getElementById('${id}').remove()"

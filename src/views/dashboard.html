@@ -101,6 +101,14 @@
           <div class="stat-label" data-i18n="stat_animes">Animés</div>
           <div class="stat-value" id="statAnimes">—</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="stat_concerts">Concerts</div>
+          <div class="stat-value" id="statConcerts">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="stat_spectacles">Spectacles</div>
+          <div class="stat-value" id="statSpectacles">—</div>
+        </div>
         <div class="stat-card accent">
           <div class="stat-label" data-i18n="stat_indexed">Total indexés</div>
           <div class="stat-value" id="statTotal">—</div>
@@ -208,6 +216,14 @@
           <span data-i18n="stat_animes">Animés</span>
           <span class="tab-count" id="tabCountAnimes"></span>
         </button>
+        <button class="tab-btn" data-catalog="concerts">
+          <span data-i18n="stat_concerts">Concerts</span>
+          <span class="tab-count" id="tabCountConcerts"></span>
+        </button>
+        <button class="tab-btn" data-catalog="spectacles">
+          <span data-i18n="stat_spectacles">Spectacles</span>
+          <span class="tab-count" id="tabCountSpectacles"></span>
+        </button>
       </div>
 
       <div id="libraryGrid" class="media-grid"></div>
@@ -309,6 +325,8 @@
                 <option value="documentaires">Documentaires</option>
                 <option value="emissions">Émissions TV</option>
                 <option value="animés">Animés</option>
+                <option value="concerts">Concerts</option>
+                <option value="spectacles">Spectacles</option>
               </select>
             </div>
             <small data-i18n="config_rss_films_hint">Incluant votre clé API ou passkey</small>
@@ -405,6 +423,16 @@
             <input type="text" id="mal_client_id" name="mal_client_id" placeholder="Optionnel">
             <small data-i18n="config_mal_hint">
               Améliore la détection et le matching des animés via MAL. Clé gratuite sur myanimelist.net/apiconfig.
+            </small>
+          </div>
+          <div class="field">
+            <label>
+              <span data-i18n="config_omdb_key">Clé API OMDb (concerts &amp; spectacles)</span>
+              <a href="https://www.omdbapi.com/apikey.aspx" target="_blank" class="label-link">Obtenir une clé</a>
+            </label>
+            <input type="text" id="omdb_api_key" name="omdb_api_key" placeholder="Requis pour concerts et spectacles">
+            <small data-i18n="config_omdb_hint">
+              Utilisé conjointement avec TMDB pour classifier les concerts (genre Music) et les spectacles. Clé gratuite sur omdbapi.com (1000 req/jour).
             </small>
           </div>
         </div>
@@ -640,6 +668,48 @@
           <button class="btn-sm" onclick="reclassifyAll()" id="reclassifyAllBtn">▶ Lancer</button>
         </div>
         <div id="reclassifyAllResult" style="margin-top:12px;font-size:13px;display:none"></div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+
+        <div class="maintenance-row">
+          <div>
+            <strong>Reclassifier les concerts</strong>
+            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
+              Détecte les médias avec le genre Music TMDB (10402) sans genres narratifs contradictoires
+              et les reclassifie en concerts. Aucun appel API nécessaire.
+            </p>
+          </div>
+          <button class="btn-sm" onclick="reclassifyConcerts()" id="reclassifyConcertsBtn">▶ Lancer</button>
+        </div>
+        <div id="reclassifyConcertsResult" style="margin-top:12px;font-size:13px;display:none"></div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+
+        <div class="maintenance-row">
+          <div>
+            <strong>Corriger les faux concerts</strong>
+            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
+              Détecte les médias classés en concerts avec des genres narratifs contradictoires
+              (Drama, Action, Horreur…) et les remet en Films ou Séries. Aucun appel API nécessaire.
+            </p>
+          </div>
+          <button class="btn-sm" onclick="fixFalseConcerts()" id="fixFalseConcertsBtn">▶ Lancer</button>
+        </div>
+        <div id="fixFalseConcertsResult" style="margin-top:12px;font-size:13px;display:none"></div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+
+        <div class="maintenance-row">
+          <div>
+            <strong>Reclassifier les spectacles</strong>
+            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
+              Détecte les médias dont le nom de release contient des mots-clés de spectacle
+              (Stand-up, One Man Show, Théâtre, Cirque…) et les reclassifie. Aucun appel API nécessaire.
+            </p>
+          </div>
+          <button class="btn-sm" onclick="reclassifySpectacles()" id="reclassifySpectaclesBtn">▶ Lancer</button>
+        </div>
+        <div id="reclassifySpectaclesResult" style="margin-top:12px;font-size:13px;display:none"></div>
       </div>
     </section>
 

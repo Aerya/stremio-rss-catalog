@@ -141,11 +141,13 @@ class RSSParser {
     if (!url) return null;
     const u = url.toLowerCase();
     // Ordre : du plus spécifique au plus générique
-    if (/documentaire|documentary/.test(u))        return 'documentaires';
-    if (/anim[eé]|anime|manga/.test(u))            return 'animés';
-    if (/[eé]mission|talkshow|talk[\-_]show|variet/.test(u)) return 'emissions';
-    if (/s[eé]rie|series|saison/.test(u))          return 'series';
-    if (/film|movie|cin[eé]/.test(u))              return 'films';
+    if (/documentaire|documentary/.test(u))                                    return 'documentaires';
+    if (/anim[eé]|anime|manga/.test(u))                                        return 'animés';
+    if (/concert|live[\-_]show|music[\-_]film|film[\-_]concert/.test(u))       return 'concerts';
+    if (/spectacle|stand[\-_]?up|one[\-_]man[\-_]show|th[eé][aâ]tre|cirque/.test(u)) return 'spectacles';
+    if (/[eé]mission|talkshow|talk[\-_]show|variet/.test(u))                   return 'emissions';
+    if (/s[eé]rie|series|saison/.test(u))                                      return 'series';
+    if (/film|movie|cin[eé]/.test(u))                                          return 'films';
     return null;
   }
 
@@ -156,7 +158,9 @@ class RSSParser {
       isDoc: false,
       isSeries: false,
       isAnime: false,
-      isEmission: false
+      isEmission: false,
+      isConcert: false,
+      isSpectacle: false
     };
 
     // Documentaires
@@ -174,6 +178,16 @@ class RSSParser {
     if (/\b(TALKSHOW|TALK[\.\-]SHOW|VARIET[EÉ]|EMISSION|[EÉ]MISSION)\b/i.test(title)) {
       info.isEmission = true;
       info.isSeries   = true;
+    }
+
+    // Concerts / Live
+    if (/\b(CONCERT|LIVE[\s\-]AT|LIVE[\s\-]IN|LIVE[\s\-]FROM|LIVE[\s\-]SHOW|MUSIC[\s\-]FESTIVAL|ACOUSTI[CQ][\s\-]LIVE|UNPLUGGED|LIVE[\s\-]TOUR)\b/i.test(title)) {
+      info.isConcert = true;
+    }
+
+    // Spectacles (stand-up, théâtre, cirque…)
+    if (/\b(STAND[\s\-]?UP|ONE[\s\-]MAN[\s\-]SHOW|ONE[\s\-]WOMAN[\s\-]SHOW|SPECTACLE|TH[EÉ][AÂ]TRE|CIRQUE|MAGIC[\s\-]SHOW|HUMORI[ST]TE|CAF[EÉ][\s\-]?TH[EÉ][AÂ]TRE)\b/i.test(title)) {
+      info.isSpectacle = true;
     }
 
     // Séries (pattern S01E01, Saison X, Season X)
@@ -221,11 +235,13 @@ class RSSParser {
 
   applyForce(catalogType, type, force) {
     if (!force || force === 'auto') return { catalogType, type };
-    if (force === 'films') return { catalogType: 'films', type: 'movie' };
-    if (force === 'series') return { catalogType: 'series', type: 'series' };
+    if (force === 'films')         return { catalogType: 'films',         type: 'movie' };
+    if (force === 'series')        return { catalogType: 'series',        type: 'series' };
     if (force === 'documentaires') return { catalogType: 'documentaires', type: 'movie' };
-    if (force === 'emissions') return { catalogType: 'emissions', type: 'series' };
-    if (force === 'animés') return { catalogType: 'animés', type }; // on garde le type détecté
+    if (force === 'emissions')     return { catalogType: 'emissions',     type: 'series' };
+    if (force === 'animés')        return { catalogType: 'animés',        type };
+    if (force === 'concerts')      return { catalogType: 'concerts',      type: 'movie' };
+    if (force === 'spectacles')    return { catalogType: 'spectacles',    type: 'movie' };
     return { catalogType, type };
   }
 
@@ -243,11 +259,13 @@ class RSSParser {
       if (!this.filterByRequiredTags(item.title)) continue;
       const info = this.parseReleaseName(item.title);
       const releaseId = typeof item.guid === 'object' && item.guid._ ? item.guid._ : (item.guid || item.link);
-      // Priorité titre : animé > doc > émission > série > film
-      const detectedCatalog = info.isAnime    ? 'animés'
-                            : info.isDoc      ? 'documentaires'
-                            : info.isEmission ? 'emissions'
-                            : info.isSeries   ? 'series'
+      // Priorité titre : animé > concert > spectacle > doc > émission > série > film
+      const detectedCatalog = info.isAnime     ? 'animés'
+                            : info.isConcert   ? 'concerts'
+                            : info.isSpectacle ? 'spectacles'
+                            : info.isDoc       ? 'documentaires'
+                            : info.isEmission  ? 'emissions'
+                            : info.isSeries    ? 'series'
                             : 'films';
       const detectedType = info.isSeries ? 'series' : 'movie';
       const detected = this.applyForce(detectedCatalog, detectedType, effectiveForce);

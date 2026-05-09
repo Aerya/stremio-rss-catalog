@@ -7,7 +7,9 @@ const CATALOG_MAP = {
   'useflowfr_series':              { catalogType: 'series',        typeFilter: null },
   'useflowfr_emissions':           { catalogType: 'emissions',     typeFilter: null },
   'useflowfr_animes_films':        { catalogType: 'animés',        typeFilter: 'movie' },
-  'useflowfr_animes_series':       { catalogType: 'animés',        typeFilter: 'series' }
+  'useflowfr_animes_series':       { catalogType: 'animés',        typeFilter: 'series' },
+  'useflowfr_concerts':            { catalogType: 'concerts',      typeFilter: null },
+  'useflowfr_spectacles':          { catalogType: 'spectacles',    typeFilter: null }
 };
 
 const PAGE_SIZE = 100;
@@ -69,6 +71,18 @@ class StremioAddon {
           type: 'series',
           id: 'useflowfr_animes_series',
           name: 'Stremio RSS Catalog - Animés (Séries)',
+          extra: [{ name: 'skip', isRequired: false }, { name: 'search', isRequired: false }]
+        },
+        {
+          type: 'movie',
+          id: 'useflowfr_concerts',
+          name: 'Stremio RSS Catalog - Concerts',
+          extra: [{ name: 'skip', isRequired: false }, { name: 'search', isRequired: false }]
+        },
+        {
+          type: 'movie',
+          id: 'useflowfr_spectacles',
+          name: 'Stremio RSS Catalog - Spectacles',
           extra: [{ name: 'skip', isRequired: false }, { name: 'search', isRequired: false }]
         }
       ]

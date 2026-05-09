@@ -586,6 +586,8 @@ input:checked + .slider::before { transform: translateX(22px); }
 .badge-series        { background: rgba(245,158,11,.2);  color: #fbbf24; }
 .badge-emissions     { background: rgba(236,72,153,.2);  color: #f472b6; }
 .badge-animés        { background: rgba(168,85,247,.2);  color: #c084fc; }
+.badge-concerts      { background: rgba(251,113,133,.2); color: #fb7185; }
+.badge-spectacles    { background: rgba(20,184,166,.2);  color: #2dd4bf; }
 
 /* ─── Pager ───────────────────────────────────────────────────────── */
 .pager { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }

@@ -112,7 +112,10 @@ class WebUI {
       const series        = this.db.getMediaCount('series');
       const emissions     = this.db.getMediaCount('emissions');
       const animes        = this.db.getMediaCount('animés');
-      res.json({ films, documentaires, series, emissions, animes, total: films + documentaires + series + emissions + animes });
+      const concerts      = this.db.getMediaCount('concerts');
+      const spectacles    = this.db.getMediaCount('spectacles');
+      const total = films + documentaires + series + emissions + animes + concerts + spectacles;
+      res.json({ films, documentaires, series, emissions, animes, concerts, spectacles, total });
     });
 
     // ─── Overview ───────────────────────────────────────────────────────────
@@ -125,7 +128,9 @@ class WebUI {
         documentaires: this.db.getRecentCatalogAdditions('documentaires', 10),
         series:        this.db.getRecentCatalogAdditions('series', 10),
         emissions:     this.db.getRecentCatalogAdditions('emissions', 10),
-        animes:        this.db.getRecentCatalogAdditions('animés', 10)
+        animes:        this.db.getRecentCatalogAdditions('animés', 10),
+        concerts:      this.db.getRecentCatalogAdditions('concerts', 10),
+        spectacles:    this.db.getRecentCatalogAdditions('spectacles', 10)
       };
       const rpdbEnabled = this.db.getConfig('rpdb_enabled') === 'true';
       const rpdbKey     = this.db.getConfig('rpdb_api_key') || '';
@@ -187,7 +192,7 @@ class WebUI {
     this.app.post('/api/media/:imdbId/catalog', this.authMiddleware.bind(this), (req, res) => {
       const { imdbId } = req.params;
       const { catalog_type } = req.body;
-      const valid = ['films', 'series', 'documentaires', 'emissions', 'animés'];
+      const valid = ['films', 'series', 'documentaires', 'emissions', 'animés', 'concerts', 'spectacles'];
       if (!valid.includes(catalog_type)) {
         return res.status(400).json({ error: 'Catégorie invalide' });
       }
@@ -352,7 +357,11 @@ class WebUI {
 
         // Hiérarchie de spécificité : plus la valeur est haute, plus la catégorie est précise.
         // Une reclassification automatique (non forcée) ne peut PAS faire descendre la spécificité.
-        const CATALOG_SPECIFICITY = { films: 1, series: 2, emissions: 3, documentaires: 3, 'animés': 4 };
+        const CATALOG_SPECIFICITY = {
+          films: 1, series: 2,
+          emissions: 3, documentaires: 3, concerts: 3, spectacles: 3,
+          'animés': 4
+        };
 
         const allMedia = this.db.getAllMediaWithPrimarySource();
         const updates  = [];
@@ -520,6 +529,69 @@ class WebUI {
         res.json({ candidates: candidates.length, fixed });
       } catch (err) {
         console.error('[Fix-False-Emissions]', err);
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // ─── Maintenance : Reclassifier concerts (genre 10402 stocké) ───────────
+    this.app.post('/api/admin/reclassify-concerts', this.authMiddleware.bind(this), (req, res) => {
+      try {
+        const candidates = this.db.getConcertCandidatesFromGenre();
+        if (candidates.length === 0) {
+          return res.json({ candidates: 0, reclassified: 0 });
+        }
+        const updates = candidates.map(c => ({ imdb_id: c.imdb_id, catalog_type: 'concerts' }));
+        const reclassified = this.db.batchUpdateCatalogTypes(updates);
+        if (reclassified > 0) {
+          this.stremioAddon.clearCache();
+          candidates.forEach(c => console.log(`[Reclassify-Concerts] ${c.catalog_type} → concerts : ${c.name}`));
+        }
+        res.json({ candidates: candidates.length, reclassified });
+      } catch (err) {
+        console.error('[Reclassify-Concerts]', err);
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // ─── Maintenance : Corriger les faux concerts ────────────────────────────
+    this.app.post('/api/admin/fix-false-concerts', this.authMiddleware.bind(this), (req, res) => {
+      try {
+        const candidates = this.db.getFalseConcertCandidates();
+        if (candidates.length === 0) {
+          return res.json({ candidates: 0, fixed: 0 });
+        }
+        const updates = candidates.map(c => ({
+          imdb_id:      c.imdb_id,
+          catalog_type: c.type === 'series' ? 'series' : 'films'
+        }));
+        const fixed = this.db.batchUpdateCatalogTypes(updates);
+        if (fixed > 0) {
+          this.stremioAddon.clearCache();
+          candidates.forEach(c => console.log(`[Fix-False-Concerts] concerts → ${c.type === 'series' ? 'series' : 'films'} : ${c.name}`));
+        }
+        res.json({ candidates: candidates.length, fixed });
+      } catch (err) {
+        console.error('[Fix-False-Concerts]', err);
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // ─── Maintenance : Reclassifier spectacles (mots-clés titre) ─────────────
+    this.app.post('/api/admin/reclassify-spectacles', this.authMiddleware.bind(this), (req, res) => {
+      try {
+        const candidates = this.db.getSpectacleCandidatesFromTitle();
+        if (candidates.length === 0) {
+          return res.json({ candidates: 0, reclassified: 0 });
+        }
+        const updates = candidates.map(c => ({ imdb_id: c.imdb_id, catalog_type: 'spectacles' }));
+        const reclassified = this.db.batchUpdateCatalogTypes(updates);
+        if (reclassified > 0) {
+          this.stremioAddon.clearCache();
+          candidates.forEach(c => console.log(`[Reclassify-Spectacles] ${c.catalog_type} → spectacles : ${c.name}`));
+        }
+        res.json({ candidates: candidates.length, reclassified });
+      } catch (err) {
+        console.error('[Reclassify-Spectacles]', err);
         res.status(500).json({ error: err.message });
       }
     });

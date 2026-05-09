@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  <strong>Turn your RSS feeds, Prowlarr and NZBHydra2 into Stremio catalogs — Movies, Documentaries, Series, TV Shows and Anime</strong>
+  <strong>Turn your RSS feeds, Prowlarr and NZBHydra2 into Stremio catalogs — Movies · Documentaries · Series · TV Shows · Anime · Concerts · Live Shows</strong>
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Stremio-addon-purple?style=flat-square" alt="Stremio">
   <img src="https://img.shields.io/badge/Docker-ready-blue?style=flat-square&logo=docker" alt="Docker">
-  <img src="https://img.shields.io/badge/TMDB%20%2B%20TVDB-matched-green?style=flat-square" alt="TMDB+TVDB">
+  <img src="https://img.shields.io/badge/TMDB%20%2B%20TVDB%20%2B%20OMDb-matched-green?style=flat-square" alt="TMDB+TVDB+OMDb">
   <img src="https://img.shields.io/badge/Prowlarr-compatible-blue?style=flat-square" alt="Prowlarr">
   <img src="https://img.shields.io/badge/NZBHydra2-compatible-blue?style=flat-square" alt="NZBHydra2">
   <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE-orange?style=flat-square" alt="i18n">
@@ -24,81 +24,60 @@
 ---
 
 <p align="center">
-  💡 Use it? Like it? <a href="https://github.com/Aerya/stremio-rss-catalogs/stargazers">⭐ Star it!</a> — it only takes a second.
+  Use it? Like it? <a href="https://github.com/Aerya/stremio-rss-catalogs/stargazers">Star it!</a> — it only takes a second.
 </p>
 
 ---
 
-> A self-hosted Stremio addon that aggregates your RSS feeds, Prowlarr and NZBHydra2, automatically identifies Movies, Documentaries, Series, TV Shows and **Anime**, matches them on TMDB/TVDB (and MAL for anime), and exposes them as catalogs in Stremio.
+> A self-hosted Stremio addon that aggregates your RSS feeds, Prowlarr and NZBHydra2, automatically identifies **9 content categories** (Movies, Documentaries, Series, TV Shows, Anime, Concerts, Live Shows), matches them on TMDB/TVDB/OMDb (and MAL for anime), and exposes them as catalogs in Stremio.
 
 ---
 
-## ✨ What's New
-
-- 🏗️ **New DB architecture**: media and releases are now separated — one record per IMDB ID, with all releases of the same movie/show tracked underneath
-- 🔁 **Zero duplicates guaranteed**: deduplication by IMDB ID, regardless of feed source or sync date
-- 🔍 **Improved TMDB matching**: up to 5 attempts per release (with/without year, FR then EN, simplified title) — significantly better match rate
-- 📺 **TVDB fallback**: if TMDB fails on a series, TVDB is queried automatically — also improves documentary detection via its own genre (optional, free API key)
-- 🎌 **7 catalogs**: Movies · Documentaries (films) · Documentaries (series) · Series · TV Shows · **Anime (films) · Anime (series)** — documentary series land in Documentaries, not Series
-- 🎌 **Anime detection**: via TMDB genre 16 (Animation) combined with Japanese origin, `OVA`/`OAV` in the title, or a per-feed force option
-- 🔗 **MAL (MyAnimeList) integration**: MAL API v2 acts as a title normalizer for anime — MAL → canonical EN title → TMDB → IMDB ID (free Client ID)
-- ✏️ **Manual override**: from the library, force an IMDB ID, TMDB ID (movie or series) or TVDB ID on a failed release directly from the WebUI
-- 🔄 **Retry on failure**: unmatched releases are stored and can be retried from the WebUI or API
-- #️⃣ **Hash extraction**: infohash is automatically extracted from magnet/torrent links found in RSS feeds
-- 🏷️ **Quality tracking**: resolution and source (4K HDR, 1080p WEB-DL, TVRip, DVDRip, CAM…) stored per release — expanded extraction
-- 📡 **Source tracking**: the originating RSS feed URL is recorded for each release
-- 📺 **TV Shows**: dedicated catalog — auto-classified from TMDB genres (Reality, Talk, News, Soap) or forced per RSS feed
-- ♾️ **Unlimited catalogs**: native Stremio pagination (100 items/page), no artificial cap
-- ⚡ **In-memory cache**: catalog responses are cached between syncs — instant responses for concurrent users, automatically invalidated on each sync
-- 🖥️ **Modern WebUI**: redesigned interface with sidebar, dark/light theme, multilingual FR/EN/DE
-- 🎬 **Enhanced Media Library**: poster or list view, sort (date/year/title), year filter (quick shortcuts + free input `YYYY` or `YYYY-YYYY`), per-tab counts, RPDB posters — pagination preference persisted across sessions
-- 📋 **List view with releases**: the list view shows the first release name inline + a `+N · see all →` badge to open the detail panel
-- 📊 **Sources view**: per-feed stats (releases, media, last added) with custom naming
-- 🗂️ **Overview**: latest additions per category in collapsible accordions (title + year + IMDB link), up to 10 per category
-- 🔧 **Maintenance tool**: "Reclassify anime" button (Config → Maintenance) — detects already-indexed movies/series that are anime (TMDB Animation genre + Japanese origin) and updates their category
-- 🔗 **Quick integrations**: add Prowlarr and NZBHydra2 RSS feeds in one click (All / Movies / Series) — Newznab category numbers displayed (Movies=2000, TV=5000)
-- 🏷️ **Feed naming**: each RSS feed can have a custom name shown in Sources stats and the releases view
-- 🔌 **Proxy test**: built-in connection test button directly from the WebUI
-
----
-
-## 🎬 Features
+## Features
 
 | | |
 |---|---|
-| 📁 **7 catalogs** | Movies · Documentaries (films) · Documentaries (series) · Series · TV Shows · Anime (films) · Anime (series) |
-| 🔍 **Auto detection** | Type identified from release name, or forced per feed |
-| 🎌 **Anime** | Detected via TMDB genre 16 + Japanese origin, OVA/OAV in title, or forced per feed |
-| 🔗 **MAL** | MyAnimeList API v2 — EN title normalizer to improve TMDB matching for anime (optional) |
-| 🎯 **TMDB matching** | Up to 5 attempts per release (FR/EN, with/without year) |
-| 📺 **TVDB fallback** | Fallback for series not found on TMDB + documentary confirmation (optional) |
-| 🎬 **Docu-series** | Detected via TMDB genre 99 or TVDB, placed in Documentaries (series) |
-| 📺 **TV Shows** | Dedicated catalog — auto via TMDB genres or forced per feed |
-| ✏️ **Manual override** | Force IMDB/TMDB/TVDB ID on a failed release directly from the WebUI |
-| 🔁 **Deduplication** | By IMDB ID (media) + by RSS GUID + by torrent hash when available (releases) |
-| #️⃣ **Hashes** | Automatic infohash extraction from magnet/torrent links |
-| 🏷️ **Quality** | 4K, HDR, DV, 1080p, WEB-DL, TVRip, DVDRip, CAM… detected per release |
-| 🔄 **Retry** | Unmatched releases stored and retriable |
-| ⚡ **Cache** | Catalog responses cached in memory, auto-invalidated on sync |
-| 🖼️ **RPDB** | Rating posters (optional, used in the library) |
-| 🔔 **Discord** | Notifications with poster gallery on each sync |
-| 🔄 **Auto sync** | Configurable scheduling |
-| 🖥️ **Modern WebUI** | Sidebar, dark/light theme, 🇫🇷 🇬🇧 🇩🇪 |
-| 🎬 **Media Library** | Poster/list view, sort, year filter (shortcuts + free input/range), inline releases, RPDB posters, persistent pagination |
-| 🗂️ **Overview** | Latest additions in collapsible per-category accordions (title + year + IMDB) |
-| 🔧 **Maintenance** | One-click anime reclassification for already-indexed media (TMDB genre 16 + JP origin) |
-| 📊 **Sources** | Per-feed stats with custom naming, source name shown in releases view |
-| 🔗 **Integrations** | Prowlarr + NZBHydra2 one-click setup from WebUI |
-| 🔒 **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
-| 💾 **SQLite** | Persistent data, incremental content, optimized indexes |
-| 🏷️ **Tag filtering** | Configurable required tags from the WebUI (FRENCH, MULTi, 1080p…) |
-| 🐳 **Docker** | Multi-arch image `linux/amd64` + `linux/arm64` |
+| **9 catalogs** | Movies · Documentaries (films) · Documentaries (series) · Series · TV Shows · Anime (films) · Anime (series) · Concerts · Live Shows |
+| **Auto detection** | Category identified from release name, feed URL keywords, or TMDB/OMDb genres |
+| **Feed URL detection** | Category automatically guessed from keywords in the RSS feed URL (`concert`, `anime`, `docu`, `serie`…) |
+| **Anime** | Detected via TMDB genre 16 + Japanese origin, OVA/OAV in title, or forced per feed |
+| **MAL** | MyAnimeList API v2 — EN title normalizer to improve TMDB matching for anime (optional) |
+| **Concerts** | Detected via TMDB genre 10402 (Music) + OMDb confirmation, without narrative genres (Drama, Action…) |
+| **Live Shows** | Detected via title keywords (Stand-up, One Man Show, Theatre, Circus…) + OMDb confirmation |
+| **OMDb** | OMDb API queried after each TMDB match to confirm concert and live show classification |
+| **TMDB matching** | Up to 5 attempts per release (FR/EN, with/without year, simplified title) |
+| **TVDB fallback** | Fallback for series not found on TMDB + documentary confirmation (optional) |
+| **Docu-series** | Detected via TMDB genre 99 or TVDB, placed in Documentaries (series) |
+| **TV Shows** | Dedicated catalog — auto via TMDB Reality/Talk/News/Soap genres or forced per feed |
+| **False positive protection** | Contradicting genres disable documentary detection (Action, Sci-Fi, Fantasy, Horror), TV show detection (Sci-Fi, Fantasy, Animation) and concert detection (Drama, Comedy, Romance) |
+| **Specificity hierarchy** | Auto-reclassification can never downgrade a more specific category — anime (4) > docs/shows/concerts/live (3) > series (2) > movies (1) |
+| **Manual category change** | From the media detail panel in the library |
+| **Manual release override** | Force IMDB/TMDB/TVDB ID on a failed release directly from the WebUI |
+| **Deduplication** | By IMDB ID (media) + by RSS GUID + by torrent hash when available (releases) |
+| **Hashes** | Automatic infohash extraction from magnet/torrent links |
+| **Quality** | 4K, HDR, DV, 1080p, WEB-DL, TVRip, DVDRip, CAM… detected per release |
+| **Retry** | Unmatched releases stored and retriable |
+| **Cache** | Catalog responses cached in memory, auto-invalidated on sync |
+| **RPDB** | Rating posters (optional) |
+| **Discord** | Enhanced notifications with poster gallery on each sync |
+| **Apprise** | Multi-service notifications via Apprise server (optional) |
+| **Auto sync** | Configurable scheduling |
+| **Modern WebUI** | Sidebar, dark/light theme, multilingual FR/EN/DE |
+| **Media Library** | Poster/list view, sort, year filter (shortcuts + free input/range), inline releases, RPDB posters, persistent pagination |
+| **Overview** | Latest additions in collapsible per-category accordions (title + year + IMDB link) |
+| **Maintenance suite** | 8 reclassification actions (anime, docs, false docs, false shows, concerts, false concerts, live shows, feed config) |
+| **Sources** | Per-feed stats with custom naming |
+| **Integrations** | Prowlarr + NZBHydra2 one-click setup from WebUI |
+| **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
+| **SQLite** | Persistent data, incremental content, optimized indexes |
+| **Tag filtering** | Configurable required tags from the WebUI (FRENCH, MULTi, 1080p…) |
+| **Docker** | Multi-arch image `linux/amd64` + `linux/arm64` |
 
 > Defaults to French-language content (FRENCH / MULTi / TRUEFRENCH / VOF / VFF / VFI / VFQ) — configurable from the WebUI
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 Copy or create [docker-compose.yml](./docker-compose.yml):
 
@@ -123,39 +102,32 @@ services:
       - com.centurylinklabs.watchtower.enable=true
 ```
 
-Then open the WebUI at `http://localhost:7973`, configure your RSS feed(s) + TMDB API key (and optionally TVDB), run a first sync, and install the addon in Stremio using the provided URL.
+Then open the WebUI at `http://localhost:7973`, configure your RSS feed(s) + TMDB API key, run a first sync, and install the addon in Stremio using the provided URL.
 
 ---
 
-## 📡 Compatible RSS Sources
+## Compatible RSS Sources
 
 The tool accepts any standard RSS feed. In addition to your trackers' native feeds, it is compatible with **Prowlarr** and **NZBHydra2**:
 
 ### Prowlarr (BitTorrent)
 
-- **Per indexer**: each indexer configured in Prowlarr exposes its own RSS feed
-  `http://prowlarr:9696/{id}/api?apikey=XXXX&t=rss`
-- **Aggregated**: a single feed combining all indexers
-  `http://prowlarr:9696/api/v1/indexer/all/newznab?apikey=XXXX&t=rss`
-- **Aggregated — Movies only** (Newznab category 2000):
-  `http://prowlarr:9696/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=2000`
-- **Aggregated — Series only** (Newznab category 5000):
-  `http://prowlarr:9696/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=5000`
+- **Per indexer**: `http://prowlarr:9696/{id}/api?apikey=XXXX&t=rss`
+- **Aggregated**: `http://prowlarr:9696/api/v1/indexer/all/newznab?apikey=XXXX&t=rss`
+- **Movies only** (category 2000): `http://prowlarr:9696/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=2000`
+- **Series only** (category 5000): `http://prowlarr:9696/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=5000`
 
 ### NZBHydra2 (Usenet)
 
-- **All content**:
-  `http://nzbhydra2:5076/api?t=rss&apikey=XXXX`
-- **Movies only** (Newznab category 2000):
-  `http://nzbhydra2:5076/api?t=rss&apikey=XXXX&cat=2000`
-- **Series only** (Newznab category 5000):
-  `http://nzbhydra2:5076/api?t=rss&apikey=XXXX&cat=5000`
+- **All content**: `http://nzbhydra2:5076/api?t=rss&apikey=XXXX`
+- **Movies only**: `http://nzbhydra2:5076/api?t=rss&apikey=XXXX&cat=2000`
+- **Series only**: `http://nzbhydra2:5076/api?t=rss&apikey=XXXX&cat=5000`
 
-> 💡 The WebUI provides **quick integrations** in the Configuration section: enter the base URL and API key for Prowlarr or NZBHydra2, then click *All*, *Movies* or *Series* to automatically generate and add the corresponding RSS feed.
+> The WebUI provides **quick integrations** in the Configuration section: enter the base URL and API key, then click *All*, *Movies* or *Series* to automatically generate and add the corresponding RSS feed.
 
 ---
 
-## 🔄 Migrating from UseFlow-FR
+## Migrating from UseFlow-FR
 
 Coming from the [old version (UseFlow-FR)](https://github.com/Aerya/UseFlow-FR)? Migration is seamless — your database is fully compatible.
 
@@ -166,40 +138,34 @@ docker compose down
 
 **2. Update `docker-compose.yml`**
 
-Only two things change (everything else stays identical — same port, same volume, same variables):
-
 ```yaml
 # Before
 image: ghcr.io/aerya/useflow-fr:latest
-container_name: useflow-fr
 
 # After
 image: ghcr.io/aerya/stremio-rss-catalogs:latest
-container_name: stremio-rss-catalogs
 ```
 
-> ⚠️ The volume path (`/data`) and `DB_PATH` variable do not change — keep pointing to the same folder.
+> The volume path (`/data`) and `DB_PATH` variable do not change.
 
 **3. Start the new container**
 ```bash
 docker compose up -d
 ```
 
-On first startup, the database migration runs automatically if needed (old schema → new schema). All your existing configuration (API keys, RSS feeds, Discord…) is preserved.
+Database migration runs automatically on first startup. All your existing configuration is preserved.
 
 **4. (Optional) Configure new features**
 
-New options are available in the WebUI:
-- **TVDB API key** — improves documentary series detection and acts as a fallback for series not found on TMDB (free at [thetvdb.com](https://thetvdb.com))
-- **MAL Client ID** — improves anime matching via MyAnimeList (free at [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig))
+- **TVDB API key** — improves documentary series detection (free at [thetvdb.com](https://thetvdb.com))
+- **MAL Client ID** — improves anime matching (free at [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig))
+- **OMDb API key** — enables concert and live show detection (free at [omdbapi.com](https://www.omdbapi.com/apikey.aspx), 1000 req/day)
 
-**5. Reinstall the addon in Stremio**
-
-The addon URL has not changed if you kept the same port. If you changed the port, reinstall the addon using the new URL shown in the WebUI.
+**5. Reinstall the addon in Stremio** if you changed ports.
 
 ---
 
-## ⚙️ How It Works
+## How It Works
 
 ### Upstream Filtering
 
@@ -210,48 +176,49 @@ Before any processing, each release is filtered against the **required tags** co
 Each release title is analyzed to extract:
 - The **clean name** (technical tags stripped: resolution, codec, language, team…)
 - The **year** of release
-- The **type**: movie, documentary or series — the documentary tag (`docu`, `documentary`…) takes priority over series format (`S01E01`)
+- The **type**: movie or series — with priority: anime > concert > live show > documentary > TV show > series > movie
 - The **quality**: 4K, HDR, DV, 1080p, WEB-DL, BluRay…
 - The **infohash**: extracted from magnet/torrent links in the RSS feed
 
-### Matching Pipeline — TMDB + TVDB (+ MAL for anime)
+### Category Detection
+
+The final category comes from three sources, combined in priority order:
+
+1. **Explicit per-feed force** — the user manually sets the category for a feed (e.g. this feed is "anime", this feed is "concerts")
+2. **Feed URL auto-detection** — in auto mode, keywords in the RSS feed URL hint at the category (`concert`, `anime`, `docu`, `serie`, `film`…)
+3. **Release title keywords** — `OVA`, `STAND UP`, `CONCERT`, `LIVE AT`, `DOCU`…
+4. **TMDB genres + OMDb confirmation** — after TMDB match, the title's genres may trigger reclassification
+
+### Matching Pipeline
 
 ```
-RSS Release  →  Tag filter  →  Parsing  →  Anime detected?
-                                                │ yes
-                                                ├─ MAL (canonical EN title)  ──┐
-                                                │                               ↓
-                                                └──────────────────────────  TMDB (5 attempts)  →  Reclassification  →  DB
-                                                │ no
-                                            TMDB (5 attempts)  →  Reclassification  →  DB
-                                                   ↓ fail (series)
-                                               TVDB fallback  →  Reclassification  →  DB
+RSS Release
+  → Required tag filter
+  → Parsing (type + category from title + feed URL)
+  → Anime detected?
+      yes → MAL (canonical EN title, if configured) → TMDB (5 attempts) → OMDb → DB
+      no  → TMDB (5 attempts) → OMDb → Genre reclassification → DB
+                ↓ fail (series)
+            TVDB fallback → DB
+  → Total failure → failed_releases (manual or auto retry)
 ```
-
-**Anime — specific pipeline:**
-1. Detection: TMDB genre 16 + Japanese origin, `OVA`/`OAV` in title, or feed forced to `anime`
-2. If MAL configured: look up canonical EN title on MyAnimeList → 5 TMDB attempts with that title
-3. Fallback: standard pipeline if MAL unavailable or no result
 
 **TMDB — 5 attempts in order:**
-
 1. Exact title + year, French
 2. Exact title without year, French
 3. Exact title without year, English
 4. Simplified title (first 3 words) + year, English
 5. Simplified title without year, English
 
-**Automatic reclassification after match (auto-detected sources only):**
-- TMDB genre 16 + Japanese origin → **Anime**
-- TMDB genre 99 (Documentary) → **Documentaries**
-- TMDB genre Reality/Talk/News/Soap → **TV Shows**
-- None of the above, TVDB configured → TVDB check for documentary confirmation
+**Automatic reclassification after TMDB match:**
+- Genre 99 (Documentary) without contradicting genres (Action/Sci-Fi/Fantasy/Horror) → **Documentaries**
+- Genre 16 (Animation) + Japanese origin → **Anime** *(auto-mode sources only)*
+- Reality/Talk/News/Soap genres without contradicting genres → **TV Shows** *(auto-mode sources only)*
+- Genre 10402 (Music) without narrative genres (Drama/Comedy/Romance/Action) + OMDb confirms "Music" → **Concerts**
+- Stand-up/theatre/circus title keywords + OMDb confirms non-narrative comedy → **Live Shows**
 
-**TVDB fallback (when TMDB fails on a series):**
-- 2 TVDB attempts (with and without year)
-- If IMDB ID found → indexed in Series or Documentaries based on TVDB genre
-
-If all attempts fail, the release is stored in `failed_releases` for manual or automatic retry (with IMDB/TMDB/TVDB override available from the WebUI).
+**Specificity hierarchy** — auto-reclassification can never downgrade a more specific category:
+- Movies (1) < Series (2) < TV Shows/Documentaries/Concerts/Live Shows (3) < Anime (4)
 
 ### Database Architecture
 
@@ -261,53 +228,71 @@ releases        → N releases per media (quality, hash, source, date)
 failed_releases → unmatched releases (for retry)
 ```
 
-This separation guarantees:
-- **Zero duplicates** in catalogs, regardless of how many versions or source feeds exist
-- **Full history** of all known releases for a media
-- **Retry** of unmatched releases without reprocessing the entire feed
-
 ### Cache
 
-Catalog responses are cached in memory between syncs. The cache is automatically invalidated after each successful sync — no stale data possible. Searches are not cached.
+Catalog responses are cached in memory between syncs and automatically invalidated after each successful sync. Searches are not cached.
 
 ### Persistence
 
-Everything is stored in a SQLite database (`data/addon.db`). Content **accumulates** — a sync never replaces existing data. Migration from the old schema runs automatically on first startup.
+Everything is stored in a SQLite database (`data/addon.db`). Content **accumulates** — a sync never replaces existing data.
 
 ---
 
-## 🔐 WebUI Login
+## Maintenance Suite
+
+From **Configuration → Maintenance** in the WebUI, 8 actions are available:
+
+| Action | Description |
+|---|---|
+| Reclassify anime | Detects movies/series with TMDB Animation genre + Japanese origin. Requires TMDB key. |
+| Reclassify documentaries | Detects media with TMDB genre 99 already stored in DB. No API call. |
+| Fix false documentaries | Removes from Documentaries any media with contradicting genres (Action, Sci-Fi…). No API call. |
+| Fix false TV shows | Removes from TV Shows any series with incompatible genres (Sci-Fi, Animation…). No API call. |
+| Reclassify concerts | Detects media with TMDB Music genre (10402) without narrative genres. No API call. |
+| Fix false concerts | Removes from Concerts any media with narrative genres (Drama, Action…). No API call. |
+| Reclassify live shows | Detects media with live show keywords in the release name (Stand-up, Theatre, Circus…). No API call. |
+| Reclassify by feed config | Reclassifies all media based on current feed force settings + URL auto-detection. Respects specificity hierarchy. No API call. |
+
+---
+
+## WebUI Login
 
 - **Credentials**: defined in `docker-compose.yml`
 - **Session secret**: generate with `openssl rand -hex 32`
 
 ---
 
-## 📝 Notes
+## Notes
 
 - The first sync may take several minutes depending on feed size — do it **before** installing the addon in Stremio
 - Catalogs are paginated in pages of 100 media — Stremio loads them as you scroll, with no limit
 - Only content with a valid IMDB ID is indexed
-- Some inconsistencies may appear between the **Documentaries** and **Series** catalogs: reclassification relies on TMDB genre 99 and TVDB's Documentary genre, both community-tagged and not always consistent — a documentary not tagged as such may end up in Series
-- Anime indexed before the automatic detection was added will remain classified as Movies or Series. Use the **"Reclassify anime"** button in **Config → Maintenance** to update them in one operation (requires a configured TMDB key)
+- Concert and live show detection requires an OMDb API key (free, 1000 req/day at omdbapi.com)
+- Media indexed before the new categories were added will remain in their old category — use the maintenance buttons to reclassify them
+
+### Inherent limitations of third-party APIs
+
+All classification relies on community databases and third-party APIs — **IMDB**, **TMDB**, **OMDb**, **TVDB** and **MyAnimeList**. These sources are imperfect by nature:
+
+- A title may be **missing** from one or more databases and remain unmatched (it ends up in `failed_releases`)
+- **Genres and metadata** are community-submitted: a documentary may lack genre 99, an anime may lack genre 16, a concert film may be tagged as a drama
+- The **original language** (used for anime detection) may be missing or incorrect in TMDB
+- OMDb may return different genres from TMDB for the same title, or have no entry at all
+- A **wrong TMDB match** (homonym, approximate title) can lead to incorrect classification
+- Filmed concerts, TV specials and music documentaries share overlapping characteristics — **false positives or false negatives** are possible in these categories
+
+The maintenance tools (manual reclassification, false positive correction) and the category change in the media detail panel allow you to manually correct any problematic cases.
 
 ---
 
-## 💡 Ideas Under Consideration
-
-- **Genre filtering** — to refine catalogs
-- **Advanced statistics** — charts and visualizations
-
----
-
-## 📖 Blog Post
+## Blog Post
 
 [Stremio RSS Catalog: my RSS-to-Stremio-catalogs addon](https://upandclear.org/2025/11/20/useflow-fr-mon-addon-de-conversion-de-rss-en-catalogues-stremio/) (French)
 
 ---
 
-## 📄 License
+## License
 
 GNU GPL v3 — Please credit the source.
 
-**Happy streaming 🍿**
+**Happy streaming**

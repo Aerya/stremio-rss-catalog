@@ -125,7 +125,22 @@ class DatabaseManager {
       }
     }
 
+    // Migration v3 : ajout colonnes concerts_added / spectacles_added dans sync_history
+    this._migrateV3SyncHistory();
+
     this.initDefaultConfig();
+  }
+
+  _migrateV3SyncHistory() {
+    const cols = this.db.prepare("PRAGMA table_info(sync_history)").all().map(c => c.name);
+    if (!cols.includes('concerts_added')) {
+      this.db.prepare("ALTER TABLE sync_history ADD COLUMN concerts_added INTEGER DEFAULT 0").run();
+      console.log('[DB] Migration v3 : colonne concerts_added ajoutée à sync_history');
+    }
+    if (!cols.includes('spectacles_added')) {
+      this.db.prepare("ALTER TABLE sync_history ADD COLUMN spectacles_added INTEGER DEFAULT 0").run();
+      console.log('[DB] Migration v3 : colonne spectacles_added ajoutée à sync_history');
+    }
   }
 
   _migrateFromV1() {
@@ -196,7 +211,8 @@ class DatabaseManager {
       mal_client_id: '',
       apprise_enabled: 'false',
       apprise_server_url: '',
-      apprise_urls: ''
+      apprise_urls: '',
+      omdb_api_key: ''
     };
 
     const stmt = this.db.prepare('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)');
@@ -451,15 +467,17 @@ class DatabaseManager {
     const fields = [];
     const values = [];
     const map = {
-      matched_items: 'matched_items = ?',
-      failed_items: 'failed_items = ?',
-      already_in_db: 'already_in_db = ?',
-      films_added: 'films_added = ?',
+      matched_items:       'matched_items = ?',
+      failed_items:        'failed_items = ?',
+      already_in_db:       'already_in_db = ?',
+      films_added:         'films_added = ?',
       documentaires_added: 'documentaires_added = ?',
-      series_added: 'series_added = ?',
-      status: 'status = ?',
-      error_message: 'error_message = ?',
-      finished_at: 'finished_at = ?'
+      series_added:        'series_added = ?',
+      concerts_added:      'concerts_added = ?',
+      spectacles_added:    'spectacles_added = ?',
+      status:              'status = ?',
+      error_message:       'error_message = ?',
+      finished_at:         'finished_at = ?'
     };
     for (const [key, expr] of Object.entries(map)) {
       if (data[key] !== undefined) {
@@ -628,7 +646,9 @@ class DatabaseManager {
         SUM(CASE WHEN m.catalog_type = 'documentaires' THEN 1 ELSE 0 END) AS documentaires_count,
         SUM(CASE WHEN m.catalog_type = 'series'        THEN 1 ELSE 0 END) AS series_count,
         SUM(CASE WHEN m.catalog_type = 'emissions'     THEN 1 ELSE 0 END) AS emissions_count,
-        SUM(CASE WHEN m.catalog_type = 'animés'        THEN 1 ELSE 0 END) AS animes_count
+        SUM(CASE WHEN m.catalog_type = 'animés'        THEN 1 ELSE 0 END) AS animes_count,
+        SUM(CASE WHEN m.catalog_type = 'concerts'      THEN 1 ELSE 0 END) AS concerts_count,
+        SUM(CASE WHEN m.catalog_type = 'spectacles'    THEN 1 ELSE 0 END) AS spectacles_count
       FROM releases r
       LEFT JOIN media m ON r.media_imdb_id = m.imdb_id
       WHERE r.source_url IS NOT NULL AND r.source_url != ''
@@ -758,6 +778,57 @@ class DatabaseManager {
     this.db.prepare(`UPDATE media SET catalog_type = ? WHERE imdb_id = ?`).run(catalogType, imdbId);
   }
   getItemByImdbId(imdbId) { return this.getMediaByImdbId(imdbId); }
+
+  // ─── Maintenance concerts ─────────────────────────────────────────────────
+
+  // Médias avec genre Music TMDB (10402) non encore classés en concerts.
+  // Exclut les genres narratifs disqualifiants (Drama=18, Comédie=35, Romance=10749,
+  // Action=28, Horreur=27, SF=878, Fantastique=14, Thriller=53).
+  getConcertCandidatesFromGenre() {
+    return this.db.prepare(`
+      SELECT imdb_id, name, catalog_type, genres
+      FROM media
+      WHERE catalog_type NOT IN ('concerts', 'animés')
+        AND genres IS NOT NULL
+        AND EXISTS     (SELECT 1 FROM json_each(genres) WHERE value = 10402)
+        AND NOT EXISTS (SELECT 1 FROM json_each(genres) WHERE value IN (18, 35, 10749, 28, 27, 878, 14, 53))
+    `).all();
+  }
+
+  // Médias classés en concerts mais ayant des genres narratifs disqualifiants
+  getFalseConcertCandidates() {
+    return this.db.prepare(`
+      SELECT imdb_id, name, type, genres
+      FROM media
+      WHERE catalog_type = 'concerts'
+        AND genres IS NOT NULL
+        AND EXISTS (SELECT 1 FROM json_each(genres) WHERE value IN (18, 35, 10749, 28, 27, 878, 14, 53))
+    `).all();
+  }
+
+  // ─── Maintenance spectacles ───────────────────────────────────────────────
+
+  // Pas de genre TMDB dédié pour les spectacles → pas de candidats via genre seul.
+  // La reclassification spectacles repose sur les mots-clés titre (cf. webui.js).
+  getSpectacleCandidatesFromTitle() {
+    return this.db.prepare(`
+      SELECT imdb_id, name, catalog_type, release_name
+      FROM media
+      WHERE catalog_type NOT IN ('spectacles', 'animés', 'concerts')
+        AND release_name IS NOT NULL
+        AND (
+          release_name LIKE '%STAND UP%' OR release_name LIKE '%STAND-UP%'
+          OR release_name LIKE '%ONE MAN SHOW%' OR release_name LIKE '%ONE-MAN-SHOW%'
+          OR release_name LIKE '%ONE WOMAN SHOW%'
+          OR release_name LIKE '%SPECTACLE%'
+          OR release_name LIKE '%THEATRE%' OR release_name LIKE '%THÉÂTRE%'
+          OR release_name LIKE '%CIRQUE%'
+          OR release_name LIKE '%MAGIC SHOW%'
+          OR release_name LIKE '%HUMORISTE%'
+          OR release_name LIKE '%HUMORISTE%'
+        )
+    `).all();
+  }
 
   close() {
     this.db.close();

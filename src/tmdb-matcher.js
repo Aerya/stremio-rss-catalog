@@ -1,7 +1,8 @@
 const axios = require('axios');
 const { SocksProxyAgent } = require('socks-proxy-agent');
-const TVDBService = require('./services/tvdbService');
-const MALService  = require('./services/malService');
+const TVDBService  = require('./services/tvdbService');
+const MALService   = require('./services/malService');
+const OMDbService  = require('./services/omdbService');
 
 // Genres TMDB qui indiquent une émission TV plutôt qu'une série narrative
 const EMISSIONS_GENRE_IDS = new Set([10763, 10764, 10766, 10767]); // News, Reality, Soap, Talk
@@ -12,6 +13,9 @@ const DOCUMENTARY_GENRE_ID = 99;
 // Genre TMDB animation (anime si origine japonaise)
 const ANIMATION_GENRE_ID = 16;
 
+// Genre TMDB musique — signal principal pour les concerts
+const MUSIC_GENRE_ID = 10402;
+
 // Genres incompatibles avec un documentaire — leur présence annule la détection genre 99
 // (Action, Science-Fiction, Fantastique, Horreur)
 const DOC_DISQUALIFYING_GENRE_IDS = new Set([28, 878, 14, 27]);
@@ -20,12 +24,17 @@ const DOC_DISQUALIFYING_GENRE_IDS = new Set([28, 878, 14, 27]);
 // (Science-Fiction, Fantastique, SF&Fantasy TV, Animation, Horreur)
 const EMISSION_DISQUALIFYING_GENRE_IDS = new Set([878, 14, 10765, 16, 27]);
 
+// Genres qui disqualifient la détection concert (= biopic, comédie musicale ou film narratif)
+// Drama (18), Comédie (35), Romance (10749), Action (28), Horreur (27), SF (878), Fantastique (14), Thriller (53)
+const CONCERT_DISQUALIFYING_GENRE_IDS = new Set([18, 35, 10749, 28, 27, 878, 14, 53]);
+
 class TMDBMatcher {
   constructor(db) {
-    this.db = db;
+    this.db   = db;
     this.baseUrl = 'https://api.themoviedb.org/3';
     this.tvdb = new TVDBService(db);
     this.mal  = new MALService(db);
+    this.omdb = new OMDbService(db);
   }
 
   getApiKey() {
@@ -308,9 +317,22 @@ class TMDBMatcher {
       if (match && match.imdb_id) {
         let catalogType = item.catalog_type;
 
+        // ── Appel OMDb (concerts & spectacles) ──────────────────────────────
+        // On appelle OMDb uniquement si la clé est configurée et que le média
+        // n'est pas déjà dans une catégorie spécifique (animés).
+        let omdbResult = null;
+        if (this.omdb.isConfigured() && catalogType !== 'animés') {
+          try {
+            omdbResult = await this.omdb.fetch(match.imdb_id);
+          } catch (err) {
+            console.error(`[OMDb] Erreur pour ${match.imdb_id}:`, err.message);
+          }
+        }
+
         if (match.genres) {
           const isDocGenre      = match.genres.includes(DOCUMENTARY_GENRE_ID);
           const isAnimeGenre    = match.genres.includes(ANIMATION_GENRE_ID);
+          const isMusicGenre    = match.genres.includes(MUSIC_GENRE_ID);
           const isEmissionGenre = match.genres.some(g => EMISSIONS_GENRE_IDS.has(g));
           const isJapanese      = match.original_language === 'ja'
                                 || (Array.isArray(match.origin_country) && match.origin_country.includes('JP'));
@@ -327,8 +349,39 @@ class TMDBMatcher {
             }
           }
 
+          // ── Détection concert : TMDB genre Music (10402) + confirmation OMDb ──
+          // Ne s'applique pas si déjà classé explicitement en spectacles ou animés.
+          // Disqualifié si le film a des genres narratifs (biopic, comédie musicale…).
+          if (isMusicGenre && !isDocGenre
+              && catalogType !== 'concerts' && catalogType !== 'animés') {
+            const hasConcertDisqualifier = match.genres.some(g => CONCERT_DISQUALIFYING_GENRE_IDS.has(g));
+            const omdbConfirmsMusic      = this.omdb.isMusicGenre(omdbResult);
+            // Concert si : pas de genres narratifs disqualifiants ET OMDb confirme "Music"
+            // OU : flux forcé en concerts (déjà géré en amont)
+            if (!hasConcertDisqualifier && omdbConfirmsMusic) {
+              catalogType = 'concerts';
+              console.log(`[TMDB+OMDb] ↪ Classé en concert (genre 10402 + OMDb Music) : ${match.name}`);
+            } else if (isMusicGenre && !hasConcertDisqualifier) {
+              console.log(`[TMDB] ↪ Genre Music sans confirmation OMDb — conservé ${catalogType} : ${match.name}`);
+            }
+          }
+
+          // ── Détection spectacle : mots-clés titre + confirmation OMDb ──
+          // (TMDB n'a pas de genre dédié pour stand-up, théâtre, cirque…)
+          if (catalogType !== 'spectacles' && catalogType !== 'concerts'
+              && catalogType !== 'animés' && catalogType !== 'documentaires') {
+            const titleLower    = (item.release_name || item.cleanName || '').toLowerCase();
+            const hasTitleHint  = /\b(stand[\-\s]?up|one[\-\s]man[\-\s]show|one[\-\s]woman[\-\s]show|spectacle|th[eé][aâ]tre|cirque|magic\s*show|humori[st]te|caf[eé][\-\s]?th[eé][aâ]tre)\b/i.test(titleLower);
+            const omdbIsStandup = this.omdb.isStandupComedy(omdbResult);
+            if (hasTitleHint || omdbIsStandup) {
+              catalogType = 'spectacles';
+              console.log(`[TMDB+OMDb] ↪ Classé en spectacle (titre/OMDb) : ${match.name}`);
+            }
+          }
+
           // ── Reclassifications auto (uniquement si le flux est en mode auto) ──
-          if (item.source_force === 'auto' && !isDocGenre) {
+          if (item.source_force === 'auto' && !isDocGenre
+              && catalogType !== 'concerts' && catalogType !== 'spectacles') {
             if (isAnimeGenre && isJapanese) {
               catalogType = 'animés';
               console.log(`[TMDB] ↪ Reclassifié en animé (genre 16 + JP) : ${match.name}`);
