@@ -83,7 +83,7 @@
 
 | | |
 |---|---|
-| ![Mediathek](screens/Médiathèque.png) | ![Übersicht](screens/Vue.d.Ensemble.png) |
+| ![Mediathek](screens/Mediatheque.png) | ![Übersicht](screens/Vue.d.Ensemble.png) |
 | ![Synchronisierung](screens/Synchronisation.png) | ![Fehlgeschlagene Releases](screens/Echecs.png) |
 | ![Quellen](screens/Sources.png) | ![Konfiguration](screens/Configuration.png) |
 
