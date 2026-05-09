@@ -51,10 +51,13 @@
 - ♾️ **Unlimited catalogs**: native Stremio pagination (100 items/page), no artificial cap
 - ⚡ **In-memory cache**: catalog responses are cached between syncs — instant responses for concurrent users, automatically invalidated on each sync
 - 🖥️ **Modern WebUI**: redesigned interface with sidebar, dark/light theme, multilingual FR/EN/DE
-- 🎬 **Enhanced Media Library**: grid or list view, sort (date/year/title), year filter, quality tag filter (pills), per-tab counts, flat releases view with search, RPDB posters
+- 🎬 **Enhanced Media Library**: poster or list view, sort (date/year/title), year filter (quick shortcuts + free input `YYYY` or `YYYY-YYYY`), per-tab counts, RPDB posters — pagination preference persisted across sessions
+- 📋 **List view with releases**: the list view shows the first release name inline + a `+N · see all →` badge to open the detail panel
 - 📊 **Sources view**: per-feed stats (releases, media, last added) with custom naming
+- 🗂️ **Overview**: latest additions per category in collapsible accordions (title + year + IMDB link), up to 10 per category
+- 🔧 **Maintenance tool**: "Reclassify anime" button (Config → Maintenance) — detects already-indexed movies/series that are anime (TMDB Animation genre + Japanese origin) and updates their category
 - 🔗 **Quick integrations**: add Prowlarr and NZBHydra2 RSS feeds in one click (All / Movies / Series) — Newznab category numbers displayed (Movies=2000, TV=5000)
-- 🏷️ **Feed naming**: each RSS feed can have a custom name shown in Sources stats
+- 🏷️ **Feed naming**: each RSS feed can have a custom name shown in Sources stats and the releases view
 - 🔌 **Proxy test**: built-in connection test button directly from the WebUI
 
 ---
@@ -81,8 +84,10 @@
 | 🔔 **Discord** | Notifications with poster gallery on each sync |
 | 🔄 **Auto sync** | Configurable scheduling |
 | 🖥️ **Modern WebUI** | Sidebar, dark/light theme, 🇫🇷 🇬🇧 🇩🇪 |
-| 🎬 **Media Library** | Grid/list view, sort, year filter, quality pills, tab counts, releases view, RPDB posters |
-| 📊 **Sources** | Per-feed stats with custom naming |
+| 🎬 **Media Library** | Poster/list view, sort, year filter (shortcuts + free input/range), inline releases, RPDB posters, persistent pagination |
+| 🗂️ **Overview** | Latest additions in collapsible per-category accordions (title + year + IMDB) |
+| 🔧 **Maintenance** | One-click anime reclassification for already-indexed media (TMDB genre 16 + JP origin) |
+| 📊 **Sources** | Per-feed stats with custom naming, source name shown in releases view |
 | 🔗 **Integrations** | Prowlarr + NZBHydra2 one-click setup from WebUI |
 | 🔒 **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
 | 💾 **SQLite** | Persistent data, incremental content, optimized indexes |
@@ -284,7 +289,7 @@ Everything is stored in a SQLite database (`data/addon.db`). Content **accumulat
 - Catalogs are paginated in pages of 100 media — Stremio loads them as you scroll, with no limit
 - Only content with a valid IMDB ID is indexed
 - Some inconsistencies may appear between the **Documentaries** and **Series** catalogs: reclassification relies on TMDB genre 99 and TVDB's Documentary genre, both community-tagged and not always consistent — a documentary not tagged as such may end up in Series
-- Anime already in the database before enabling this feature will remain classified as Movies or Series. To reclassify them, delete them manually or re-sync the feed from scratch (new releases will be automatically detected as anime)
+- Anime indexed before the automatic detection was added will remain classified as Movies or Series. Use the **"Reclassify anime"** button in **Config → Maintenance** to update them in one operation (requires a configured TMDB key)
 
 ---
 

@@ -51,10 +51,13 @@
 - ♾️ **Kataloge ohne Limit**: Native Stremio-Paginierung (100 Items/Seite), keine künstliche Begrenzung
 - ⚡ **In-Memory-Cache**: Katalogantworten werden zwischen Syncs zwischengespeichert — sofortige Antworten für gleichzeitige Nutzer, automatische Invalidierung nach jeder Sync
 - 🖥️ **Moderne WebUI**: Neu gestaltete Oberfläche mit Sidebar, Hell-/Dunkel-Theme, mehrsprachig FR/EN/DE
-- 🎬 **Erweiterte Mediathek**: Raster- oder Listenansicht, Sortierung (Datum/Jahr/Titel), Jahresfilter, Qualitäts-Tag-Filter (Pills), Tab-Zähler, Release-Flachansicht mit Suche, RPDB-Poster
+- 🎬 **Erweiterte Mediathek**: Poster- oder Listenansicht, Sortierung (Datum/Jahr/Titel), Jahresfilter (Schnellauswahl + freie Eingabe `JJJJ` oder `JJJJ-JJJJ`), Tab-Zähler, RPDB-Poster — Seitengrößeneinstellung wird sitzungsübergreifend gespeichert
+- 📋 **Listenansicht mit Releases**: Zeigt den ersten Release-Namen inline + Badge `+N · alles anzeigen →` zum Öffnen des Detailbereichs
 - 📊 **Quellen-Ansicht**: Statistiken pro RSS-Feed (Releases, Medien, letzter Eintrag) mit benutzerdefinierter Benennung
+- 🗂️ **Übersicht**: Neueste Hinzufügungen pro Kategorie in ausklappbaren Akkordeons (Titel + Jahr + IMDB-Link), bis zu 10 pro Kategorie
+- 🔧 **Wartungstool**: Schaltfläche „Anime neu klassifizieren" (Konfiguration → Wartung) — erkennt bereits indizierte Filme/Serien, die Anime sind (TMDB-Genre Animation + japanische Herkunft), und aktualisiert deren Kategorie
 - 🔗 **Schnellintegrationen**: Prowlarr- und NZBHydra2-Feeds mit einem Klick hinzufügen (Alle / Filme / Serien) — Newznab-Kategorienummern angezeigt (Filme=2000, TV=5000)
-- 🏷️ **Feed-Benennung**: Jeder RSS-Feed kann einen angezeigten Namen in den Quellen-Statistiken erhalten
+- 🏷️ **Feed-Benennung**: Jeder RSS-Feed kann einen angezeigten Namen in den Quellen-Statistiken und der Releases-Ansicht erhalten
 - 🔌 **Proxy-Test**: Integrierter Verbindungstest direkt aus der WebUI
 
 ---
@@ -81,8 +84,10 @@
 | 🔔 **Discord** | Benachrichtigungen mit Poster-Galerie bei jeder Sync |
 | 🔄 **Auto-Sync** | Konfigurierbare Planung |
 | 🖥️ **Moderne WebUI** | Sidebar, Hell-/Dunkel-Theme, 🇫🇷 🇬🇧 🇩🇪 |
-| 🎬 **Mediathek** | Raster-/Listenansicht, Sortierung, Jahresfilter, Qualitäts-Pills, Tab-Zähler, Releases-Ansicht, RPDB-Poster |
-| 📊 **Quellen** | Feed-Statistiken mit benutzerdefinierter Benennung |
+| 🎬 **Mediathek** | Poster-/Listenansicht, Sortierung, Jahresfilter (Schnellauswahl + freie Eingabe/Bereich), Releases inline, RPDB-Poster, persistente Paginierung |
+| 🗂️ **Übersicht** | Neueste Hinzufügungen in ausklappbaren Kategorien-Akkordeons (Titel + Jahr + IMDB) |
+| 🔧 **Wartung** | Automatische Anime-Neuklassifizierung für bereits indizierte Medien (TMDB-Genre 16 + JP-Herkunft) |
+| 📊 **Quellen** | Feed-Statistiken mit benutzerdefinierter Benennung, Quellname in der Releases-Ansicht |
 | 🔗 **Integrationen** | Prowlarr + NZBHydra2 per Klick aus der WebUI einrichten |
 | 🔒 **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + integrierter Verbindungstest |
 | 💾 **SQLite** | Persistente Daten, inkrementelle Inhalte, optimierte Indizes |
@@ -284,7 +289,7 @@ Alles wird in einer SQLite-Datenbank (`data/addon.db`) gespeichert. Inhalte **ak
 - Kataloge werden in Seiten von 100 Medien paginiert — Stremio lädt sie beim Scrollen, ohne Limit
 - Nur Inhalte mit einer gültigen IMDB-ID werden indexiert
 - Inkonsistenzen zwischen den Katalogen **Dokumentarfilme** und **Serien** sind möglich: Die Reklassifizierung basiert auf TMDB-Genre 99 und dem TVDB-Genre Documentary, beide von der Community vergeben und nicht immer einheitlich — ein nicht entsprechend getaggter Dokumentarfilm kann in Serien landen
-- Anime, die bereits vor Aktivierung dieser Funktion in der Datenbank vorhanden sind, bleiben als Filme oder Serien klassifiziert. Zur Neuklassifizierung müssen sie manuell gelöscht oder der Feed vollständig neu synchronisiert werden (neue Releases werden automatisch als Anime erkannt)
+- Anime, die vor Hinzufügung der automatischen Erkennung indiziert wurden, bleiben als Filme oder Serien klassifiziert. Verwenden Sie die Schaltfläche **„Anime neu klassifizieren"** unter **Konfiguration → Wartung**, um sie in einem Schritt zu aktualisieren (erfordert einen konfigurierten TMDB-Schlüssel)
 
 ---
 

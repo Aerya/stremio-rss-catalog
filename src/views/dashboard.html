@@ -562,6 +562,26 @@
           <span id="configMsg" class="config-msg"></span>
         </div>
       </form>
+
+      <!-- Maintenance -->
+      <div class="card" style="margin-top:24px">
+        <h3 style="margin-bottom:6px">🔧 Maintenance</h3>
+        <p class="text-muted" style="font-size:13px;margin-bottom:16px">
+          Actions ponctuelles sur la base de données. Nécessite une clé TMDB configurée.
+        </p>
+
+        <div class="maintenance-row">
+          <div>
+            <strong>Reclassifier les animés</strong>
+            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
+              Parcourt tous les films &amp; séries déjà indexés et détecte ceux qui sont des animés
+              (genre Animation TMDB + langue japonaise). Met à jour leur catégorie en base.
+            </p>
+          </div>
+          <button class="btn-sm" onclick="reclassifyAnimes()" id="reclassifyBtn">▶ Lancer</button>
+        </div>
+        <div id="reclassifyResult" style="margin-top:12px;font-size:13px;display:none"></div>
+      </div>
     </section>
 
   </main>

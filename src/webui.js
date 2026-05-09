@@ -324,6 +324,62 @@ class WebUI {
       }
     });
 
+    // ─── Maintenance : Reclassifier animés ──────────────────────────────────
+    this.app.post('/api/admin/reclassify-animes', this.authMiddleware.bind(this), async (req, res) => {
+      const apiKey = this.db.getConfig('tmdb_api_key');
+      if (!apiKey) return res.status(400).json({ error: 'Clé TMDB non configurée' });
+
+      // Candidats : films/séries ayant le genre 16 (Animation) en base
+      const candidates = this.db.prepare(`
+        SELECT imdb_id, tmdb_id, type, name
+        FROM media
+        WHERE catalog_type IN ('films', 'series')
+          AND tmdb_id IS NOT NULL
+          AND genres IS NOT NULL
+          AND EXISTS (SELECT 1 FROM json_each(genres) WHERE value = 16)
+      `).all();
+
+      if (candidates.length === 0) {
+        return res.json({ candidates: 0, reclassified: 0, skipped: 0, errors: [] });
+      }
+
+      const axiosConfig = this.tmdbMatcher.getAxiosConfig();
+      let reclassified = 0, skipped = 0;
+      const errors = [];
+
+      for (const item of candidates) {
+        try {
+          await new Promise(r => setTimeout(r, 260)); // ~3.8 req/s, sous la limite TMDB
+          const endpoint = item.type === 'movie'
+            ? `https://api.themoviedb.org/3/movie/${item.tmdb_id}`
+            : `https://api.themoviedb.org/3/tv/${item.tmdb_id}`;
+          const r = await axios.get(endpoint, {
+            ...axiosConfig,
+            params: { api_key: apiKey }
+          });
+          const data = r.data;
+          const lang = data.original_language;
+          const countries = Array.isArray(data.origin_country)
+            ? data.origin_country
+            : (Array.isArray(data.production_countries)
+                ? data.production_countries.map(c => c.iso_3166_1) : []);
+          const isJapanese = lang === 'ja' || countries.includes('JP');
+
+          if (isJapanese) {
+            this.db.prepare(`UPDATE media SET catalog_type = 'animés' WHERE imdb_id = ?`).run(item.imdb_id);
+            console.log(`[Reclassify] ✓ animé : ${item.name}`);
+            reclassified++;
+          } else {
+            skipped++;
+          }
+        } catch (e) {
+          errors.push({ name: item.name, error: e.message });
+        }
+      }
+
+      res.json({ candidates: candidates.length, reclassified, skipped, errors });
+    });
+
     // ─── Apprise Test ───────────────────────────────────────────────────────
     this.app.post('/api/apprise/test', this.authMiddleware.bind(this), async (req, res) => {
       const serverUrl = req.body.server_url || this.db.getConfig('apprise_server_url');

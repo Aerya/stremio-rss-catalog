@@ -1029,6 +1029,44 @@ async function testApprise() {
 }
 window.testApprise = testApprise;
 
+// ═══════════════════════════ MAINTENANCE ═══════════════════════════════
+
+async function reclassifyAnimes() {
+  const btn    = document.getElementById('reclassifyBtn');
+  const result = document.getElementById('reclassifyResult');
+  btn.disabled = true;
+  btn.textContent = '⏳ En cours…';
+  result.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/admin/reclassify-animes', { method: 'POST' });
+    const d = await r.json();
+
+    if (!r.ok) {
+      result.innerHTML = `<span style="color:var(--danger)">✗ ${escHtml(d.error || 'Erreur')}</span>`;
+    } else if (d.candidates === 0) {
+      result.innerHTML = `<span style="color:var(--success)">✓ Aucun candidat trouvé — tous les médias sont déjà bien classés.</span>`;
+    } else {
+      const errHtml = d.errors?.length
+        ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text-muted)">${d.errors.length} erreur(s)</summary><ul style="font-size:11px;margin:4px 0 0 12px">${d.errors.map(e => `<li>${escHtml(e.name)} — ${escHtml(e.error)}</li>`).join('')}</ul></details>`
+        : '';
+      result.innerHTML = `
+        <span style="color:var(--success)">✓ Terminé.</span>
+        <span style="color:var(--text-muted);margin-left:8px">${d.candidates} candidats analysés · <strong>${d.reclassified}</strong> reclassifié(s) en animés · ${d.skipped} ignoré(s)</span>
+        ${errHtml}`;
+    }
+    result.style.display = 'block';
+    if (d.reclassified > 0) { loadStats(); loadLibraryCounts(); }
+  } catch (e) {
+    result.innerHTML = `<span style="color:var(--danger)">✗ Erreur réseau</span>`;
+    result.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Lancer';
+  }
+}
+window.reclassifyAnimes = reclassifyAnimes;
+
 // ═══════════════════════════ CONFIG ════════════════════════════════════
 
 let rssFieldCounter = 0;

@@ -51,10 +51,13 @@
 - ♾️ **Catalogues sans limite** : pagination native Stremio (100 items/page), plus de cap artificielle
 - ⚡ **Cache in-memory** : les réponses catalog sont mises en cache entre les syncs — réponses instantanées pour tous les utilisateurs simultanés, invalidation automatique à chaque sync
 - 🖥️ **WebUI moderne** : interface redessinée avec sidebar, thème sombre/clair, multilingue FR/EN/DE
-- 🎬 **Médiathèque enrichie** : grille ou liste, tri (date/année/titre), filtre par année, filtre par tags qualité (pills), décomptes par onglet, vue plates releases avec recherche, affiches RPDB
+- 🎬 **Médiathèque enrichie** : vue affiches ou liste, tri (date/année/titre), filtre année (raccourcis rapides + saisie libre `YYYY` ou `YYYY-YYYY`), décomptes par onglet, affiches RPDB — préférence de pagination persistante
+- 📋 **Vue liste avec releases** : la vue liste affiche le nom de la première release de chaque média + badge `+N · voir tout →` pour ouvrir le panneau détail
 - 📊 **Vue Sources** : statistiques par flux RSS (releases, médias, dernier ajout) avec nommage personnalisé
+- 🗂️ **Vue d'ensemble** : derniers ajouts par catégorie en tiroirs dépliables (titre + année + lien IMDB), jusqu'à 10 médias par catégorie
+- 🔧 **Outil de maintenance** : bouton « Reclassifier les animés » (Config → Maintenance) — détecte automatiquement les films/séries déjà indexés qui sont des animés (genre Animation TMDB + origine japonaise) et met à jour leur catégorie
 - 🔗 **Intégrations rapides** : ajout en un clic des flux RSS Prowlarr et NZBHydra2 (Tout / Films / Séries), numéros de catégories Newznab affichés (Films=2000, TV=5000)
-- 🏷️ **Nommage des flux** : chaque flux RSS peut recevoir un nom affiché dans les statistiques Sources
+- 🏷️ **Nommage des flux** : chaque flux RSS peut recevoir un nom affiché dans les statistiques Sources et la vue releases
 - 🔌 **Test proxy** : bouton de test de connexion proxy directement depuis la WebUI
 
 ---
@@ -81,8 +84,10 @@
 | 🔔 **Discord** | Notifications avec galerie d'affiches à chaque sync |
 | 🔄 **Sync auto** | Planification configurable |
 | 🖥️ **WebUI moderne** | Sidebar, thème sombre/clair, 🇫🇷 🇬🇧 🇩🇪 |
-| 🎬 **Médiathèque** | Grille/liste, tri, filtre année, filtre qualité (pills), décomptes onglets, vue releases, affiches RPDB |
-| 📊 **Sources** | Stats par flux RSS avec nommage personnalisé |
+| 🎬 **Médiathèque** | Affiches/liste, tri, filtre année (raccourcis + saisie libre/plage), releases inline, affiches RPDB, pagination persistante |
+| 🗂️ **Vue d'ensemble** | Derniers ajouts en tiroirs par catégorie (liste titre + année + IMDB) |
+| 🔧 **Maintenance** | Reclassification automatique des animés déjà indexés (TMDB genre 16 + origine JP) |
+| 📊 **Sources** | Stats par flux RSS avec nommage personnalisé, nom de source affiché dans les releases |
 | 🔗 **Intégrations** | Prowlarr + NZBHydra2 en un clic depuis la WebUI |
 | 🔒 **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + test de connexion intégré |
 | 💾 **SQLite** | Données persistantes, contenu incrémental, index optimisés |
@@ -284,7 +289,7 @@ Tout est stocké dans une base SQLite (`data/addon.db`). Les contenus s'**accumu
 - Les catalogues sont paginés par pages de 100 médias — Stremio les charge au fil du scroll, sans limite
 - Seuls les contenus avec un ID IMDB sont indexés
 - Des incohérences peuvent apparaître entre les catalogues **Documentaires** et **Séries** : la reclassification repose sur le genre 99 (Documentary) de TMDB et le genre Documentary de TVDB, dont le tagging est fait par la communauté et n'est pas toujours homogène — un documentaire non tagué comme tel peut se retrouver en Séries
-- Les animés déjà présents en base avant l'activation de cette fonctionnalité restent classés en Films ou Séries. Pour les reclasser, il faut les supprimer manuellement ou relancer une resync complète du flux (les nouvelles releases seront automatiquement détectées comme animés)
+- Les animés indexés avant l'ajout de la détection automatique restent classés en Films ou Séries. Utilisez le bouton **« Reclassifier les animés »** dans **Configuration → Maintenance** pour les mettre à jour en une seule opération (nécessite une clé TMDB configurée)
 
 ---
 

@@ -344,6 +344,12 @@ input:checked + .slider::before { transform: translateX(22px); }
 .config-msg.ok  { color: var(--success); }
 .config-msg.err { color: var(--danger); }
 
+.maintenance-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 20px; padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
 /* ─── Text helpers ────────────────────────────────────────────────── */
 .error-msg  { color: var(--danger); font-size: 13px; margin-top: 8px; }
 .text-muted { color: var(--text-muted); }
