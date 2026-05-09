@@ -5,7 +5,9 @@ const CATALOG_MAP = {
   'useflowfr_documentaires':       { catalogType: 'documentaires', typeFilter: 'movie' },
   'useflowfr_documentaires_series':{ catalogType: 'documentaires', typeFilter: 'series' },
   'useflowfr_series':              { catalogType: 'series',        typeFilter: null },
-  'useflowfr_emissions':           { catalogType: 'emissions',     typeFilter: null }
+  'useflowfr_emissions':           { catalogType: 'emissions',     typeFilter: null },
+  'useflowfr_animes_films':        { catalogType: 'animés',        typeFilter: 'movie' },
+  'useflowfr_animes_series':       { catalogType: 'animés',        typeFilter: 'series' }
 };
 
 const PAGE_SIZE = 100;
@@ -55,6 +57,18 @@ class StremioAddon {
           type: 'series',
           id: 'useflowfr_emissions',
           name: 'Stremio RSS Catalog - Émissions TV',
+          extra: [{ name: 'skip', isRequired: false }, { name: 'search', isRequired: false }]
+        },
+        {
+          type: 'movie',
+          id: 'useflowfr_animes_films',
+          name: 'Stremio RSS Catalog - Animés (Films)',
+          extra: [{ name: 'skip', isRequired: false }, { name: 'search', isRequired: false }]
+        },
+        {
+          type: 'series',
+          id: 'useflowfr_animes_series',
+          name: 'Stremio RSS Catalog - Animés (Séries)',
           extra: [{ name: 'skip', isRequired: false }, { name: 'search', isRequired: false }]
         }
       ]

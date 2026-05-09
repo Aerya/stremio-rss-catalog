@@ -102,23 +102,25 @@ class WebUI {
 
     // ─── Stats ──────────────────────────────────────────────────────────────
     this.app.get('/api/stats', this.authMiddleware.bind(this), (req, res) => {
-      const films        = this.db.getMediaCount('films');
+      const films         = this.db.getMediaCount('films');
       const documentaires = this.db.getMediaCount('documentaires');
-      const series       = this.db.getMediaCount('series');
-      const emissions    = this.db.getMediaCount('emissions');
-      res.json({ films, documentaires, series, emissions, total: films + documentaires + series + emissions });
+      const series        = this.db.getMediaCount('series');
+      const emissions     = this.db.getMediaCount('emissions');
+      const animes        = this.db.getMediaCount('animés');
+      res.json({ films, documentaires, series, emissions, animes, total: films + documentaires + series + emissions + animes });
     });
 
     // ─── Media Library ──────────────────────────────────────────────────────
     this.app.get('/api/media/list', this.authMiddleware.bind(this), (req, res) => {
-      const { catalog, search, page = 1, limit = 24, sort = 'date_desc', year } = req.query;
+      const { catalog, search, page = 1, limit = 24, sort = 'date_desc', year, quality } = req.query;
       const result = this.db.getMediaList({
         catalog: catalog || null,
         search: search || '',
         page: parseInt(page) || 1,
         limit: parseInt(limit) || 24,
         sort: sort || 'date_desc',
-        year: year || null
+        year: year || null,
+        quality: quality || null
       });
       res.json(result);
     });

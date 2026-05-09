@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  <strong>Transformez vos flux RSS, Prowlarr et NZBHydra2 en catalogues Stremio — Films, Documentaires et Séries</strong>
+  <strong>Transformez vos flux RSS, Prowlarr et NZBHydra2 en catalogues Stremio — Films, Documentaires, Séries, Émissions TV et Animés</strong>
 </p>
 
 <p align="center">
@@ -18,6 +18,7 @@
   <img src="https://img.shields.io/badge/Prowlarr-compatible-blue?style=flat-square" alt="Prowlarr">
   <img src="https://img.shields.io/badge/NZBHydra2-compatible-blue?style=flat-square" alt="NZBHydra2">
   <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE-orange?style=flat-square" alt="i18n">
+  <img src="https://img.shields.io/badge/MyAnimeList-intégré-blue?style=flat-square" alt="MAL">
 </p>
 
 ---
@@ -28,7 +29,7 @@
 
 ---
 
-> Addon Stremio auto-hébergé qui agrège vos flux RSS, Prowlarr et NZBHydra2, identifie automatiquement Films, Documentaires et Séries, les matche sur TMDB/TVDB et les expose comme catalogues dans Stremio.
+> Addon Stremio auto-hébergé qui agrège vos flux RSS, Prowlarr et NZBHydra2, identifie automatiquement Films, Documentaires, Séries, Émissions TV et **Animés**, les matche sur TMDB/TVDB (et MAL pour les animés) et les expose comme catalogues dans Stremio.
 
 ---
 
@@ -38,18 +39,21 @@
 - 🔁 **Zéro doublon garanti** : déduplication par IMDB ID (pas par release), quel que soit le flux ou la date de synchro
 - 🔍 **Matching TMDB amélioré** : jusqu'à 5 tentatives par release (avec/sans année, FR puis EN, titre simplifié) — taux de match significativement amélioré
 - 📺 **Fallback TVDB** : si TMDB échoue sur une série, TVDB est interrogé automatiquement — améliore aussi la détection des documentaires via son propre genre (optionnel, clé API gratuite)
-- 🎬 **5 catalogues** : Films · Documentaires (films) · Documentaires (séries) · Séries · Émissions TV — les docu-séries vont bien en Documentaires, pas en Séries
+- 🎌 **7 catalogues** : Films · Documentaires (films) · Documentaires (séries) · Séries · Émissions TV · **Animés (films) · Animés (séries)** — les docu-séries vont bien en Documentaires, pas en Séries
+- 🎌 **Détection des animés** : via le genre TMDB 16 (Animation) combiné à une origine japonaise, la présence de `OVA`/`OAV` dans le titre, ou une option de forçage par flux RSS
+- 🔗 **MAL (MyAnimeList) intégré** : l'API MAL v2 sert de normalisateur de titre pour les animés — MAL → titre EN canonique → TMDB → IMDB ID (clé Client ID gratuite)
+- ✏️ **Override manuel** : depuis la médiathèque, forcer l'IMDB ID, le TMDB ID (film ou série) ou le TVDB ID d'une release en échec directement dans la WebUI
 - 🔄 **Retry des échecs** : les releases non matchées sont conservées et relançables depuis la WebUI ou l'API
 - #️⃣ **Extraction des hashes** : l'infohash est extrait automatiquement des liens magnet/torrents présents dans les flux RSS
-- 🏷️ **Qualité extraite** : résolution et source (4K HDR, 1080p WEB-DL…) stockées par release
+- 🏷️ **Qualité extraite** : résolution et source (4K HDR, 1080p WEB-DL, TVRip, DVDRip, CAM…) stockées par release — extraction élargie
 - 📡 **Source trackée** : l'URL du flux RSS d'origine est enregistrée pour chaque release
 - 📺 **Émissions TV** : catalogue dédié — reclassification automatique depuis TMDB (Reality, Talk, News, Soap) ou forçable par flux RSS
 - ♾️ **Catalogues sans limite** : pagination native Stremio (100 items/page), plus de cap artificielle
 - ⚡ **Cache in-memory** : les réponses catalog sont mises en cache entre les syncs — réponses instantanées pour tous les utilisateurs simultanés, invalidation automatique à chaque sync
 - 🖥️ **WebUI moderne** : interface redessinée avec sidebar, thème sombre/clair, multilingue FR/EN/DE
-- 🎬 **Médiathèque** : grille de posters avec recherche, filtres par catalogue, pagination configurable (25/50/100/250), panneau de releases par média
+- 🎬 **Médiathèque enrichie** : grille ou liste, tri (date/année/titre), filtre par année, filtre par tags qualité (pills), décomptes par onglet, vue plates releases avec recherche, affiches RPDB
 - 📊 **Vue Sources** : statistiques par flux RSS (releases, médias, dernier ajout) avec nommage personnalisé
-- 🔗 **Intégrations rapides** : ajout en un clic des flux RSS Prowlarr et NZBHydra2 (Tout / Films / Séries)
+- 🔗 **Intégrations rapides** : ajout en un clic des flux RSS Prowlarr et NZBHydra2 (Tout / Films / Séries), numéros de catégories Newznab affichés (Films=2000, TV=5000)
 - 🏷️ **Nommage des flux** : chaque flux RSS peut recevoir un nom affiché dans les statistiques Sources
 - 🔌 **Test proxy** : bouton de test de connexion proxy directement depuis la WebUI
 
@@ -59,22 +63,25 @@
 
 | | |
 |---|---|
-| 📁 **5 catalogues** | Films · Documentaires (films) · Documentaires (séries) · Séries · Émissions TV |
+| 📁 **7 catalogues** | Films · Documentaires (films) · Documentaires (séries) · Séries · Émissions TV · Animés (films) · Animés (séries) |
 | 🔍 **Détection automatique** | Type identifié depuis le nom de release, ou forcé par flux |
+| 🎌 **Animés** | Détectés via TMDB genre 16 + origine JP, OVA/OAV dans le titre, ou forcé par flux |
+| 🔗 **MAL** | MyAnimeList API v2 — normalisateur de titre EN pour améliorer le match TMDB des animés (optionnel) |
 | 🎯 **Matching TMDB** | 5 tentatives par release (FR/EN, avec/sans année) |
 | 📺 **Fallback TVDB** | Fallback pour séries non trouvées sur TMDB + confirmation documentaires (optionnel) |
 | 🎬 **Docu-séries** | Détectées via genre TMDB 99 ou TVDB, placées en Documentaires (séries) |
 | 📺 **Émissions TV** | Catalogue dédié — auto via genres TMDB ou forcé par flux |
+| ✏️ **Override manuel** | Forcer IMDB/TMDB/TVDB ID sur une release en échec depuis la WebUI |
 | 🔁 **Déduplication** | Par IMDB ID (médias) + par GUID RSS + par hash torrent quand disponible (releases) |
 | #️⃣ **Hashes** | Extraction automatique de l'infohash magnet/torrent |
-| 🏷️ **Qualité** | 4K, HDR, DV, 1080p, WEB-DL… détecté par release |
+| 🏷️ **Qualité** | 4K, HDR, DV, 1080p, WEB-DL, TVRip, DVDRip, CAM… détecté par release |
 | 🔄 **Retry** | Releases non matchées conservées et relançables |
 | ⚡ **Cache** | Réponses catalog mises en cache, invalidation automatique post-sync |
-| 🖼️ **RPDB** | Affiches avec notes intégrées (optionnel) |
+| 🖼️ **RPDB** | Affiches avec notes intégrées (optionnel, utilisé dans la médiathèque) |
 | 🔔 **Discord** | Notifications avec galerie d'affiches à chaque sync |
 | 🔄 **Sync auto** | Planification configurable |
 | 🖥️ **WebUI moderne** | Sidebar, thème sombre/clair, 🇫🇷 🇬🇧 🇩🇪 |
-| 🎬 **Médiathèque** | Grille de posters, recherche, pagination configurable, panneau releases |
+| 🎬 **Médiathèque** | Grille/liste, tri, filtre année, filtre qualité (pills), décomptes onglets, vue releases, affiches RPDB |
 | 📊 **Sources** | Stats par flux RSS avec nommage personnalisé |
 | 🔗 **Intégrations** | Prowlarr + NZBHydra2 en un clic depuis la WebUI |
 | 🔒 **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + test de connexion intégré |
@@ -179,6 +186,7 @@ Au premier démarrage, la migration de la base de données s'effectue automatiqu
 
 De nouvelles options sont disponibles dans la WebUI :
 - **Clé API TVDB** — améliore la détection des docu-séries et sert de fallback pour les séries non trouvées sur TMDB (gratuit sur [thetvdb.com](https://thetvdb.com))
+- **Client ID MAL** — améliore le matching des animés via MyAnimeList (gratuit sur [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig))
 
 **5. Réinstaller l'addon dans Stremio**
 
@@ -201,13 +209,24 @@ Chaque titre de release est analysé pour en extraire :
 - La **qualité** : 4K, HDR, DV, 1080p, WEB-DL, BluRay…
 - L'**infohash** : extrait des liens magnet/torrent présents dans le flux RSS
 
-### Pipeline de matching — TMDB + TVDB
+### Pipeline de matching — TMDB + TVDB (+ MAL pour les animés)
 
 ```
-Release RSS  →  Filtre tags  →  Parsing  →  TMDB (5 tentatives)  →  Reclassification  →  DB
+Release RSS  →  Filtre tags  →  Parsing  →  Détection animé ?
+                                                  │ oui
+                                                  ├─ MAL (titre EN canonique)  ──┐
+                                                  │                               ↓
+                                                  └─────────────────────────  TMDB (5 tentatives)  →  Reclassification  →  DB
+                                                  │ non
+                                              TMDB (5 tentatives)  →  Reclassification  →  DB
                                                       ↓ échec (série)
                                                   TVDB fallback  →  Reclassification  →  DB
 ```
+
+**Animés — pipeline spécifique :**
+1. Détection : genre TMDB 16 + origine japonaise, `OVA`/`OAV` dans le titre, ou flux forcé en `animés`
+2. Si MAL configuré : recherche du titre EN canonique sur MyAnimeList → 5 tentatives TMDB avec ce titre
+3. Fallback : pipeline standard si MAL indisponible ou aucun résultat
 
 **TMDB — 5 tentatives dans l'ordre :**
 
@@ -218,6 +237,7 @@ Release RSS  →  Filtre tags  →  Parsing  →  TMDB (5 tentatives)  →  Recl
 5. Titre simplifié sans année, anglais
 
 **Reclassification automatique après match (source non forcée) :**
+- Genre TMDB 16 + origine japonaise → **Animés**
 - Genre TMDB 99 (Documentary) → **Documentaires**
 - Genre TMDB Reality/Talk/News/Soap → **Émissions TV**
 - Aucun de ces genres, mais TVDB configuré → vérification TVDB pour confirmation documentaire
@@ -226,7 +246,7 @@ Release RSS  →  Filtre tags  →  Parsing  →  TMDB (5 tentatives)  →  Recl
 - 2 tentatives TVDB (avec et sans année)
 - Si IMDB ID trouvé → indexé dans Séries ou Documentaires selon genre TVDB
 
-Si tout échoue, la release est stockée dans `failed_releases` pour être relancée manuellement ou automatiquement.
+Si tout échoue, la release est stockée dans `failed_releases` pour être relancée manuellement ou automatiquement (avec possibilité d'override IMDB/TMDB/TVDB depuis la WebUI).
 
 ### Architecture base de données
 
@@ -264,6 +284,7 @@ Tout est stocké dans une base SQLite (`data/addon.db`). Les contenus s'**accumu
 - Les catalogues sont paginés par pages de 100 médias — Stremio les charge au fil du scroll, sans limite
 - Seuls les contenus avec un ID IMDB sont indexés
 - Des incohérences peuvent apparaître entre les catalogues **Documentaires** et **Séries** : la reclassification repose sur le genre 99 (Documentary) de TMDB et le genre Documentary de TVDB, dont le tagging est fait par la communauté et n'est pas toujours homogène — un documentaire non tagué comme tel peut se retrouver en Séries
+- Les animés déjà présents en base avant l'activation de cette fonctionnalité restent classés en Films ou Séries. Pour les reclasser, il faut les supprimer manuellement ou relancer une resync complète du flux (les nouvelles releases seront automatiquement détectées comme animés)
 
 ---
 

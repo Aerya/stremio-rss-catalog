@@ -96,6 +96,10 @@
           <div class="stat-label" data-i18n="stat_emissions">Émissions TV</div>
           <div class="stat-value" id="statEmissions">—</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-label" data-i18n="stat_animes">Animés</div>
+          <div class="stat-value" id="statAnimes">—</div>
+        </div>
         <div class="stat-card accent">
           <div class="stat-label" data-i18n="stat_indexed">Total indexés</div>
           <div class="stat-value" id="statTotal">—</div>
@@ -164,8 +168,32 @@
           <span data-i18n="stat_emissions">Émissions TV</span>
           <span class="tab-count" id="tabCountEmissions"></span>
         </button>
+        <button class="tab-btn" data-catalog="animés">
+          <span data-i18n="stat_animes">Animés</span>
+          <span class="tab-count" id="tabCountAnimes"></span>
+        </button>
         <span class="tab-separator"></span>
         <button class="tab-btn" id="releasesTabBtn" onclick="switchToReleases()" data-i18n="lib_releases_tab">Releases</button>
+      </div>
+
+      <div class="quality-filter" id="qualityFilter">
+        <span class="quality-filter-label">Qualité :</span>
+        <button class="qf-pill active" data-quality="">Tout</button>
+        <button class="qf-pill" data-quality="4K">4K</button>
+        <button class="qf-pill" data-quality="1080p">1080p</button>
+        <button class="qf-pill" data-quality="720p">720p</button>
+        <button class="qf-pill" data-quality="SD">SD</button>
+        <button class="qf-pill" data-quality="HDR">HDR</button>
+        <button class="qf-pill" data-quality="DV">DV</button>
+        <span class="qf-sep"></span>
+        <button class="qf-pill" data-quality="BluRay">BluRay</button>
+        <button class="qf-pill" data-quality="WEB-DL">WEB-DL</button>
+        <button class="qf-pill" data-quality="WEBRip">WEBRip</button>
+        <button class="qf-pill" data-quality="WEB">WEB</button>
+        <button class="qf-pill" data-quality="HDTV">HDTV</button>
+        <button class="qf-pill" data-quality="TVRip">TVRip</button>
+        <button class="qf-pill" data-quality="DVDRip">DVDRip</button>
+        <button class="qf-pill" data-quality="DVD">DVD</button>
       </div>
 
       <div id="libraryGrid" class="media-grid"></div>
@@ -266,6 +294,7 @@
                 <option value="series">Séries</option>
                 <option value="documentaires">Documentaires</option>
                 <option value="emissions">Émissions TV</option>
+                <option value="animés">Animés</option>
               </select>
             </div>
             <small data-i18n="config_rss_films_hint">Incluant votre clé API ou passkey</small>
@@ -287,10 +316,13 @@
 
           <!-- Intégrations rapides -->
           <div class="integration-block">
-            <h4 data-i18n="integrations_title">🔗 Intégrations rapides</h4>
-            <small data-i18n="integrations_hint" style="display:block;margin-bottom:14px">
+            <h4 data-i18n="integrations_title">Intégrations rapides</h4>
+            <small data-i18n="integrations_hint" style="display:block;margin-bottom:10px">
               Entrez l'URL de base et la clé API pour générer automatiquement les flux RSS et les ajouter à la liste.
             </small>
+            <div class="integration-cat-hint">
+              Catégories Newznab : <strong>Films → 2000</strong> · <strong>TV (Séries, Émissions, Documentaires) → 5000</strong> · <strong>Tout → 2000 &amp; 5000</strong>
+            </div>
 
             <!-- Prowlarr -->
             <div class="integration-row">
@@ -349,6 +381,16 @@
             <input type="text" id="tvdb_api_key" name="tvdb_api_key" placeholder="Optionnel">
             <small data-i18n="config_tvdb_hint">
               Améliore la détection des docu-séries. Clé gratuite sur thetvdb.com.
+            </small>
+          </div>
+          <div class="field">
+            <label>
+              <span data-i18n="config_mal_key">Client ID MyAnimeList (optionnel)</span>
+              <a href="https://myanimelist.net/apiconfig" target="_blank" class="label-link">Obtenir une clé</a>
+            </label>
+            <input type="text" id="mal_client_id" name="mal_client_id" placeholder="Optionnel">
+            <small data-i18n="config_mal_hint">
+              Améliore la détection et le matching des animés via MAL. Clé gratuite sur myanimelist.net/apiconfig.
             </small>
           </div>
         </div>

@@ -25,6 +25,7 @@ const translations = {
     stat_documentaires: "Documentaires",
     stat_series: "Séries",
     stat_emissions: "Émissions TV",
+    stat_animes: "Animés",
     stat_indexed: "Médias indexés",
 
     // Sync history
@@ -37,9 +38,9 @@ const translations = {
     sync_none_date: "Aucune synchronisation pour cette date.",
     sync_duration: "Durée",
     sync_status: "Statut",
-    sync_completed: "✓ Terminée",
-    sync_error: "✗ Erreur",
-    sync_running: "⏳ En cours",
+    sync_completed: "Terminée",
+    sync_error: "Erreur",
+    sync_running: "En cours",
     sync_error_label: "Erreur",
     sync_releases: "Releases sources",
     sync_matched: "Matchées sur TMDB",
@@ -63,6 +64,8 @@ const translations = {
     config_tmdb_key: "Clé API TMDB",
     config_tvdb_key: "Clé API TVDB (optionnel)",
     config_tvdb_hint: "Optionnel. Source complémentaire à TMDB pour la détection des documentaires et fallback pour les séries non trouvées. Clé gratuite sur thetvdb.com.",
+    config_mal_key: "Client ID MyAnimeList (optionnel)",
+    config_mal_hint: "Optionnel. Améliore le matching des animés via MyAnimeList avant de chercher sur TMDB. Client ID gratuit sur myanimelist.net/apiconfig.",
     config_rpdb_title: "Rating Poster DataBase aka RPDB",
     config_rpdb_enable: "Activer",
     config_rpdb_examples: "exemples",
@@ -170,7 +173,7 @@ const translations = {
     config_proxy_test_fail: "Connexion échouée",
 
     // Integrations
-    integrations_title: "🔗 Intégrations rapides",
+    integrations_title: "Intégrations rapides",
     integrations_hint: "Entrez l'URL de base et la clé API pour générer automatiquement les flux RSS et les ajouter à la liste.",
     integrations_url_placeholder: "http://localhost:...",
     integrations_add_all: "Tout",
@@ -204,6 +207,7 @@ const translations = {
     stat_documentaires: "Documentaries",
     stat_series: "Series",
     stat_emissions: "TV Shows",
+    stat_animes: "Anime",
     stat_indexed: "Indexed media",
 
     // Sync history
@@ -216,9 +220,9 @@ const translations = {
     sync_none_date: "No synchronization for this date.",
     sync_duration: "Duration",
     sync_status: "Status",
-    sync_completed: "✓ Completed",
-    sync_error: "✗ Error",
-    sync_running: "⏳ Running",
+    sync_completed: "Completed",
+    sync_error: "Error",
+    sync_running: "Running",
     sync_error_label: "Error",
     sync_releases: "Source releases",
     sync_matched: "Matched on TMDB",
@@ -242,6 +246,8 @@ const translations = {
     config_tmdb_key: "TMDB API Key",
     config_tvdb_key: "TVDB API Key (optional)",
     config_tvdb_hint: "Optional. Used alongside TMDB to improve documentary detection and as a fallback for unmatched series. Free key at thetvdb.com.",
+    config_mal_key: "MyAnimeList Client ID (optional)",
+    config_mal_hint: "Optional. Improves anime matching by querying MyAnimeList for the canonical English title before searching TMDB. Free client ID at myanimelist.net/apiconfig.",
     config_rpdb_title: "Rating Poster DataBase aka RPDB",
     config_rpdb_enable: "Enable",
     config_rpdb_examples: "examples",
@@ -349,7 +355,7 @@ const translations = {
     config_proxy_test_fail: "Connection failed",
 
     // Integrations
-    integrations_title: "🔗 Quick integrations",
+    integrations_title: "Quick integrations",
     integrations_hint: "Enter the base URL and API key to automatically generate RSS feeds and add them to the list.",
     integrations_url_placeholder: "http://localhost:...",
     integrations_add_all: "All",
@@ -383,6 +389,7 @@ const translations = {
     stat_documentaires: "Dokumentarfilme",
     stat_series: "Serien",
     stat_emissions: "TV-Sendungen",
+    stat_animes: "Anime",
     stat_indexed: "Indexierte Medien",
 
     // Sync history
@@ -395,9 +402,9 @@ const translations = {
     sync_none_date: "Keine Synchronisierung für dieses Datum.",
     sync_duration: "Dauer",
     sync_status: "Status",
-    sync_completed: "✓ Abgeschlossen",
-    sync_error: "✗ Fehler",
-    sync_running: "⏳ Läuft",
+    sync_completed: "Abgeschlossen",
+    sync_error: "Fehler",
+    sync_running: "Läuft",
     sync_error_label: "Fehler",
     sync_releases: "Quell-Releases",
     sync_matched: "Auf TMDB gefunden",
@@ -421,6 +428,8 @@ const translations = {
     config_tmdb_key: "TMDB API-Schlüssel",
     config_tvdb_key: "TVDB API-Schlüssel (optional)",
     config_tvdb_hint: "Optional. Ergänzt TMDB zur Verbesserung der Dokumentarfilm-Erkennung und als Fallback für nicht gefundene Serien. Kostenloser Schlüssel auf thetvdb.com.",
+    config_mal_key: "MyAnimeList Client ID (optional)",
+    config_mal_hint: "Optional. Verbessert das Anime-Matching durch Abfrage des kanonischen englischen Titels bei MyAnimeList vor der TMDB-Suche. Kostenlose Client-ID auf myanimelist.net/apiconfig.",
     config_rpdb_title: "Rating Poster DataBase aka RPDB",
     config_rpdb_enable: "Aktivieren",
     config_rpdb_examples: "Beispiele",
@@ -528,7 +537,7 @@ const translations = {
     config_proxy_test_fail: "Verbindung fehlgeschlagen",
 
     // Integrations
-    integrations_title: "🔗 Schnellintegrationen",
+    integrations_title: "Schnellintegrationen",
     integrations_hint: "Geben Sie die Basis-URL und den API-Schlüssel ein, um RSS-Feeds automatisch zu generieren und zur Liste hinzuzufügen.",
     integrations_url_placeholder: "http://localhost:...",
     integrations_add_all: "Alle",

@@ -192,7 +192,8 @@ class DatabaseManager {
       prowlarr_url: '',
       prowlarr_apikey: '',
       nzbhydra2_url: '',
-      nzbhydra2_apikey: ''
+      nzbhydra2_apikey: '',
+      mal_client_id: ''
     };
 
     const stmt = this.db.prepare('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)');
@@ -493,7 +494,7 @@ class DatabaseManager {
 
   // ─── WebUI Listing ────────────────────────────────────────────────────────
 
-  getMediaList({ catalog = null, search = '', page = 1, limit = 24, sort = 'date_desc', year = null } = {}) {
+  getMediaList({ catalog = null, search = '', page = 1, limit = 24, sort = 'date_desc', year = null, quality = null } = {}) {
     const offset = (Number(page) - 1) * Number(limit);
     const conditions = [];
     const params = [];
@@ -501,6 +502,7 @@ class DatabaseManager {
     if (catalog) { conditions.push('m.catalog_type = ?'); params.push(catalog); }
     if (search)  { conditions.push('(m.name LIKE ? OR m.release_name LIKE ?)'); params.push(`%${search}%`, `%${search}%`); }
     if (year)    { conditions.push('m.year = ?'); params.push(year); }
+    if (quality) { conditions.push('EXISTS (SELECT 1 FROM releases rq WHERE rq.media_imdb_id = m.imdb_id AND rq.quality LIKE ?)'); params.push(`%${quality}%`); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -603,7 +605,8 @@ class DatabaseManager {
         SUM(CASE WHEN m.catalog_type = 'films'         THEN 1 ELSE 0 END) AS films_count,
         SUM(CASE WHEN m.catalog_type = 'documentaires' THEN 1 ELSE 0 END) AS documentaires_count,
         SUM(CASE WHEN m.catalog_type = 'series'        THEN 1 ELSE 0 END) AS series_count,
-        SUM(CASE WHEN m.catalog_type = 'emissions'     THEN 1 ELSE 0 END) AS emissions_count
+        SUM(CASE WHEN m.catalog_type = 'emissions'     THEN 1 ELSE 0 END) AS emissions_count,
+        SUM(CASE WHEN m.catalog_type = 'animés'        THEN 1 ELSE 0 END) AS animes_count
       FROM releases r
       LEFT JOIN media m ON r.media_imdb_id = m.imdb_id
       WHERE r.source_url IS NOT NULL AND r.source_url != ''

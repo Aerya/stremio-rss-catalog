@@ -71,17 +71,34 @@ class RSSParser {
   // Extrait la qualité depuis le nom de release
   extractQuality(title) {
     const tags = [];
-    if (/\b(2160p|4K|UHD)\b/i.test(title)) tags.push('4K');
-    else if (/\b1080p\b/i.test(title)) tags.push('1080p');
-    else if (/\b720p\b/i.test(title)) tags.push('720p');
-    else if (/\b480p\b/i.test(title)) tags.push('480p');
-    if (/\bHDR\b/i.test(title)) tags.push('HDR');
-    if (/\bDV\b/i.test(title)) tags.push('DV');
-    if (/\b(BluRay|BDRip|BRRip)\b/i.test(title)) tags.push('BluRay');
-    else if (/\bWEBRip\b/i.test(title)) tags.push('WEBRip');
-    else if (/\bWEB-?DL\b/i.test(title)) tags.push('WEB-DL');
-    else if (/\bWEB\b/i.test(title)) tags.push('WEB');
-    else if (/\bHDTV\b/i.test(title)) tags.push('HDTV');
+
+    // Résolution
+    if (/\b(2160p|4K|UHD)\b/i.test(title))      tags.push('4K');
+    else if (/\b1080p\b/i.test(title))            tags.push('1080p');
+    else if (/\b720p\b/i.test(title))             tags.push('720p');
+    else if (/\b480p\b/i.test(title))             tags.push('480p');
+    else if (/\b(SD|576p)\b/.test(title))         tags.push('SD');
+
+    // HDR / couleur
+    if (/\bHDR(10\+?)?\b/i.test(title))           tags.push('HDR');
+    if (/\b(DV|DoVi|Dolby[\.\s]?Vision)\b/i.test(title)) tags.push('DV');
+
+    // Source
+    if      (/\b(BluRay|BDRip|BRRip|BD-?Rip)\b/i.test(title)) tags.push('BluRay');
+    else if (/\bWEBRip\b/i.test(title))            tags.push('WEBRip');
+    else if (/\bWEB-?DL\b/i.test(title))           tags.push('WEB-DL');
+    else if (/\bWEB\b/i.test(title))               tags.push('WEB');
+    else if (/\bHDTV\b/i.test(title))              tags.push('HDTV');
+    else if (/\bTVRip\b/i.test(title))             tags.push('TVRip');
+    else if (/\bDVDRip\b/i.test(title))            tags.push('DVDRip');
+    else if (/\bDVDScr\b/i.test(title))            tags.push('DVDScr');
+    else if (/\bDVD\b/i.test(title))               tags.push('DVD');
+    else if (/\bPDTV\b/i.test(title))              tags.push('PDTV');
+    else if (/\bVODRip\b/i.test(title))            tags.push('VODRip');
+    else if (/\b(CAM|HDCAM)\b/i.test(title))       tags.push('CAM');
+    else if (/\b(TS|TELESYNC)\b/i.test(title))     tags.push('TS');
+    else if (/\bTC\b/i.test(title))                tags.push('TC');
+
     return tags.length > 0 ? tags.join(' ') : null;
   }
 
@@ -129,6 +146,11 @@ class RSSParser {
 
     if (/\b(doc|docu|documentary|documentaire)\b/i.test(title)) {
       info.isDoc = true;
+    }
+
+    if (/\b(OVA|OAV)\b/i.test(title)) {
+      info.isAnime  = true;
+      info.isSeries = true;
     }
 
     if (/\bS\d{2}(E\d{2,3})?\b/i.test(title) || /\b(Saison|Season)\s*\d+\b/i.test(title)) {
@@ -179,6 +201,7 @@ class RSSParser {
     if (force === 'series') return { catalogType: 'series', type: 'series' };
     if (force === 'documentaires') return { catalogType: 'documentaires', type: 'movie' };
     if (force === 'emissions') return { catalogType: 'emissions', type: 'series' };
+    if (force === 'animés') return { catalogType: 'animés', type }; // on garde le type détecté
     return { catalogType, type };
   }
 
@@ -188,8 +211,11 @@ class RSSParser {
       if (!this.filterByRequiredTags(item.title)) continue;
       const info = this.parseReleaseName(item.title);
       const releaseId = typeof item.guid === 'object' && item.guid._ ? item.guid._ : (item.guid || item.link);
-      // isDoc prime sur isSeries pour le catalogue : une docu-série va en Documentaires
-      const detectedCatalog = info.isDoc ? 'documentaires' : (info.isSeries ? 'series' : 'films');
+      // Priorité : animé > doc > série > film
+      const detectedCatalog = info.isAnime ? 'animés'
+                            : info.isDoc   ? 'documentaires'
+                            : info.isSeries ? 'series'
+                            : 'films';
       const detectedType = info.isSeries ? 'series' : 'movie';
       const detected = this.applyForce(detectedCatalog, detectedType, force);
 

@@ -15,7 +15,7 @@ function navigate(sectionId) {
   const navBtn = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
   if (navBtn) navBtn.classList.add('active');
 
-  if (sectionId === 'library')  { loadLibrary(); loadLibraryCounts(); loadYearsFilter(); }
+  if (sectionId === 'library')  { loadRpdbConfig().then(() => loadLibrary()); loadLibraryCounts(); loadYearsFilter(); initQualityFilter(); }
   if (sectionId === 'sources')  loadSources();
   if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); }
   if (sectionId === 'failures') loadFailed();
@@ -62,6 +62,7 @@ async function loadStats() {
     document.getElementById('statDocs').textContent      = d.documentaires.toLocaleString();
     document.getElementById('statSeries').textContent    = d.series.toLocaleString();
     document.getElementById('statEmissions').textContent = d.emissions.toLocaleString();
+    document.getElementById('statAnimes').textContent    = (d.animes || 0).toLocaleString();
     document.getElementById('statTotal').textContent     = d.total.toLocaleString();
   } catch (e) { console.error('loadStats', e); }
 }
@@ -92,10 +93,31 @@ let libCatalog = '';
 let libSearch = '';
 let libSort = 'date_desc';
 let libYear = '';
+let libQuality = '';
 let libView = 'grid';     // 'grid' | 'list'
 let libMode = 'media';    // 'media' | 'releases'
 let libSearchTimer = null;
 let libLoading = false;
+
+// RPDB
+let rpdbEnabled = false;
+let rpdbApiKey = '';
+
+async function loadRpdbConfig() {
+  try {
+    const r = await fetch('/api/config');
+    const cfg = await r.json();
+    rpdbEnabled = cfg.rpdb_enabled === 'true';
+    rpdbApiKey  = cfg.rpdb_api_key || '';
+  } catch (e) { /* silencieux */ }
+}
+
+function posterUrl(imdbId, tmdbPoster) {
+  if (rpdbEnabled && rpdbApiKey && imdbId) {
+    return `https://api.ratingposterdb.com/${rpdbApiKey}/imdb/poster-default/${imdbId}.jpg`;
+  }
+  return tmdbPoster || null;
+}
 
 // Releases mode state
 let libRlzPage = 1;
@@ -156,6 +178,7 @@ function switchToReleases() {
   document.getElementById('libSort').style.display = 'none';
   document.getElementById('libYear').style.display = 'none';
   document.getElementById('libViewBtn').style.display = 'none';
+  document.getElementById('qualityFilter').style.display = 'none';
   const searchEl = document.getElementById('libSearch');
   if (!searchEl.dataset.origPlaceholder) searchEl.dataset.origPlaceholder = searchEl.placeholder;
   searchEl.placeholder = 'Rechercher une release ou un titre…';
@@ -170,6 +193,7 @@ function switchToMedia(skipLoad = false) {
   document.getElementById('libSort').style.display = '';
   document.getElementById('libYear').style.display = '';
   document.getElementById('libViewBtn').style.display = '';
+  document.getElementById('qualityFilter').style.display = '';
   const searchEl = document.getElementById('libSearch');
   searchEl.placeholder = searchEl.dataset.origPlaceholder || 'Rechercher un titre…';
   searchEl.value = libSearch;
@@ -199,9 +223,10 @@ async function loadLibrary() {
 
   try {
     const params = new URLSearchParams({ page: libPage, limit: libLimit, sort: libSort });
-    if (libCatalog) params.append('catalog', libCatalog);
-    if (libSearch)  params.append('search',  libSearch);
-    if (libYear)    params.append('year',    libYear);
+    if (libCatalog)  params.append('catalog',  libCatalog);
+    if (libSearch)   params.append('search',   libSearch);
+    if (libYear)     params.append('year',     libYear);
+    if (libQuality)  params.append('quality',  libQuality);
 
     const r = await fetch('/api/media/list?' + params);
     const d = await r.json();
@@ -222,14 +247,31 @@ async function loadLibraryCounts() {
       'films': d.films || 0,
       'documentaires': d.documentaires || 0,
       'series': d.series || 0,
-      'emissions': d.emissions || 0
+      'emissions': d.emissions || 0,
+      'animés': d.animes || 0
     };
-    const ids = { '': 'tabCountAll', 'films': 'tabCountFilms', 'documentaires': 'tabCountDocs', 'series': 'tabCountSeries', 'emissions': 'tabCountEmissions' };
+    const ids = { '': 'tabCountAll', 'films': 'tabCountFilms', 'documentaires': 'tabCountDocs', 'series': 'tabCountSeries', 'emissions': 'tabCountEmissions', 'animés': 'tabCountAnimes' };
     for (const [cat, id] of Object.entries(ids)) {
       const el = document.getElementById(id);
       if (el) el.textContent = counts[cat] ? counts[cat].toLocaleString() : '';
     }
   } catch (e) { /* silencieux */ }
+}
+
+function initQualityFilter() {
+  document.querySelectorAll('.qf-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.qf-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      libQuality = btn.dataset.quality;
+      libPage = 1;
+      loadLibrary();
+    });
+  });
+  // Sync active state with current libQuality
+  document.querySelectorAll('.qf-pill').forEach(b => {
+    b.classList.toggle('active', b.dataset.quality === libQuality);
+  });
 }
 
 async function loadYearsFilter() {
@@ -276,9 +318,10 @@ function renderMediaList(data) {
       ${data.items.map(m => {
         const badgeCls = 'catalog-badge badge-' + m.catalog_type;
         const mediaJson = escHtml(JSON.stringify(m));
+        const thumb = posterUrl(m.imdb_id, m.poster);
         return `<tr class="media-list-row" onclick="openDrawer('${escHtml(m.imdb_id)}', JSON.parse(this.dataset.media))" data-media="${mediaJson}" title="${escHtml(m.name)}">
           <td class="mlt-title">
-            ${m.poster ? `<img class="mlt-thumb" src="${escHtml(m.poster)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '<span class="mlt-thumb-ph"></span>'}
+            ${thumb ? `<img class="mlt-thumb" src="${escHtml(thumb)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '<span class="mlt-thumb-ph"></span>'}
             <span>${escHtml(m.name)}</span>
           </td>
           <td class="mlt-year">${m.year || '—'}</td>
@@ -306,11 +349,12 @@ function renderMediaGrid(data) {
 
   grid.className = 'media-grid';
   grid.innerHTML = data.items.map(m => {
-    const posterHtml = m.poster
-      ? `<img class="media-poster" src="${escHtml(m.poster)}" alt="${escHtml(m.name)}" loading="lazy"
+    const poster = posterUrl(m.imdb_id, m.poster);
+    const posterHtml = poster
+      ? `<img class="media-poster" src="${escHtml(poster)}" alt="${escHtml(m.name)}" loading="lazy"
            onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
       : '';
-    const phStyle = m.poster ? 'style="display:none"' : '';
+    const phStyle = poster ? 'style="display:none"' : '';
     const emoji = { films: '🎬', documentaires: '📽️', series: '📺', emissions: '📡' }[m.catalog_type] || '🎬';
     const badgeCls = 'catalog-badge badge-' + m.catalog_type;
     const mediaJson = escHtml(JSON.stringify(m));
@@ -484,14 +528,12 @@ function openDrawer(imdbId, media) {
           <thead><tr>
             <th data-i18n="library_col_name">Nom</th>
             <th data-i18n="library_col_quality">Qualité</th>
-            <th data-i18n="library_col_hash">Hash</th>
             <th data-i18n="library_col_date">Date</th>
           </tr></thead>
           <tbody>
             ${releases.map(r => `<tr>
-              <td style="font-size:11px;max-width:200px">${escHtml(r.release_name)}</td>
+              <td style="font-size:11px">${escHtml(r.release_name)}</td>
               <td>${r.quality ? `<span class="quality-badge">${escHtml(r.quality)}</span>` : '<span class="text-muted">—</span>'}</td>
-              <td>${r.hash ? `<span class="hash-mono" title="${escHtml(r.hash)}">${r.hash.substring(0,10)}…</span>` : '<span class="text-muted">—</span>'}</td>
               <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${fmtDate(r.added_at)}</td>
             </tr>`).join('')}
           </tbody>
@@ -911,6 +953,7 @@ window.addRssField = function (value, force, name) {
         <option value="series"${force === 'series' ? ' selected' : ''}>Séries</option>
         <option value="documentaires"${force === 'documentaires' ? ' selected' : ''}>Documentaires</option>
         <option value="emissions"${force === 'emissions' ? ' selected' : ''}>Émissions TV</option>
+        <option value="animés"${force === 'animés' ? ' selected' : ''}>Animés</option>
       </select>
       <button type="button" class="btn-sm btn-danger"
         onclick="document.getElementById('${id}').remove()"
@@ -946,7 +989,7 @@ async function loadConfig() {
     const cfg = await r.json();
 
     ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
-     'rpdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
+     'mal_client_id', 'rpdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
      'proxy_password', 'refresh_interval', 'discord_webhook_url',
      'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey'].forEach(k => {
       const el = document.getElementById(k);
@@ -981,7 +1024,7 @@ async function saveConfig(e) {
 
   const cfg = {};
   ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
-   'rpdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
+   'mal_client_id', 'rpdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
    'proxy_password', 'refresh_interval', 'discord_webhook_url',
    'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey'].forEach(k => {
     const el = document.getElementById(k);

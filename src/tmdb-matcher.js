@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const TVDBService = require('./services/tvdbService');
+const MALService  = require('./services/malService');
 
 // Genres TMDB qui indiquent une émission TV plutôt qu'une série narrative
 const EMISSIONS_GENRE_IDS = new Set([10763, 10764, 10766, 10767]); // News, Reality, Soap, Talk
@@ -8,11 +9,15 @@ const EMISSIONS_GENRE_IDS = new Set([10763, 10764, 10766, 10767]); // News, Real
 // Genre TMDB documentaire (film et série)
 const DOCUMENTARY_GENRE_ID = 99;
 
+// Genre TMDB animation (anime si origine japonaise)
+const ANIMATION_GENRE_ID = 16;
+
 class TMDBMatcher {
   constructor(db) {
     this.db = db;
     this.baseUrl = 'https://api.themoviedb.org/3';
     this.tvdb = new TVDBService(db);
+    this.mal  = new MALService(db);
   }
 
   getApiKey() {
@@ -93,7 +98,9 @@ class TMDBMatcher {
           background: movie.backdrop_path ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}` : null,
           description: movie.overview || null,
           genres: movie.genre_ids || [],
-          vote_average: movie.vote_average || null
+          vote_average: movie.vote_average || null,
+          original_language: movie.original_language || null,
+          origin_country: []
         };
       }
       return null;
@@ -124,7 +131,9 @@ class TMDBMatcher {
           background: show.backdrop_path ? `https://image.tmdb.org/t/p/original${show.backdrop_path}` : null,
           description: show.overview || null,
           genres: show.genre_ids || [],
-          vote_average: show.vote_average || null
+          vote_average: show.vote_average || null,
+          original_language: show.original_language || null,
+          origin_country: show.origin_country || []
         };
       }
       return null;
@@ -186,6 +195,59 @@ class TMDBMatcher {
     return null;
   }
 
+  /**
+   * Matching spécialisé anime :
+   * 1. Cherche sur MAL → obtient le titre EN canonique
+   * 2. Utilise ce titre pour chercher sur TMDB (meilleur taux de succès)
+   * 3. Si MAL non configuré ou échec MAL : fallback sur matchItem() standard
+   */
+  async matchAnimeItem(item) {
+    if (this.mal.isConfigured()) {
+      try {
+        const malResult = await this.mal.search(item.cleanName, item.year);
+        if (malResult) {
+          console.log(`[MAL] ✓ "${item.cleanName}" → "${malResult.title}" (${malResult.mal_id}, type: ${malResult.type})`);
+
+          // Déduire le type Stremio depuis MAL si le RSS n'a pas bien détecté
+          const isTV = malResult.stremio_type === 'series' || item.type === 'series';
+          const search = isTV
+            ? (t, y, l) => this.searchTVShow(t, y, l)
+            : (t, y, l) => this.searchMovie(t, y, l);
+
+          // On cherche avec le titre EN canonique MAL, plus fiable pour TMDB
+          const attempts = [
+            () => search(malResult.title, malResult.year || item.year, 'en-US'),
+            () => search(malResult.title, null, 'en-US'),
+            () => malResult.title_ja !== malResult.title ? search(malResult.title_ja, null, 'en-US') : null,
+            // Fallback sur le cleanName original si MAL title ne matche pas
+            () => search(item.cleanName, item.year, 'en-US'),
+            () => search(item.cleanName, null, 'en-US'),
+          ];
+
+          for (let i = 0; i < attempts.length; i++) {
+            const match = await attempts[i]();
+            if (match && match.imdb_id) {
+              if (i > 0) console.log(`[MAL→TMDB] Matched tentative ${i + 1} : "${match.name}"`);
+              // Enrichir avec le score MAL si TMDB n'a pas de note
+              if (!match.vote_average && malResult.score) match.vote_average = malResult.score;
+              // Utiliser le poster MAL si TMDB n'en a pas
+              if (!match.poster && malResult.poster) match.poster = malResult.poster;
+              return match;
+            }
+            if (i < attempts.length - 1) await new Promise(r => setTimeout(r, 150));
+          }
+
+          console.log(`[MAL→TMDB] Aucun résultat TMDB pour "${malResult.title}" (MAL: ${malResult.mal_id})`);
+        }
+      } catch (err) {
+        console.error(`[MAL] Erreur inattendue pour "${item.cleanName}":`, err.message);
+      }
+    }
+
+    // Fallback : matching standard TMDB
+    return this.matchItem(item);
+  }
+
   async matchBatch(items, onProgress = null) {
     const results = [];
     let matched = 0;
@@ -226,10 +288,11 @@ class TMDBMatcher {
         // On vérifie via cleanName (approximatif) — si match confirmé, on ajoutera la release plus bas.
       }
 
-      // 3. Recherche TMDB multi-tentatives
+      // 3. Recherche TMDB (via MAL si animé, sinon multi-tentatives standard)
       let match = null;
       try {
-        match = await this.matchItem(item);
+        const isAnime = item.catalog_type === 'animés';
+        match = isAnime ? await this.matchAnimeItem(item) : await this.matchItem(item);
       } catch (err) {
         console.error(`[TMDB] Erreur inattendue sur "${item.cleanName}":`, err.message);
       }
@@ -239,16 +302,22 @@ class TMDBMatcher {
 
         // Reclassification automatique via genres TMDB (source_force='auto' uniquement)
         if (item.source_force === 'auto' && match.genres) {
-          const isDocGenre = match.genres.includes(DOCUMENTARY_GENRE_ID);
+          const isAnimeGenre = match.genres.includes(ANIMATION_GENRE_ID);
+          const isJapanese   = match.original_language === 'ja'
+                            || (Array.isArray(match.origin_country) && match.origin_country.includes('JP'));
+          const isDocGenre      = match.genres.includes(DOCUMENTARY_GENRE_ID);
           const isEmissionGenre = match.genres.some(g => EMISSIONS_GENRE_IDS.has(g));
 
-          if (isDocGenre && catalogType !== 'documentaires') {
+          if (isAnimeGenre && isJapanese) {
+            catalogType = 'animés';
+            console.log(`[TMDB] ↪ Reclassifié en animé (genre 16 + JP) : ${match.name}`);
+          } else if (isDocGenre && catalogType !== 'documentaires') {
             catalogType = 'documentaires';
             console.log(`[TMDB] ↪ Reclassifié en documentaire (genre 99) : ${match.name}`);
           } else if (isEmissionGenre && catalogType === 'series') {
             catalogType = 'emissions';
             console.log(`[TMDB] ↪ Reclassifié en émission (genres) : ${match.name}`);
-          } else if (!isDocGenre && catalogType === 'series' && this.tvdb.isConfigured()) {
+          } else if (!isDocGenre && !isAnimeGenre && catalogType === 'series' && this.tvdb.isConfigured()) {
             // TMDB n'a pas le genre 99 → vérification TVDB pour confirmation documentaire
             try {
               const tvdbResult = await this.tvdb.match(item.cleanName, item.year);
