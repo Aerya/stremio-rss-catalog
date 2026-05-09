@@ -376,12 +376,12 @@ function renderMediaList(data) {
         const badgeCls = 'catalog-badge badge-' + m.catalog_type;
         const mediaJson = escHtml(JSON.stringify(m));
         const thumb = posterUrl(m.imdb_id, m.poster);
-        const rlzNames = (m.release_names || []).map(n =>
-          `<span class="mlt-rlz-name">${escHtml(n)}</span>`
-        ).join('');
-        const rlzCell = rlzNames
-          ? `<div class="mlt-rlz-list">${rlzNames}</div>`
-          : `<span class="text-muted" style="font-size:11px">${m.release_count || 0} release${(m.release_count||0)>1?'s':''}</span>`;
+        const rlzArr = m.release_names || [];
+        const more = (m.release_count || 0) - rlzArr.length;
+        const total = m.release_count || 0;
+        const rlzCell = rlzArr.length
+          ? `<span class="mlt-rlz-name">${escHtml(rlzArr[0])}</span>${total > 1 ? `<span class="mlt-rlz-more" title="Cliquer pour voir toutes les releases">+${total - 1} · voir tout →</span>` : ''}`
+          : `<span class="text-muted" style="font-size:11px">—</span>`;
         return `<tr class="media-list-row" onclick="openDrawer('${escHtml(m.imdb_id)}', JSON.parse(this.dataset.media))" data-media="${mediaJson}" title="${escHtml(m.name)}">
           <td class="mlt-title">
             ${thumb ? `<img class="mlt-thumb" src="${escHtml(thumb)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '<span class="mlt-thumb-ph"></span>'}
