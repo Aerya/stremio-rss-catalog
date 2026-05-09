@@ -405,6 +405,154 @@ class TMDBMatcher {
     return { matched, failed, alreadyInDb, results };
   }
 
+  // ─── Override manuel ────────────────────────────────────────────────────────
+
+  async fetchByImdbId(imdbId) {
+    const apiKey = this.getApiKey();
+    if (!apiKey) return null;
+    try {
+      const response = await this._fetchWithRetry(
+        `${this.baseUrl}/find/${imdbId}`,
+        { api_key: apiKey, external_source: 'imdb_id' },
+        this.getAxiosConfig()
+      );
+      const data = response.data;
+      if (data.movie_results && data.movie_results.length > 0) {
+        const m = data.movie_results[0];
+        return {
+          tmdb_id: m.id, imdb_id: imdbId, name: m.title,
+          year: m.release_date ? m.release_date.substring(0, 4) : null,
+          poster: m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : null,
+          background: m.backdrop_path ? `https://image.tmdb.org/t/p/original${m.backdrop_path}` : null,
+          description: m.overview || null, genres: m.genre_ids || [],
+          vote_average: m.vote_average || null, media_type: 'movie'
+        };
+      }
+      if (data.tv_results && data.tv_results.length > 0) {
+        const s = data.tv_results[0];
+        return {
+          tmdb_id: s.id, imdb_id: imdbId, name: s.name,
+          year: s.first_air_date ? s.first_air_date.substring(0, 4) : null,
+          poster: s.poster_path ? `https://image.tmdb.org/t/p/w500${s.poster_path}` : null,
+          background: s.backdrop_path ? `https://image.tmdb.org/t/p/original${s.backdrop_path}` : null,
+          description: s.overview || null, genres: s.genre_ids || [],
+          vote_average: s.vote_average || null, media_type: 'tv'
+        };
+      }
+      return null;
+    } catch (err) {
+      console.error(`[TMDB] fetchByImdbId error for ${imdbId}:`, err.message);
+      return null;
+    }
+  }
+
+  async fetchByTmdbId(tmdbId, mediaType) {
+    const apiKey = this.getApiKey();
+    if (!apiKey) return null;
+    try {
+      const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
+      const response = await this._fetchWithRetry(
+        `${this.baseUrl}/${endpoint}/${tmdbId}`,
+        { api_key: apiKey, append_to_response: 'external_ids' },
+        this.getAxiosConfig()
+      );
+      const d = response.data;
+      return {
+        tmdb_id: d.id,
+        imdb_id: d.external_ids?.imdb_id || d.imdb_id || null,
+        name: d.title || d.name,
+        year: (d.release_date || d.first_air_date || '').substring(0, 4) || null,
+        poster: d.poster_path ? `https://image.tmdb.org/t/p/w500${d.poster_path}` : null,
+        background: d.backdrop_path ? `https://image.tmdb.org/t/p/original${d.backdrop_path}` : null,
+        description: d.overview || null,
+        genres: (d.genres || []).map(g => g.id),
+        vote_average: d.vote_average || null,
+        media_type: mediaType
+      };
+    } catch (err) {
+      console.error(`[TMDB] fetchByTmdbId error for ${mediaType}/${tmdbId}:`, err.message);
+      return null;
+    }
+  }
+
+  async applyOverride(failedRelease, idType, idValue) {
+    let match = null;
+    let itemType = failedRelease.type || 'movie';
+    let catalogType = failedRelease.catalog_type || 'films';
+
+    if (idType === 'imdb') {
+      match = await this.fetchByImdbId(idValue);
+      if (match) {
+        itemType    = match.media_type === 'tv' ? 'series' : 'movie';
+        catalogType = itemType === 'series' ? 'series' : 'films';
+      }
+    } else if (idType === 'tmdb_movie') {
+      match = await this.fetchByTmdbId(idValue, 'movie');
+      if (match) { itemType = 'movie'; catalogType = 'films'; }
+    } else if (idType === 'tmdb_tv') {
+      match = await this.fetchByTmdbId(idValue, 'tv');
+      if (match) { itemType = 'series'; catalogType = 'series'; }
+    } else if (idType === 'tvdb') {
+      if (!this.tvdb.isConfigured()) throw new Error('TVDB non configuré');
+      const extended = await this.tvdb.getSeriesExtended(parseInt(idValue));
+      if (!extended) throw new Error('Série TVDB non trouvée');
+      const imdbId = this.tvdb.extractImdbId(extended);
+      if (!imdbId) throw new Error('Pas d\'IMDB ID disponible dans la réponse TVDB');
+      match = {
+        tmdb_id: `tvdb-${idValue}`,
+        imdb_id: imdbId,
+        name: extended.name || failedRelease.clean_name,
+        year: extended.firstAired ? extended.firstAired.substring(0, 4) : null,
+        poster: null, background: null, description: null,
+        genres: [], vote_average: null, media_type: 'tv'
+      };
+      itemType = 'series'; catalogType = 'series';
+    } else {
+      throw new Error('Type d\'identifiant inconnu : ' + idType);
+    }
+
+    if (!match || !match.imdb_id) throw new Error('Aucun résultat trouvé pour cet identifiant');
+
+    const existingMedia = this.db.getMediaByImdbId(match.imdb_id);
+    if (existingMedia) {
+      this.db.addRelease({
+        media_imdb_id: match.imdb_id,
+        release_name: failedRelease.release_name,
+        indexer_rlz_id: failedRelease.indexer_rlz_id,
+        source_url: failedRelease.source_url || null,
+        quality: null, hash: null
+      });
+    } else {
+      const mediaData = {
+        imdb_id: match.imdb_id,
+        tmdb_id: match.tmdb_id ? match.tmdb_id.toString() : null,
+        type: itemType,
+        catalog_type: catalogType,
+        name: match.name,
+        year: match.year,
+        poster: match.poster || null,
+        background: match.background || null,
+        description: match.description || null,
+        genres: match.genres || [],
+        vote_average: match.vote_average || null,
+        release_name: failedRelease.release_name
+      };
+      const saved = this.db.addMedia(mediaData);
+      if (!saved) throw new Error('Erreur lors de la sauvegarde du média en base');
+      this.db.addRelease({
+        media_imdb_id: match.imdb_id,
+        release_name: failedRelease.release_name,
+        indexer_rlz_id: failedRelease.indexer_rlz_id,
+        source_url: failedRelease.source_url || null,
+        quality: null, hash: null
+      });
+    }
+
+    this.db.deleteFailedRelease(failedRelease.id);
+    console.log(`[Override] ✓ ${failedRelease.release_name} → ${match.name} (${match.imdb_id})`);
+    return { imdb_id: match.imdb_id, name: match.name };
+  }
+
   // Retry des releases échouées — appelé depuis la WebUI
   async retryFailed(onProgress = null) {
     const failedItems = this.db.popFailedReleasesForRetry(500);

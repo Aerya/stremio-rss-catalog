@@ -123,21 +123,49 @@
             data-i18n-placeholder="library_search_placeholder"
             placeholder="Rechercher un titre..."
             oninput="debounceLibSearch()">
+          <select id="libSort" class="select-sm" onchange="onSortChange()" title="Trier par">
+            <option value="date_desc" data-i18n="lib_sort_date_desc">Ajout ↓</option>
+            <option value="date_asc"  data-i18n="lib_sort_date_asc">Ajout ↑</option>
+            <option value="year_desc" data-i18n="lib_sort_year_desc">Année ↓</option>
+            <option value="year_asc"  data-i18n="lib_sort_year_asc">Année ↑</option>
+            <option value="name_asc"  data-i18n="lib_sort_name">Titre A-Z</option>
+          </select>
+          <select id="libYear" class="select-sm" onchange="onYearChange()" title="Filtrer par année">
+            <option value="" data-i18n="lib_year_all">Toute année</option>
+          </select>
           <select id="libLimit" class="select-sm" onchange="onLimitChange()">
             <option value="25">25</option>
             <option value="50">50</option>
             <option value="100">100</option>
             <option value="250">250</option>
           </select>
+          <button id="libViewBtn" class="btn-sm btn-icon" onclick="toggleLibView()" title="Vue liste / grille">☰</button>
         </div>
       </div>
 
       <div class="catalog-tabs" id="catalogTabs">
-        <button class="tab-btn active" data-catalog="" data-i18n="library_all">Tous</button>
-        <button class="tab-btn" data-catalog="films" data-i18n="stat_films">Films</button>
-        <button class="tab-btn" data-catalog="documentaires" data-i18n="stat_documentaires">Documentaires</button>
-        <button class="tab-btn" data-catalog="series" data-i18n="stat_series">Séries</button>
-        <button class="tab-btn" data-catalog="emissions" data-i18n="stat_emissions">Émissions TV</button>
+        <button class="tab-btn active" data-catalog="">
+          <span data-i18n="library_all">Tous</span>
+          <span class="tab-count" id="tabCountAll"></span>
+        </button>
+        <button class="tab-btn" data-catalog="films">
+          <span data-i18n="stat_films">Films</span>
+          <span class="tab-count" id="tabCountFilms"></span>
+        </button>
+        <button class="tab-btn" data-catalog="documentaires">
+          <span data-i18n="stat_documentaires">Documentaires</span>
+          <span class="tab-count" id="tabCountDocs"></span>
+        </button>
+        <button class="tab-btn" data-catalog="series">
+          <span data-i18n="stat_series">Séries</span>
+          <span class="tab-count" id="tabCountSeries"></span>
+        </button>
+        <button class="tab-btn" data-catalog="emissions">
+          <span data-i18n="stat_emissions">Émissions TV</span>
+          <span class="tab-count" id="tabCountEmissions"></span>
+        </button>
+        <span class="tab-separator"></span>
+        <button class="tab-btn" id="releasesTabBtn" onclick="switchToReleases()" data-i18n="lib_releases_tab">Releases</button>
       </div>
 
       <div id="libraryGrid" class="media-grid"></div>

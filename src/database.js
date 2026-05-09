@@ -407,6 +407,10 @@ class DatabaseManager {
     return row ? row.count : 0;
   }
 
+  getFailedReleaseById(id) {
+    return this.db.prepare('SELECT * FROM failed_releases WHERE id = ?').get(id);
+  }
+
   deleteFailedRelease(id) {
     return this.db.prepare('DELETE FROM failed_releases WHERE id = ?').run(id).changes;
   }
@@ -489,15 +493,26 @@ class DatabaseManager {
 
   // ─── WebUI Listing ────────────────────────────────────────────────────────
 
-  getMediaList({ catalog = null, search = '', page = 1, limit = 24 } = {}) {
+  getMediaList({ catalog = null, search = '', page = 1, limit = 24, sort = 'date_desc', year = null } = {}) {
     const offset = (Number(page) - 1) * Number(limit);
     const conditions = [];
     const params = [];
 
     if (catalog) { conditions.push('m.catalog_type = ?'); params.push(catalog); }
     if (search)  { conditions.push('(m.name LIKE ? OR m.release_name LIKE ?)'); params.push(`%${search}%`, `%${search}%`); }
+    if (year)    { conditions.push('m.year = ?'); params.push(year); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const sortMap = {
+      'date_desc': 'm.first_seen_at DESC',
+      'date_asc':  'm.first_seen_at ASC',
+      'year_desc': 'CAST(COALESCE(m.year, 0) AS INTEGER) DESC, m.first_seen_at DESC',
+      'year_asc':  'CAST(COALESCE(m.year, 9999) AS INTEGER) ASC, m.first_seen_at DESC',
+      'name_asc':  'm.name ASC COLLATE NOCASE',
+      'name_desc': 'm.name DESC COLLATE NOCASE',
+    };
+    const orderBy = sortMap[sort] || 'm.first_seen_at DESC';
 
     const total = this.db.prepare(`SELECT COUNT(*) as c FROM media m ${where}`).get(...params).c;
 
@@ -506,12 +521,55 @@ class DatabaseManager {
       FROM media m LEFT JOIN releases r ON r.media_imdb_id = m.imdb_id
       ${where}
       GROUP BY m.imdb_id
-      ORDER BY m.first_seen_at DESC
+      ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
     `).all(...params, Number(limit), offset);
 
     return {
       items: rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] })),
+      total, page: Number(page), limit: Number(limit),
+      pages: Math.ceil(total / Number(limit))
+    };
+  }
+
+  getMediaYears() {
+    return this.db.prepare(`
+      SELECT DISTINCT year FROM media
+      WHERE year IS NOT NULL AND year != ''
+      ORDER BY year DESC
+    `).all().map(r => r.year);
+  }
+
+  getReleasesList({ search = '', page = 1, limit = 50 } = {}) {
+    const offset = (Number(page) - 1) * Number(limit);
+    const conditions = [];
+    const params = [];
+
+    if (search) {
+      conditions.push('(r.release_name LIKE ? OR m.name LIKE ?)');
+      params.push(`%${search}%`, `%${search}%`);
+    }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const total = this.db.prepare(`
+      SELECT COUNT(*) as c FROM releases r
+      LEFT JOIN media m ON r.media_imdb_id = m.imdb_id
+      ${where}
+    `).get(...params).c;
+
+    const rows = this.db.prepare(`
+      SELECT r.id, r.release_name, r.quality, r.hash, r.added_at, r.source_url,
+             m.imdb_id as media_imdb_id, m.name as media_name, m.year as media_year,
+             m.catalog_type, m.poster as media_poster
+      FROM releases r
+      LEFT JOIN media m ON r.media_imdb_id = m.imdb_id
+      ${where}
+      ORDER BY r.added_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, Number(limit), offset);
+
+    return {
+      items: rows,
       total, page: Number(page), limit: Number(limit),
       pages: Math.ceil(total / Number(limit))
     };

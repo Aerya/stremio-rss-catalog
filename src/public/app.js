@@ -15,7 +15,7 @@ function navigate(sectionId) {
   const navBtn = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
   if (navBtn) navBtn.classList.add('active');
 
-  if (sectionId === 'library')  loadLibrary();
+  if (sectionId === 'library')  { loadLibrary(); loadLibraryCounts(); loadYearsFilter(); }
   if (sectionId === 'sources')  loadSources();
   if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); }
   if (sectionId === 'failures') loadFailed();
@@ -90,15 +90,28 @@ let libPage = 1;
 let libLimit = 25;
 let libCatalog = '';
 let libSearch = '';
+let libSort = 'date_desc';
+let libYear = '';
+let libView = 'grid';     // 'grid' | 'list'
+let libMode = 'media';    // 'media' | 'releases'
 let libSearchTimer = null;
 let libLoading = false;
+
+// Releases mode state
+let libRlzPage = 1;
+let libRlzLimit = 50;
+let libRlzSearch = '';
+let libRlzLoading = false;
 
 function debounceLibSearch() {
   clearTimeout(libSearchTimer);
   libSearchTimer = setTimeout(() => {
-    libSearch = document.getElementById('libSearch').value.trim();
-    libPage = 1;
-    loadLibrary();
+    const val = document.getElementById('libSearch').value.trim();
+    if (libMode === 'releases') {
+      libRlzSearch = val; libRlzPage = 1; loadReleases();
+    } else {
+      libSearch = val; libPage = 1; loadLibrary();
+    }
   }, 350);
 }
 window.debounceLibSearch = debounceLibSearch;
@@ -110,8 +123,65 @@ function onLimitChange() {
 }
 window.onLimitChange = onLimitChange;
 
+function onSortChange() {
+  libSort = document.getElementById('libSort').value;
+  libPage = 1;
+  loadLibrary();
+}
+window.onSortChange = onSortChange;
+
+function onYearChange() {
+  libYear = document.getElementById('libYear').value;
+  libPage = 1;
+  loadLibrary();
+}
+window.onYearChange = onYearChange;
+
+function toggleLibView() {
+  libView = libView === 'grid' ? 'list' : 'grid';
+  const btn = document.getElementById('libViewBtn');
+  if (btn) btn.textContent = libView === 'grid' ? '☰' : '⊞';
+  // Re-render current data without re-fetching
+  const grid = document.getElementById('libraryGrid');
+  if (grid.dataset.lastData) {
+    renderMediaContent(JSON.parse(grid.dataset.lastData));
+  }
+}
+window.toggleLibView = toggleLibView;
+
+function switchToReleases() {
+  libMode = 'releases';
+  document.querySelectorAll('.tab-btn[data-catalog]').forEach(b => b.classList.remove('active'));
+  document.getElementById('releasesTabBtn')?.classList.add('active');
+  document.getElementById('libSort').style.display = 'none';
+  document.getElementById('libYear').style.display = 'none';
+  document.getElementById('libViewBtn').style.display = 'none';
+  const searchEl = document.getElementById('libSearch');
+  if (!searchEl.dataset.origPlaceholder) searchEl.dataset.origPlaceholder = searchEl.placeholder;
+  searchEl.placeholder = 'Rechercher une release ou un titre…';
+  searchEl.value = libRlzSearch;
+  loadReleases();
+}
+window.switchToReleases = switchToReleases;
+
+function switchToMedia(skipLoad = false) {
+  libMode = 'media';
+  document.getElementById('releasesTabBtn')?.classList.remove('active');
+  document.getElementById('libSort').style.display = '';
+  document.getElementById('libYear').style.display = '';
+  document.getElementById('libViewBtn').style.display = '';
+  const searchEl = document.getElementById('libSearch');
+  searchEl.placeholder = searchEl.dataset.origPlaceholder || 'Rechercher un titre…';
+  searchEl.value = libSearch;
+  document.querySelectorAll('.tab-btn[data-catalog]').forEach(b => {
+    b.classList.toggle('active', b.dataset.catalog === libCatalog);
+  });
+  if (!skipLoad) loadLibrary();
+}
+
 document.querySelectorAll('.tab-btn[data-catalog]').forEach(btn => {
   btn.addEventListener('click', () => {
+    if (libMode === 'releases') switchToMedia(true); // skip load, we'll load below
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     libCatalog = btn.dataset.catalog;
@@ -122,22 +192,105 @@ document.querySelectorAll('.tab-btn[data-catalog]').forEach(btn => {
 
 async function loadLibrary() {
   if (libLoading) return;
+  if (libMode === 'releases') { loadReleases(); return; }
   libLoading = true;
   const grid = document.getElementById('libraryGrid');
   grid.innerHTML = '<p class="text-muted" style="padding:20px">' + t('sync_loading') + '</p>';
 
   try {
-    const params = new URLSearchParams({ page: libPage, limit: libLimit });
+    const params = new URLSearchParams({ page: libPage, limit: libLimit, sort: libSort });
     if (libCatalog) params.append('catalog', libCatalog);
     if (libSearch)  params.append('search',  libSearch);
+    if (libYear)    params.append('year',    libYear);
 
     const r = await fetch('/api/media/list?' + params);
     const d = await r.json();
-    renderMediaGrid(d);
+    renderMediaContent(d);
   } catch (e) {
     grid.innerHTML = '<p class="text-muted">Erreur de chargement</p>';
     console.error('loadLibrary', e);
   } finally { libLoading = false; }
+}
+
+async function loadLibraryCounts() {
+  try {
+    const r = await fetch('/api/stats');
+    const d = await r.json();
+    const total = d.total || 0;
+    const counts = {
+      '': total,
+      'films': d.films || 0,
+      'documentaires': d.documentaires || 0,
+      'series': d.series || 0,
+      'emissions': d.emissions || 0
+    };
+    const ids = { '': 'tabCountAll', 'films': 'tabCountFilms', 'documentaires': 'tabCountDocs', 'series': 'tabCountSeries', 'emissions': 'tabCountEmissions' };
+    for (const [cat, id] of Object.entries(ids)) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = counts[cat] ? counts[cat].toLocaleString() : '';
+    }
+  } catch (e) { /* silencieux */ }
+}
+
+async function loadYearsFilter() {
+  try {
+    const r = await fetch('/api/media/years');
+    const years = await r.json();
+    const sel = document.getElementById('libYear');
+    if (!sel) return;
+    // Keep first option (Toute année), remove existing year options
+    while (sel.options.length > 1) sel.remove(1);
+    for (const y of years) {
+      const opt = document.createElement('option');
+      opt.value = y; opt.textContent = y;
+      sel.appendChild(opt);
+    }
+    sel.value = libYear;
+  } catch (e) { /* silencieux */ }
+}
+
+function renderMediaContent(data) {
+  const grid = document.getElementById('libraryGrid');
+  grid.dataset.lastData = JSON.stringify(data);
+  if (libView === 'list') renderMediaList(data);
+  else renderMediaGrid(data);
+}
+
+function renderMediaList(data) {
+  const grid  = document.getElementById('libraryGrid');
+  const pager = document.getElementById('libraryPager');
+
+  if (!data.items || data.items.length === 0) {
+    grid.innerHTML  = '<p class="text-muted" style="padding:20px">' + t('library_no_results') + '</p>';
+    grid.className  = 'media-list-view';
+    pager.innerHTML = '';
+    return;
+  }
+
+  grid.className = 'media-list-view';
+  grid.innerHTML = `<table class="media-list-table">
+    <thead><tr>
+      <th>Titre</th><th>Année</th><th>Catégorie</th><th>Releases</th><th>Ajouté le</th>
+    </tr></thead>
+    <tbody>
+      ${data.items.map(m => {
+        const badgeCls = 'catalog-badge badge-' + m.catalog_type;
+        const mediaJson = escHtml(JSON.stringify(m));
+        return `<tr class="media-list-row" onclick="openDrawer('${escHtml(m.imdb_id)}', JSON.parse(this.dataset.media))" data-media="${mediaJson}" title="${escHtml(m.name)}">
+          <td class="mlt-title">
+            ${m.poster ? `<img class="mlt-thumb" src="${escHtml(m.poster)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '<span class="mlt-thumb-ph"></span>'}
+            <span>${escHtml(m.name)}</span>
+          </td>
+          <td class="mlt-year">${m.year || '—'}</td>
+          <td><span class="${badgeCls}">${m.catalog_type}</span></td>
+          <td class="mlt-rlz">${m.release_count || 0}</td>
+          <td class="mlt-date">${fmtDate(m.first_seen_at)}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+
+  renderLibPager(data, pager);
 }
 
 function renderMediaGrid(data) {
@@ -146,10 +299,12 @@ function renderMediaGrid(data) {
 
   if (!data.items || data.items.length === 0) {
     grid.innerHTML  = '<p class="text-muted" style="padding:20px">' + t('library_no_results') + '</p>';
+    grid.className  = 'media-grid';
     pager.innerHTML = '';
     return;
   }
 
+  grid.className = 'media-grid';
   grid.innerHTML = data.items.map(m => {
     const posterHtml = m.poster
       ? `<img class="media-poster" src="${escHtml(m.poster)}" alt="${escHtml(m.name)}" loading="lazy"
@@ -174,62 +329,121 @@ function renderMediaGrid(data) {
     </div>`;
   }).join('');
 
-  // Pagination
+  renderLibPager(data, pager);
+}
+
+function renderLibPager(data, pager) {
   pager.innerHTML = '';
+  const label = libMode === 'releases' ? 'releases' : 'médias';
   if (data.total > 0) {
     const info = document.createElement('span');
     info.className = 'pager-info';
-    info.textContent = `${data.total.toLocaleString()} médias`;
+    info.textContent = `${data.total.toLocaleString()} ${label}`;
     pager.appendChild(info);
   }
 
   if (data.pages > 1) {
-    // Précédent
     const prev = document.createElement('button');
     prev.className = 'pager-btn';
     prev.textContent = '←';
     prev.title = 'Page précédente';
     prev.disabled = data.page <= 1;
-    prev.onclick = () => { libPage = data.page - 1; loadLibrary(); };
+    prev.onclick = () => {
+      if (libMode === 'releases') { libRlzPage = data.page - 1; loadReleases(); }
+      else { libPage = data.page - 1; loadLibrary(); }
+    };
     pager.appendChild(prev);
 
-    // Page courante / total
     const pageInfo = document.createElement('span');
     pageInfo.className = 'pager-info';
     pageInfo.textContent = `${data.page} / ${data.pages}`;
     pager.appendChild(pageInfo);
 
-    // Suivant
     const next = document.createElement('button');
     next.className = 'pager-btn';
     next.textContent = '→';
     next.title = 'Page suivante';
     next.disabled = data.page >= data.pages;
-    next.onclick = () => { libPage = data.page + 1; loadLibrary(); };
+    next.onclick = () => {
+      if (libMode === 'releases') { libRlzPage = data.page + 1; loadReleases(); }
+      else { libPage = data.page + 1; loadLibrary(); }
+    };
     pager.appendChild(next);
 
-    // Saut de page
     const jumpWrap = document.createElement('span');
     jumpWrap.className = 'pager-jump';
     const jumpInput = document.createElement('input');
-    jumpInput.type = 'number';
-    jumpInput.min = 1;
-    jumpInput.max = data.pages;
-    jumpInput.value = data.page;
-    jumpInput.className = 'pager-jump-input';
+    jumpInput.type = 'number'; jumpInput.min = 1; jumpInput.max = data.pages;
+    jumpInput.value = data.page; jumpInput.className = 'pager-jump-input';
     jumpInput.title = 'Aller à la page…';
     const jumpBtn = document.createElement('button');
-    jumpBtn.className = 'pager-btn';
-    jumpBtn.textContent = 'OK';
+    jumpBtn.className = 'pager-btn'; jumpBtn.textContent = 'OK';
     jumpBtn.onclick = () => {
       const p = parseInt(jumpInput.value);
-      if (p >= 1 && p <= data.pages) { libPage = p; loadLibrary(); }
+      if (p >= 1 && p <= data.pages) {
+        if (libMode === 'releases') { libRlzPage = p; loadReleases(); }
+        else { libPage = p; loadLibrary(); }
+      }
     };
     jumpInput.addEventListener('keydown', e => { if (e.key === 'Enter') jumpBtn.click(); });
-    jumpWrap.appendChild(jumpInput);
-    jumpWrap.appendChild(jumpBtn);
+    jumpWrap.appendChild(jumpInput); jumpWrap.appendChild(jumpBtn);
     pager.appendChild(jumpWrap);
   }
+}
+
+// ─── Releases flat view ────────────────────────────────────────────────────
+
+async function loadReleases() {
+  if (libRlzLoading) return;
+  libRlzLoading = true;
+  const grid  = document.getElementById('libraryGrid');
+  const pager = document.getElementById('libraryPager');
+  grid.className = 'media-list-view';
+  grid.innerHTML = '<p class="text-muted" style="padding:20px">' + t('sync_loading') + '</p>';
+  try {
+    const params = new URLSearchParams({ page: libRlzPage, limit: libRlzLimit });
+    if (libRlzSearch) params.append('search', libRlzSearch);
+    const r = await fetch('/api/releases/list?' + params);
+    const d = await r.json();
+    renderReleasesList(d, pager);
+  } catch (e) {
+    grid.innerHTML = '<p class="text-muted">Erreur de chargement</p>';
+    console.error('loadReleases', e);
+  } finally { libRlzLoading = false; }
+}
+
+function renderReleasesList(data, pager) {
+  const grid = document.getElementById('libraryGrid');
+  grid.className = 'media-list-view';
+
+  if (!data.items || data.items.length === 0) {
+    grid.innerHTML  = '<p class="text-muted" style="padding:20px">' + t('library_no_results') + '</p>';
+    if (pager) pager.innerHTML = '';
+    return;
+  }
+
+  grid.innerHTML = `<table class="media-list-table">
+    <thead><tr>
+      <th>Média</th><th>Release</th><th>Qualité</th><th>Hash</th><th>Ajouté le</th>
+    </tr></thead>
+    <tbody>
+      ${data.items.map(r => {
+        const badgeCls = 'catalog-badge badge-' + (r.catalog_type || 'films');
+        return `<tr>
+          <td class="mlt-title" style="min-width:160px">
+            ${r.media_poster ? `<img class="mlt-thumb" src="${escHtml(r.media_poster)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '<span class="mlt-thumb-ph"></span>'}
+            <span>${r.media_name ? escHtml(r.media_name) : '<span class="text-muted">—</span>'}${r.media_year ? ` <span class="mlt-year">(${r.media_year})</span>` : ''}</span>
+          </td>
+          <td style="font-size:11px;max-width:280px;word-break:break-word">${escHtml(r.release_name)}</td>
+          <td>${r.quality ? `<span class="quality-badge">${escHtml(r.quality)}</span>` : '<span class="text-muted">—</span>'}</td>
+          <td>${r.hash ? `<span class="hash-mono" title="${escHtml(r.hash)}">${r.hash.substring(0, 10)}…</span>` : '<span class="text-muted">—</span>'}</td>
+          <td class="mlt-date">${fmtDate(r.added_at)}</td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>`;
+
+  if (pager) renderLibPager(data, pager);
 }
 
 // ═══════════════════════════ DRAWER ════════════════════════════════════
@@ -341,8 +555,10 @@ async function loadSources() {
 
           return `<tr class="${rowCls}">
             <td>
-              ${s.name ? `<span class="source-name">${escHtml(s.name)}</span>` : ''}
-              <span class="source-url" title="${escHtml(s.source_url)}">${escHtml(trimUrl(s.source_url))}</span>
+              ${s.name
+                ? `<span class="source-name">${escHtml(s.name)}</span>`
+                : `<span class="source-url" title="${escHtml(s.source_url)}">${escHtml(trimUrl(s.source_url))}</span>`
+              }
             </td>
             <td>${cats || '<span class="text-muted">—</span>'}</td>
             <td><span class="source-num">${(s.release_count || 0).toLocaleString()}</span></td>
@@ -520,7 +736,25 @@ async function loadFailed() {
             <td><span class="catalog-badge badge-${f.catalog_type || 'films'}">${f.catalog_type || '—'}</span></td>
             <td style="font-size:12px;color:var(--text-muted);max-width:200px">${escHtml(f.fail_reason || '—')}</td>
             <td style="text-align:center">${f.retry_count || 0}</td>
-            <td><button class="btn-sm btn-danger" onclick="deleteFailed(${f.id})">✕</button></td>
+            <td style="white-space:nowrap">
+              <button class="btn-sm btn-secondary" onclick="toggleOverride(${f.id})" title="Forcer un ID manuellement">ID</button>
+              <button class="btn-sm btn-danger" onclick="deleteFailed(${f.id})">✕</button>
+            </td>
+          </tr>
+          <tr id="override-row-${f.id}" class="override-row" style="display:none">
+            <td colspan="5">
+              <div class="override-form">
+                <input id="override-input-${f.id}" class="override-input" placeholder="tt1234567 / 12345">
+                <select id="override-type-${f.id}" class="override-select">
+                  <option value="imdb">IMDB ID</option>
+                  <option value="tmdb_movie">TMDB Film</option>
+                  <option value="tmdb_tv">TMDB Série</option>
+                  <option value="tvdb">TVDB ID</option>
+                </select>
+                <button class="btn-sm btn-primary" onclick="submitOverride(${f.id})">Appliquer</button>
+                <span id="override-status-${f.id}" class="override-status"></span>
+              </div>
+            </td>
           </tr>`).join('')}
         </tbody>
       </table>
@@ -557,6 +791,58 @@ async function clearFailed() {
   loadFailed();
 }
 window.clearFailed = clearFailed;
+
+function toggleOverride(id) {
+  const row = document.getElementById('override-row-' + id);
+  if (!row) return;
+  const visible = row.style.display !== 'none';
+  row.style.display = visible ? 'none' : 'table-row';
+  if (!visible) document.getElementById('override-input-' + id)?.focus();
+}
+window.toggleOverride = toggleOverride;
+
+async function submitOverride(id) {
+  const input  = document.getElementById('override-input-' + id);
+  const select = document.getElementById('override-type-' + id);
+  const status = document.getElementById('override-status-' + id);
+  const idValue = input?.value?.trim();
+  const idType  = select?.value;
+  if (!idValue) { status.textContent = 'ID manquant'; status.className = 'override-status override-err'; return; }
+
+  status.textContent = 'Recherche…';
+  status.className = 'override-status';
+  try {
+    const r = await fetch('/api/failed/' + id + '/override', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_type: idType, id_value: idValue })
+    });
+    const d = await r.json();
+    if (!r.ok) {
+      status.textContent = d.error || 'Erreur';
+      status.className = 'override-status override-err';
+      return;
+    }
+    // Succès : retirer la ligne du tableau
+    status.textContent = 'OK — ' + (d.name || d.imdb_id);
+    status.className = 'override-status override-ok';
+    setTimeout(() => {
+      document.getElementById('failed-' + id)?.remove();
+      document.getElementById('override-row-' + id)?.remove();
+      // Mettre à jour le compteur
+      const countEl = document.getElementById('failedCount');
+      if (countEl) {
+        const cur = parseInt(countEl.textContent) || 0;
+        if (cur > 1) countEl.textContent = (cur - 1) + ' release(s) non matchée(s)';
+        else countEl.textContent = '0 release(s) non matchée(s)';
+      }
+    }, 1500);
+  } catch (e) {
+    status.textContent = 'Erreur réseau';
+    status.className = 'override-status override-err';
+  }
+}
+window.submitOverride = submitOverride;
 
 // ═══════════════════════════ PROXY TEST ════════════════════════════
 

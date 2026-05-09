@@ -111,12 +111,28 @@ class WebUI {
 
     // ─── Media Library ──────────────────────────────────────────────────────
     this.app.get('/api/media/list', this.authMiddleware.bind(this), (req, res) => {
-      const { catalog, search, page = 1, limit = 24 } = req.query;
+      const { catalog, search, page = 1, limit = 24, sort = 'date_desc', year } = req.query;
       const result = this.db.getMediaList({
         catalog: catalog || null,
         search: search || '',
         page: parseInt(page) || 1,
-        limit: parseInt(limit) || 24
+        limit: parseInt(limit) || 24,
+        sort: sort || 'date_desc',
+        year: year || null
+      });
+      res.json(result);
+    });
+
+    this.app.get('/api/media/years', this.authMiddleware.bind(this), (req, res) => {
+      res.json(this.db.getMediaYears());
+    });
+
+    this.app.get('/api/releases/list', this.authMiddleware.bind(this), (req, res) => {
+      const { search, page = 1, limit = 50 } = req.query;
+      const result = this.db.getReleasesList({
+        search: search || '',
+        page: parseInt(page) || 1,
+        limit: parseInt(limit) || 50
       });
       res.json(result);
     });
@@ -240,6 +256,29 @@ class WebUI {
       } finally {
         this.syncInProgress = false;
         this.syncStartedAt  = null;
+      }
+    });
+
+    // ─── Override manuel d'une release échouée ──────────────────────────────
+    this.app.post('/api/failed/:id/override', this.authMiddleware.bind(this), async (req, res) => {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
+
+      const { id_type, id_value } = req.body;
+      if (!id_type || !id_value || !id_value.trim()) {
+        return res.status(400).json({ error: 'id_type et id_value sont requis' });
+      }
+
+      const failedRelease = this.db.getFailedReleaseById(id);
+      if (!failedRelease) return res.status(404).json({ error: 'Release introuvable' });
+
+      try {
+        const result = await this.tmdbMatcher.applyOverride(failedRelease, id_type, id_value.trim());
+        this.stremioAddon.clearCache();
+        res.json({ success: true, imdb_id: result.imdb_id, name: result.name });
+      } catch (err) {
+        console.error(`[Override] Erreur pour release #${id}:`, err.message);
+        res.status(500).json({ error: err.message });
       }
     });
 
@@ -422,6 +461,7 @@ class WebUI {
       console.log('[Auto-Refresh] Lancement de la synchronisation automatique...');
       this.syncInProgress = true;
       this.syncStartedAt  = Date.now();
+      this.syncStatus = { running: true, stage: 'Démarrage...', progress: 0, total: 0, matched: 0, failed: 0 };
       try {
         await this.runSync();
       } catch (error) {

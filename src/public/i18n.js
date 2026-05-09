@@ -128,6 +128,13 @@ const translations = {
     library_col_quality: "Qualité",
     library_col_hash: "Hash",
     library_col_date: "Date",
+    lib_sort_date_desc: "Ajout ↓",
+    lib_sort_date_asc: "Ajout ↑",
+    lib_sort_year_desc: "Année ↓",
+    lib_sort_year_asc: "Année ↑",
+    lib_sort_name: "Titre A-Z",
+    lib_year_all: "Toute année",
+    lib_releases_tab: "Releases",
 
     // Sources
     sources_url: "Flux RSS",
@@ -300,6 +307,13 @@ const translations = {
     library_col_quality: "Quality",
     library_col_hash: "Hash",
     library_col_date: "Date",
+    lib_sort_date_desc: "Added ↓",
+    lib_sort_date_asc: "Added ↑",
+    lib_sort_year_desc: "Year ↓",
+    lib_sort_year_asc: "Year ↑",
+    lib_sort_name: "Title A-Z",
+    lib_year_all: "All years",
+    lib_releases_tab: "Releases",
 
     // Sources
     sources_url: "RSS Feed",
@@ -472,6 +486,13 @@ const translations = {
     library_col_quality: "Qualität",
     library_col_hash: "Hash",
     library_col_date: "Datum",
+    lib_sort_date_desc: "Hinzugefügt ↓",
+    lib_sort_date_asc: "Hinzugefügt ↑",
+    lib_sort_year_desc: "Jahr ↓",
+    lib_sort_year_asc: "Jahr ↑",
+    lib_sort_name: "Titel A-Z",
+    lib_year_all: "Alle Jahre",
+    lib_releases_tab: "Releases",
 
     // Sources
     sources_url: "RSS-Feed",
