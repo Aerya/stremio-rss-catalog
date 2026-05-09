@@ -84,29 +84,44 @@ async function loadOverview() {
     // Sources RSS
     document.getElementById('ovSourcesCount').textContent = d.sourcesCount.toLocaleString();
 
-    // Derniers ajouts
-    const grid = document.getElementById('ovRecentGrid');
-    if (!d.recent || d.recent.length === 0) {
-      grid.innerHTML = `<p class="text-muted">${t('library_no_results')}</p>`;
+    // Derniers ajouts par catégorie
+    const container = document.getElementById('ovRecentGrid');
+    const cats = [
+      { key: 'films',         label: t('stat_films'),         badge: 'film',     items: d.recentByCat?.films         || [] },
+      { key: 'documentaires', label: t('stat_documentaires'), badge: 'doc',      items: d.recentByCat?.documentaires || [] },
+      { key: 'series',        label: t('stat_series'),        badge: 'serie',    items: d.recentByCat?.series        || [] },
+      { key: 'emissions',     label: t('stat_emissions'),     badge: 'emission', items: d.recentByCat?.emissions     || [] },
+      { key: 'animés',        label: t('stat_animes'),        badge: 'animés',   items: d.recentByCat?.animes        || [] }
+    ].filter(c => c.items.length > 0);
+
+    if (cats.length === 0) {
+      container.innerHTML = `<p class="text-muted">${t('library_no_results')}</p>`;
       return;
     }
-    const catalogBadge = { films: 'film', documentaires: 'doc', series: 'serie', emissions: 'emission', 'animés': 'animés' };
-    grid.innerHTML = d.recent.map(m => {
+
+    const renderPoster = (m) => {
       const poster = (d.rpdbEnabled && d.rpdbKey && m.imdb_id)
         ? `https://api.ratingposterdb.com/${d.rpdbKey}/imdb/poster-default/${m.imdb_id}.jpg?fallback=true`
         : (m.poster || '');
-      const bg = poster ? `style="background-image:url('${poster}')"` : '';
-      const badge = catalogBadge[m.catalog_type] || m.catalog_type;
-      const year  = m.year ? `<span class="ov-recent-year">${m.year}</span>` : '';
+      const bg   = poster ? `style="background-image:url('${poster}')"` : '';
+      const year = m.year ? `<span class="ov-recent-year">${m.year}</span>` : '';
       return `<div class="ov-recent-item" title="${escHtml(m.title || '')}">
         <div class="ov-recent-poster ${poster ? '' : 'no-poster'}" ${bg}>
           ${poster ? '' : `<span class="poster-ph-text">${escHtml((m.title || '?').substring(0, 2))}</span>`}
-          <span class="badge badge-${badge} ov-recent-badge">${escHtml(m.catalog_type || '')}</span>
           ${year}
         </div>
         <div class="ov-recent-title">${escHtml(m.title || m.imdb_id || '—')}</div>
       </div>`;
-    }).join('');
+    };
+
+    container.innerHTML = cats.map(c => `
+      <div class="ov-cat-section">
+        <h4 class="ov-cat-label">
+          <span class="badge badge-${c.badge}">${escHtml(c.label)}</span>
+        </h4>
+        <div class="ov-recent-grid">${c.items.map(renderPoster).join('')}</div>
+      </div>
+    `).join('');
   } catch (e) { console.error('loadOverview', e); }
 }
 

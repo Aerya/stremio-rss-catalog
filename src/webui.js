@@ -120,16 +120,20 @@ class WebUI {
       const lastSync    = this.db.getLatestSync() || null;
       const failedCount = this.db.getFailedReleasesCount();
       const sources     = this.db.getSourceStats();
-      const recent      = this.db.db.prepare(
-        'SELECT * FROM media ORDER BY first_seen_at DESC LIMIT 8'
-      ).all().map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+      const recentByCat = {
+        films:         this.db.getRecentCatalogAdditions('films', 8),
+        documentaires: this.db.getRecentCatalogAdditions('documentaires', 8),
+        series:        this.db.getRecentCatalogAdditions('series', 8),
+        emissions:     this.db.getRecentCatalogAdditions('emissions', 8),
+        animes:        this.db.getRecentCatalogAdditions('animés', 8)
+      };
       const rpdbEnabled = this.db.getConfig('rpdb_enabled') === 'true';
       const rpdbKey     = this.db.getConfig('rpdb_api_key') || '';
       res.json({
         lastSync,
         failedCount,
         sourcesCount: sources.length,
-        recent,
+        recentByCat,
         rpdbEnabled,
         rpdbKey
       });
