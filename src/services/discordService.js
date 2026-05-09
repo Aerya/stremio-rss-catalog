@@ -91,38 +91,34 @@ async function sendDiscordNotification(webhookUrl, syncStats, lang = 'fr') {
     const color     = isSuccess ? 0x48bb78 : 0xe53e3e;
     const title     = isSuccess ? `✅ ${s.syncSuccess}` : `❌ ${s.syncError}`;
 
-    // ─── Champ "Ajoutés" ────────────────────────────────────────────────────
-    const addedLines = [
-      `${s.films}         : **${syncStats.filmsAdded         || 0}**`,
-      `${s.documentaires} : **${syncStats.documentairesAdded || 0}**`,
-      `${s.series}        : **${syncStats.seriesAdded        || 0}**`,
-      `${s.emissions}     : **${syncStats.emissionsAdded     || 0}**`,
-      `${s.animes}        : **${syncStats.animesAdded        || 0}**`,
-      `${s.concerts}      : **${syncStats.concertsAdded      || 0}**`,
-      `${s.spectacles}    : **${syncStats.spectaclesAdded    || 0}**`
-    ].join('\n');
+    // ─── Description : résumé des ajouts (seulement les catégories > 0) ─────
+    const addedParts = [
+      syncStats.filmsAdded         > 0 ? `+${syncStats.filmsAdded} ${s.films}`         : null,
+      syncStats.documentairesAdded > 0 ? `+${syncStats.documentairesAdded} ${s.documentaires}` : null,
+      syncStats.seriesAdded        > 0 ? `+${syncStats.seriesAdded} ${s.series}`        : null,
+      syncStats.emissionsAdded     > 0 ? `+${syncStats.emissionsAdded} ${s.emissions}`  : null,
+      syncStats.animesAdded        > 0 ? `+${syncStats.animesAdded} ${s.animes}`        : null,
+      syncStats.concertsAdded      > 0 ? `+${syncStats.concertsAdded} ${s.concerts}`   : null,
+      syncStats.spectaclesAdded    > 0 ? `+${syncStats.spectaclesAdded} ${s.spectacles}` : null,
+    ].filter(Boolean);
 
-    // ─── Champ "Totaux" ──────────────────────────────────────────────────────
-    const totalLines = [
-      `${s.films}         : **${syncStats.totalFilms      || 0}**`,
-      `${s.documentaires} : **${syncStats.totalDocs       || 0}**`,
-      `${s.series}        : **${syncStats.totalSeries     || 0}**`,
-      `${s.emissions}     : **${syncStats.totalEmissions  || 0}**`,
-      `${s.animes}        : **${syncStats.totalAnimes     || 0}**`,
-      `${s.concerts}      : **${syncStats.totalConcerts   || 0}**`,
-      `${s.spectacles}    : **${syncStats.totalSpectacles || 0}**`
-    ].join('\n');
+    const description = isSuccess
+      ? (addedParts.length ? `**${addedParts.join(' · ')}**` : `*${s.noneAdded}*`)
+      : null;
+
+    // ─── Champ "Bibliothèque" : totaux sur deux lignes compactes ────────────
+    const totalLine1 = `${s.films} : **${syncStats.totalFilms || 0}** · ${s.documentaires} : **${syncStats.totalDocs || 0}** · ${s.series} : **${syncStats.totalSeries || 0}**`;
+    const totalLine2 = `${s.emissions} : **${syncStats.totalEmissions || 0}** · ${s.animes} : **${syncStats.totalAnimes || 0}** · ${s.concerts} : **${syncStats.totalConcerts || 0}** · ${s.spectacles} : **${syncStats.totalSpectacles || 0}**`;
+
+    // ─── Champ "Détails" : tout sur une ligne ────────────────────────────────
+    const detailsValue = `⏱️ **${syncStats.duration || 0}${s.seconds}** · ✓ **${syncStats.matched || 0}** ${s.matched} · ✗ **${syncStats.failed || 0}** ${s.failed}`;
 
     const mainEmbed = {
       title, color,
+      description,
       fields: [
-        { name: s.fieldAdded,   value: addedLines, inline: true },
-        { name: s.fieldTotals,  value: totalLines, inline: true },
-        {
-          name:   s.fieldDetails,
-          value:  `${s.duration}: **${syncStats.duration || 0}${s.seconds}** · ${s.matched}: **${syncStats.matched || 0}** · ${s.failed}: **${syncStats.failed || 0}**`,
-          inline: false
-        }
+        { name: s.fieldTotals,  value: `${totalLine1}\n${totalLine2}`, inline: false },
+        { name: s.fieldDetails, value: detailsValue,                   inline: false }
       ],
       timestamp: new Date().toISOString(),
       footer:    { text: 'Stremio RSS Catalog' }
