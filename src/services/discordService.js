@@ -116,7 +116,8 @@ async function sendDiscordNotification(webhookUrl, syncStats) {
                         `Films : **${syncStats.filmsAdded || 0}**`,
                         `Docs : **${syncStats.documentairesAdded || 0}**`,
                         `Séries : **${syncStats.seriesAdded || 0}**`,
-                        `Émissions : **${syncStats.emissionsAdded || 0}**`
+                        `Émissions : **${syncStats.emissionsAdded || 0}**`,
+                        `Animés : **${syncStats.animesAdded || 0}**`
                     ].join('\n'),
                     inline: true
                 },
@@ -126,7 +127,8 @@ async function sendDiscordNotification(webhookUrl, syncStats) {
                         `Films: **${syncStats.totalFilms || 0}**`,
                         `Docs: **${syncStats.totalDocs || 0}**`,
                         `Séries: **${syncStats.totalSeries || 0}**`,
-                        `Émissions: **${syncStats.totalEmissions || 0}**`
+                        `Émissions: **${syncStats.totalEmissions || 0}**`,
+                        `Animés: **${syncStats.totalAnimes || 0}**`
                     ].join('\n'),
                     inline: true
                 },
@@ -177,6 +179,9 @@ async function sendDiscordNotification(webhookUrl, syncStats) {
 
             await sendGallery(webhookUrl, recentAdditions.emissions, rpdbEnabled, rpdbKey,
                 'Dernières Émissions TV ajoutées', 0xe91e63, 'emissions.png');
+
+            await sendGallery(webhookUrl, recentAdditions.animes, rpdbEnabled, rpdbKey,
+                'Derniers Animés ajoutés', 0xa855f7, 'animes.png');
         }
 
         console.log('[Discord] Notification sent successfully');

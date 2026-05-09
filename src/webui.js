@@ -334,7 +334,8 @@ class WebUI {
       films:          this.db.getMediaCount('films'),
       documentaires:  this.db.getMediaCount('documentaires'),
       series:         this.db.getMediaCount('series'),
-      emissions:      this.db.getMediaCount('emissions')
+      emissions:      this.db.getMediaCount('emissions'),
+      animes:         this.db.getMediaCount('animés')
     };
 
     try {
@@ -366,13 +367,15 @@ class WebUI {
         films:         this.db.getMediaCount('films'),
         documentaires: this.db.getMediaCount('documentaires'),
         series:        this.db.getMediaCount('series'),
-        emissions:     this.db.getMediaCount('emissions')
+        emissions:     this.db.getMediaCount('emissions'),
+        animes:        this.db.getMediaCount('animés')
       };
 
       const filmsAdded         = catalogsAfter.films         - catalogsBefore.films;
       const documentairesAdded = catalogsAfter.documentaires - catalogsBefore.documentaires;
       const seriesAdded        = catalogsAfter.series        - catalogsBefore.series;
       const emissionsAdded     = catalogsAfter.emissions     - catalogsBefore.emissions;
+      const animesAdded        = catalogsAfter.animes        - catalogsBefore.animes;
 
       this.db.updateSyncHistory(syncId, {
         matched_items:        result.matched,
@@ -394,6 +397,7 @@ class WebUI {
       this.syncStatus.documentairesAdded = documentairesAdded;
       this.syncStatus.seriesAdded        = seriesAdded;
       this.syncStatus.emissionsAdded     = emissionsAdded;
+      this.syncStatus.animesAdded        = animesAdded;
 
       console.log('Sync completed:', result);
       this.stremioAddon.clearCache();
@@ -403,11 +407,12 @@ class WebUI {
       if (discordEnabled && webhookUrl) {
         const notificationData = {
           status: 'completed',
-          filmsAdded, documentairesAdded, seriesAdded, emissionsAdded,
+          filmsAdded, documentairesAdded, seriesAdded, emissionsAdded, animesAdded,
           totalFilms:     catalogsAfter.films,
           totalDocs:      catalogsAfter.documentaires,
           totalSeries:    catalogsAfter.series,
           totalEmissions: catalogsAfter.emissions,
+          totalAnimes:    catalogsAfter.animes,
           matched:        result.matched,
           failed:         result.failed,
           duration,
@@ -416,12 +421,13 @@ class WebUI {
           rpdbKey:     this.db.getConfig('rpdb_api_key')
         };
         const enhancedEnabled = this.db.getConfig('discord_enhanced_notifications_enabled') === 'true';
-        if (enhancedEnabled && (filmsAdded > 0 || documentairesAdded > 0 || seriesAdded > 0 || emissionsAdded > 0)) {
+        if (enhancedEnabled && (filmsAdded > 0 || documentairesAdded > 0 || seriesAdded > 0 || emissionsAdded > 0 || animesAdded > 0)) {
           notificationData.recentAdditions = {
             films:         filmsAdded         > 0 ? this.db.getRecentCatalogAdditions('films', 5)         : [],
             documentaires: documentairesAdded > 0 ? this.db.getRecentCatalogAdditions('documentaires', 5) : [],
             series:        seriesAdded        > 0 ? this.db.getRecentCatalogAdditions('series', 5)        : [],
-            emissions:     emissionsAdded     > 0 ? this.db.getRecentCatalogAdditions('emissions', 5)     : []
+            emissions:     emissionsAdded     > 0 ? this.db.getRecentCatalogAdditions('emissions', 5)     : [],
+            animes:        animesAdded        > 0 ? this.db.getRecentCatalogAdditions('animés', 5)        : []
           };
         }
         await sendDiscordNotification(webhookUrl, notificationData);
