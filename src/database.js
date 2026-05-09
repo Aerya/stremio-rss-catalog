@@ -707,13 +707,39 @@ class DatabaseManager {
   }
 
   // Médias avec genre 99 (Documentaire TMDB) mais pas encore classés en documentaires
+  // Exclut ceux qui ont des genres contradictoires (Action=28, SF=878, Fantastique=14, Horreur=27)
   getDocumentaryCandidatesForReclassify() {
     return this.db.prepare(`
       SELECT imdb_id, name, catalog_type
       FROM media
       WHERE catalog_type != 'documentaires'
         AND genres IS NOT NULL
-        AND EXISTS (SELECT 1 FROM json_each(genres) WHERE value = 99)
+        AND EXISTS     (SELECT 1 FROM json_each(genres) WHERE value = 99)
+        AND NOT EXISTS (SELECT 1 FROM json_each(genres) WHERE value IN (28, 878, 14, 27))
+    `).all();
+  }
+
+  // Médias classés en documentaires mais ayant des genres clairement incompatibles
+  // (faux positifs genre 99 : films d'action, SF, fantastique, horreur mal taggués sur TMDB)
+  getFalseDocumentaryCandidates() {
+    return this.db.prepare(`
+      SELECT imdb_id, name, type, genres
+      FROM media
+      WHERE catalog_type = 'documentaires'
+        AND genres IS NOT NULL
+        AND EXISTS (SELECT 1 FROM json_each(genres) WHERE value IN (28, 878, 14, 27))
+    `).all();
+  }
+
+  // Séries classées en émissions mais ayant des genres incompatibles
+  // (SF, Fantastique, SF&Fantasy TV, Animation, Horreur)
+  getFalseEmissionCandidates() {
+    return this.db.prepare(`
+      SELECT imdb_id, name, type, genres
+      FROM media
+      WHERE catalog_type = 'emissions'
+        AND genres IS NOT NULL
+        AND EXISTS (SELECT 1 FROM json_each(genres) WHERE value IN (878, 14, 10765, 16, 27))
     `).all();
   }
 

@@ -601,6 +601,36 @@
 
         <div class="maintenance-row">
           <div>
+            <strong>Corriger les faux documentaires</strong>
+            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
+              Détecte les médias classés en documentaires qui ont des genres incompatibles
+              (Action, Science-Fiction, Fantastique, Horreur) et les remet en Films ou Séries.
+              Aucun appel API nécessaire.
+            </p>
+          </div>
+          <button class="btn-sm" onclick="fixFalseDocs()" id="fixFalseDocsBtn">▶ Lancer</button>
+        </div>
+        <div id="fixFalseDocsResult" style="margin-top:12px;font-size:13px;display:none"></div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+
+        <div class="maintenance-row">
+          <div>
+            <strong>Corriger les fausses émissions TV</strong>
+            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
+              Détecte les séries classées en émissions qui ont des genres incompatibles
+              (Science-Fiction, Fantastique, Animation, Horreur) et les remet en Séries.
+              Aucun appel API nécessaire.
+            </p>
+          </div>
+          <button class="btn-sm" onclick="fixFalseEmissions()" id="fixFalseEmissionsBtn">▶ Lancer</button>
+        </div>
+        <div id="fixFalseEmissionsResult" style="margin-top:12px;font-size:13px;display:none"></div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+
+        <div class="maintenance-row">
+          <div>
             <strong>Reclassifier par configuration de flux</strong>
             <p class="text-muted" style="font-size:12px;margin:3px 0 0">
               Reclassifie tous les médias selon la configuration actuelle des flux

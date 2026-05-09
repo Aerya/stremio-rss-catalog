@@ -447,6 +447,55 @@ class WebUI {
       }
     });
 
+    // ─── Maintenance : Corriger les faux documentaires ──────────────────────
+    this.app.post('/api/admin/fix-false-docs', this.authMiddleware.bind(this), (req, res) => {
+      try {
+        const candidates = this.db.getFalseDocumentaryCandidates();
+        if (candidates.length === 0) {
+          return res.json({ candidates: 0, fixed: 0 });
+        }
+        const updates = candidates.map(c => ({
+          imdb_id:      c.imdb_id,
+          catalog_type: c.type === 'series' ? 'series' : 'films'
+        }));
+        const fixed = this.db.batchUpdateCatalogTypes(updates);
+        if (fixed > 0) {
+          this.stremioAddon.clearCache();
+          candidates.forEach(c => {
+            const to = c.type === 'series' ? 'series' : 'films';
+            console.log(`[Fix-False-Docs] documentaires → ${to} : ${c.name}`);
+          });
+        }
+        res.json({ candidates: candidates.length, fixed });
+      } catch (err) {
+        console.error('[Fix-False-Docs]', err);
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    // ─── Maintenance : Corriger les fausses émissions ───────────────────────
+    this.app.post('/api/admin/fix-false-emissions', this.authMiddleware.bind(this), (req, res) => {
+      try {
+        const candidates = this.db.getFalseEmissionCandidates();
+        if (candidates.length === 0) {
+          return res.json({ candidates: 0, fixed: 0 });
+        }
+        const updates = candidates.map(c => ({
+          imdb_id:      c.imdb_id,
+          catalog_type: 'series'
+        }));
+        const fixed = this.db.batchUpdateCatalogTypes(updates);
+        if (fixed > 0) {
+          this.stremioAddon.clearCache();
+          candidates.forEach(c => console.log(`[Fix-False-Emissions] emissions → series : ${c.name}`));
+        }
+        res.json({ candidates: candidates.length, fixed });
+      } catch (err) {
+        console.error('[Fix-False-Emissions]', err);
+        res.status(500).json({ error: err.message });
+      }
+    });
+
     // ─── Apprise Test ───────────────────────────────────────────────────────
     this.app.post('/api/apprise/test', this.authMiddleware.bind(this), async (req, res) => {
       const serverUrl = req.body.server_url || this.db.getConfig('apprise_server_url');

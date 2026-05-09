@@ -12,6 +12,14 @@ const DOCUMENTARY_GENRE_ID = 99;
 // Genre TMDB animation (anime si origine japonaise)
 const ANIMATION_GENRE_ID = 16;
 
+// Genres incompatibles avec un documentaire — leur présence annule la détection genre 99
+// (Action, Science-Fiction, Fantastique, Horreur)
+const DOC_DISQUALIFYING_GENRE_IDS = new Set([28, 878, 14, 27]);
+
+// Genres incompatibles avec une émission TV — annule la détection émission
+// (Science-Fiction, Fantastique, SF&Fantasy TV, Animation, Horreur)
+const EMISSION_DISQUALIFYING_GENRE_IDS = new Set([878, 14, 10765, 16, 27]);
+
 class TMDBMatcher {
   constructor(db) {
     this.db = db;
@@ -308,9 +316,15 @@ class TMDBMatcher {
                                 || (Array.isArray(match.origin_country) && match.origin_country.includes('JP'));
 
           // ── Couche de sécurité documentaires : s'applique toujours, quel que soit le flux ──
+          // Mais annulée si des genres contradictoires sont présents (Action, SF, Fantastique, Horreur)
           if (isDocGenre && catalogType !== 'documentaires') {
-            catalogType = 'documentaires';
-            console.log(`[TMDB] ↪ Forcé en documentaire (genre 99) : ${match.name}`);
+            const hasDisqualifier = match.genres.some(g => DOC_DISQUALIFYING_GENRE_IDS.has(g));
+            if (!hasDisqualifier) {
+              catalogType = 'documentaires';
+              console.log(`[TMDB] ↪ Forcé en documentaire (genre 99) : ${match.name}`);
+            } else {
+              console.log(`[TMDB] ↪ Genre 99 ignoré — genres contradictoires présents : ${match.name}`);
+            }
           }
 
           // ── Reclassifications auto (uniquement si le flux est en mode auto) ──
@@ -319,8 +333,13 @@ class TMDBMatcher {
               catalogType = 'animés';
               console.log(`[TMDB] ↪ Reclassifié en animé (genre 16 + JP) : ${match.name}`);
             } else if (isEmissionGenre && catalogType === 'series') {
-              catalogType = 'emissions';
-              console.log(`[TMDB] ↪ Reclassifié en émission (genres) : ${match.name}`);
+              const hasEmissionDisqualifier = match.genres.some(g => EMISSION_DISQUALIFYING_GENRE_IDS.has(g));
+              if (!hasEmissionDisqualifier) {
+                catalogType = 'emissions';
+                console.log(`[TMDB] ↪ Reclassifié en émission (genres) : ${match.name}`);
+              } else {
+                console.log(`[TMDB] ↪ Genre émission ignoré — genres contradictoires présents : ${match.name}`);
+              }
             } else if (!isAnimeGenre && catalogType === 'series' && this.tvdb.isConfigured()) {
               // TMDB n'a pas le genre 99 → vérification TVDB pour confirmation documentaire
               try {

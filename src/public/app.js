@@ -1100,6 +1100,70 @@ async function reclassifyDocs() {
 }
 window.reclassifyDocs = reclassifyDocs;
 
+async function fixFalseDocs() {
+  const btn    = document.getElementById('fixFalseDocsBtn');
+  const result = document.getElementById('fixFalseDocsResult');
+  btn.disabled = true;
+  btn.textContent = '⏳ En cours…';
+  result.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/admin/fix-false-docs', { method: 'POST' });
+    const d = await r.json();
+
+    if (!r.ok) {
+      result.innerHTML = `<span style="color:var(--danger)">✗ ${escHtml(d.error || 'Erreur')}</span>`;
+    } else if (d.fixed === 0) {
+      result.innerHTML = `<span style="color:var(--success)">✓ Aucun faux documentaire détecté.</span>`;
+    } else {
+      result.innerHTML = `
+        <span style="color:var(--success)">✓ Terminé.</span>
+        <span style="color:var(--text-muted);margin-left:8px">${d.candidates} candidats analysés · <strong>${d.fixed}</strong> faux documentaire(s) reclassifié(s) en Films / Séries</span>`;
+    }
+    result.style.display = 'block';
+    if (d.fixed > 0) { loadStats(); loadLibraryCounts(); }
+  } catch (e) {
+    result.innerHTML = `<span style="color:var(--danger)">✗ Erreur réseau</span>`;
+    result.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Lancer';
+  }
+}
+window.fixFalseDocs = fixFalseDocs;
+
+async function fixFalseEmissions() {
+  const btn    = document.getElementById('fixFalseEmissionsBtn');
+  const result = document.getElementById('fixFalseEmissionsResult');
+  btn.disabled = true;
+  btn.textContent = '⏳ En cours…';
+  result.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/admin/fix-false-emissions', { method: 'POST' });
+    const d = await r.json();
+
+    if (!r.ok) {
+      result.innerHTML = `<span style="color:var(--danger)">✗ ${escHtml(d.error || 'Erreur')}</span>`;
+    } else if (d.fixed === 0) {
+      result.innerHTML = `<span style="color:var(--success)">✓ Aucune fausse émission détectée.</span>`;
+    } else {
+      result.innerHTML = `
+        <span style="color:var(--success)">✓ Terminé.</span>
+        <span style="color:var(--text-muted);margin-left:8px">${d.candidates} candidats analysés · <strong>${d.fixed}</strong> fausse(s) émission(s) reclassifiée(s) en Séries</span>`;
+    }
+    result.style.display = 'block';
+    if (d.fixed > 0) { loadStats(); loadLibraryCounts(); }
+  } catch (e) {
+    result.innerHTML = `<span style="color:var(--danger)">✗ Erreur réseau</span>`;
+    result.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Lancer';
+  }
+}
+window.fixFalseEmissions = fixFalseEmissions;
+
 async function reclassifyAll() {
   const btn    = document.getElementById('reclassifyAllBtn');
   const result = document.getElementById('reclassifyAllResult');
