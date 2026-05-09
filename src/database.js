@@ -683,6 +683,40 @@ class DatabaseManager {
   searchCatalog(catalogType, query, skip, limit) { return this.searchMedia(catalogType, query, skip, limit); }
   getRecentCatalogAdditions(catalogType, limit) { return this.getRecentMediaAdditions(catalogType, limit); }
 
+  // Retourne tous les médias avec l'URL de leur release la plus ancienne (source d'origine)
+  getAllMediaWithPrimarySource() {
+    return this.db.prepare(`
+      SELECT
+        m.imdb_id, m.catalog_type, m.type, m.release_name,
+        (SELECT source_url  FROM releases WHERE media_imdb_id = m.imdb_id ORDER BY added_at ASC LIMIT 1) AS primary_source_url,
+        (SELECT release_name FROM releases WHERE media_imdb_id = m.imdb_id ORDER BY added_at ASC LIMIT 1) AS primary_release_name
+      FROM media m
+    `).all();
+  }
+
+  // Mise à jour groupée de catalog_type (transaction)
+  batchUpdateCatalogTypes(updates) {
+    const stmt = this.db.prepare('UPDATE media SET catalog_type = ?, updated_at = ? WHERE imdb_id = ?');
+    const now  = Date.now();
+    const run  = this.db.transaction((rows) => {
+      let count = 0;
+      for (const u of rows) count += stmt.run(u.catalog_type, now, u.imdb_id).changes;
+      return count;
+    });
+    return run(updates);
+  }
+
+  // Médias avec genre 99 (Documentaire TMDB) mais pas encore classés en documentaires
+  getDocumentaryCandidatesForReclassify() {
+    return this.db.prepare(`
+      SELECT imdb_id, name, catalog_type
+      FROM media
+      WHERE catalog_type != 'documentaires'
+        AND genres IS NOT NULL
+        AND EXISTS (SELECT 1 FROM json_each(genres) WHERE value = 99)
+    `).all();
+  }
+
   getAnimeCandidatesForReclassify() {
     return this.db.prepare(`
       SELECT imdb_id, tmdb_id, type, name

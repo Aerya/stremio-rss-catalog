@@ -84,10 +84,12 @@ function addRssField(value, force) {
     select.className = 'additional-rss-force';
     select.style.cssText = 'width: 160px; padding: 8px; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 13px; cursor: pointer;';
     [
-        { value: 'auto', label: 'Tout' },
-        { value: 'films', label: 'Films' },
-        { value: 'series', label: 'Séries' },
-        { value: 'documentaires', label: 'Documentaires' }
+        { value: 'auto',           label: 'Détection auto' },
+        { value: 'films',          label: 'Films' },
+        { value: 'series',         label: 'Séries' },
+        { value: 'documentaires',  label: 'Documentaires' },
+        { value: 'emissions',      label: 'Émissions' },
+        { value: 'animés',         label: 'Animés' }
     ].forEach(opt => {
         const o = document.createElement('option');
         o.value = opt.value;
@@ -165,6 +167,50 @@ window.startSync = async function () {
 window.logout = async function () {
     await fetch('/api/logout', { method: 'POST' });
     window.location.href = '/';
+};
+
+window.reclassify = async function () {
+    const btn = document.getElementById('reclassifyBtn');
+    const result = document.getElementById('reclassifyResult');
+    if (!btn || !result) return;
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Reclassification en cours...';
+    result.style.display = 'none';
+
+    try {
+        const response = await fetch('/api/reclassify', { method: 'POST' });
+        const data = await response.json();
+
+        if (response.ok) {
+            const catLabels = {
+                films: '🎬 Films', documentaires: '🎥 Docs',
+                series: '📺 Séries', emissions: '🎙️ Émissions', animés: '⛩️ Animés'
+            };
+            const breakdown = Object.entries(data.byCategory || {})
+                .map(([cat, n]) => `${catLabels[cat] || cat} : <strong>+${n}</strong>`)
+                .join(' &nbsp;|&nbsp; ');
+
+            result.style.display = 'block';
+            result.style.borderColor = data.reclassified > 0 ? '#48bb78' : '#718096';
+            result.innerHTML = data.reclassified > 0
+                ? `✅ <strong>${data.reclassified}</strong> médias reclassifiés sur ${data.total}<br><small style="color:#aaa;margin-top:4px;display:block">${breakdown}</small>`
+                : `ℹ️ Aucun changement — les <strong>${data.total}</strong> médias sont déjà correctement classés.`;
+
+            if (data.reclassified > 0) loadStats();
+        } else {
+            result.style.display = 'block';
+            result.style.borderColor = '#e53e3e';
+            result.innerHTML = '❌ Erreur : ' + (data.error || 'inconnue');
+        }
+    } catch (err) {
+        result.style.display = 'block';
+        result.style.borderColor = '#e53e3e';
+        result.innerHTML = '❌ Erreur réseau';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 Reclassifier maintenant';
+    }
 };
 
 // --- Internal Logic ---

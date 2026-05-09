@@ -136,23 +136,47 @@ class RSSParser {
     return null;
   }
 
+  // Déduit la catégorie probable depuis l'URL du flux (ex: feed?cat=documentaires)
+  guessForceFromUrl(url) {
+    if (!url) return null;
+    const u = url.toLowerCase();
+    // Ordre : du plus spécifique au plus générique
+    if (/documentaire|documentary/.test(u))        return 'documentaires';
+    if (/anim[eé]|anime|manga/.test(u))            return 'animés';
+    if (/[eé]mission|talkshow|talk[\-_]show|variet/.test(u)) return 'emissions';
+    if (/s[eé]rie|series|saison/.test(u))          return 'series';
+    if (/film|movie|cin[eé]/.test(u))              return 'films';
+    return null;
+  }
+
   parseReleaseName(title) {
     const info = {
       name: title,
       year: null,
       isDoc: false,
-      isSeries: false
+      isSeries: false,
+      isAnime: false,
+      isEmission: false
     };
 
-    if (/\b(doc|docu|documentary|documentaire)\b/i.test(title)) {
+    // Documentaires
+    if (/\b(doc|docu|documentary|documentaire|docuserie|docu[\-\s]?serie)\b/i.test(title)) {
       info.isDoc = true;
     }
 
-    if (/\b(OVA|OAV)\b/i.test(title)) {
+    // Animé
+    if (/\b(OVA|OAV|ANIME)\b/i.test(title) || /\b(anim[eé])\b/i.test(title)) {
       info.isAnime  = true;
       info.isSeries = true;
     }
 
+    // Emissions / Talk-shows
+    if (/\b(TALKSHOW|TALK[\.\-]SHOW|VARIET[EÉ]|EMISSION|[EÉ]MISSION)\b/i.test(title)) {
+      info.isEmission = true;
+      info.isSeries   = true;
+    }
+
+    // Séries (pattern S01E01, Saison X, Season X)
     if (/\bS\d{2}(E\d{2,3})?\b/i.test(title) || /\b(Saison|Season)\s*\d+\b/i.test(title)) {
       info.isSeries = true;
     }
@@ -206,18 +230,27 @@ class RSSParser {
   }
 
   _parseItems(items, force, sourceUrl) {
+    // En mode auto : tenter de deviner la catégorie depuis l'URL du flux
+    const urlHint = (force === 'auto' || !force) ? this.guessForceFromUrl(sourceUrl) : null;
+    const effectiveForce = (force && force !== 'auto') ? force : (urlHint || 'auto');
+
+    if (urlHint && (force === 'auto' || !force)) {
+      console.log(`[RSS] URL hint "${urlHint}" détecté automatiquement depuis : ${(sourceUrl || '').substring(0, 60)}`);
+    }
+
     const parsed = [];
     for (const item of items) {
       if (!this.filterByRequiredTags(item.title)) continue;
       const info = this.parseReleaseName(item.title);
       const releaseId = typeof item.guid === 'object' && item.guid._ ? item.guid._ : (item.guid || item.link);
-      // Priorité : animé > doc > série > film
-      const detectedCatalog = info.isAnime ? 'animés'
-                            : info.isDoc   ? 'documentaires'
-                            : info.isSeries ? 'series'
+      // Priorité titre : animé > doc > émission > série > film
+      const detectedCatalog = info.isAnime    ? 'animés'
+                            : info.isDoc      ? 'documentaires'
+                            : info.isEmission ? 'emissions'
+                            : info.isSeries   ? 'series'
                             : 'films';
       const detectedType = info.isSeries ? 'series' : 'movie';
-      const detected = this.applyForce(detectedCatalog, detectedType, force);
+      const detected = this.applyForce(detectedCatalog, detectedType, effectiveForce);
 
       parsed.push({
         release_name: item.title,

@@ -1033,8 +1033,8 @@ window.testApprise = testApprise;
 // ═══════════════════════════ MAINTENANCE ═══════════════════════════════
 
 async function reclassifyAnimes() {
-  const btn    = document.getElementById('reclassifyBtn');
-  const result = document.getElementById('reclassifyResult');
+  const btn    = document.getElementById('reclassifyAnimesBtn');
+  const result = document.getElementById('reclassifyAnimesResult');
   btn.disabled = true;
   btn.textContent = '⏳ En cours…';
   result.style.display = 'none';
@@ -1067,6 +1067,74 @@ async function reclassifyAnimes() {
   }
 }
 window.reclassifyAnimes = reclassifyAnimes;
+
+async function reclassifyDocs() {
+  const btn    = document.getElementById('reclassifyDocsBtn');
+  const result = document.getElementById('reclassifyDocsResult');
+  btn.disabled = true;
+  btn.textContent = '⏳ En cours…';
+  result.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/admin/reclassify-docs', { method: 'POST' });
+    const d = await r.json();
+
+    if (!r.ok) {
+      result.innerHTML = `<span style="color:var(--danger)">✗ ${escHtml(d.error || 'Erreur')}</span>`;
+    } else if (d.reclassified === 0) {
+      result.innerHTML = `<span style="color:var(--success)">✓ Aucun candidat trouvé — tous les médias sont déjà bien classés.</span>`;
+    } else {
+      result.innerHTML = `
+        <span style="color:var(--success)">✓ Terminé.</span>
+        <span style="color:var(--text-muted);margin-left:8px">${d.candidates} candidats analysés · <strong>${d.reclassified}</strong> reclassifié(s) en documentaires</span>`;
+    }
+    result.style.display = 'block';
+    if (d.reclassified > 0) { loadStats(); loadLibraryCounts(); }
+  } catch (e) {
+    result.innerHTML = `<span style="color:var(--danger)">✗ Erreur réseau</span>`;
+    result.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Lancer';
+  }
+}
+window.reclassifyDocs = reclassifyDocs;
+
+async function reclassifyAll() {
+  const btn    = document.getElementById('reclassifyAllBtn');
+  const result = document.getElementById('reclassifyAllResult');
+  btn.disabled = true;
+  btn.textContent = '⏳ En cours…';
+  result.style.display = 'none';
+
+  try {
+    const r = await fetch('/api/reclassify', { method: 'POST' });
+    const d = await r.json();
+
+    if (!r.ok) {
+      result.innerHTML = `<span style="color:var(--danger)">✗ ${escHtml(d.error || 'Erreur')}</span>`;
+    } else if (d.reclassified === 0) {
+      result.innerHTML = `<span style="color:var(--success)">✓ Aucun changement — les ${d.total} médias sont déjà correctement classés.</span>`;
+    } else {
+      const cats = { films: 'Films', documentaires: 'Docs', series: 'Séries', emissions: 'Émissions', 'animés': 'Animés' };
+      const breakdown = Object.entries(d.byCategory || {})
+        .map(([c, n]) => `${cats[c] || c} : +${n}`).join(' · ');
+      result.innerHTML = `
+        <span style="color:var(--success)">✓ Terminé.</span>
+        <span style="color:var(--text-muted);margin-left:8px"><strong>${d.reclassified}</strong> reclassifié(s) sur ${d.total}</span>
+        ${breakdown ? `<br><small style="color:var(--text-muted)">${breakdown}</small>` : ''}`;
+    }
+    result.style.display = 'block';
+    if (d.reclassified > 0) { loadStats(); loadLibraryCounts(); }
+  } catch (e) {
+    result.innerHTML = `<span style="color:var(--danger)">✗ Erreur réseau</span>`;
+    result.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Lancer';
+  }
+}
+window.reclassifyAll = reclassifyAll;
 
 // ═══════════════════════════ CONFIG ════════════════════════════════════
 

@@ -324,6 +324,60 @@ class WebUI {
       }
     });
 
+    // ─── Reclassifier tous les médias selon config flux actuelle ───────────
+    this.app.post('/api/reclassify', this.authMiddleware.bind(this), (req, res) => {
+      try {
+        // Construire la map url → force depuis la config actuelle
+        const feedMap = {};
+        const mainUrl   = this.db.getConfig('rss_films_url');
+        const mainForce = this.db.getConfig('rss_films_force') || 'auto';
+        if (mainUrl) feedMap[mainUrl] = mainForce;
+        try {
+          const additional = JSON.parse(this.db.getConfig('rss_additional_urls') || '[]');
+          additional.forEach(f => { if (f.url) feedMap[f.url] = f.force || 'auto'; });
+        } catch (e) { /* silencieux */ }
+
+        const allMedia = this.db.getAllMediaWithPrimarySource();
+        const updates  = [];
+        const byCategory = {};
+
+        for (const media of allMedia) {
+          const sourceUrl    = media.primary_source_url;
+          const releaseName  = media.primary_release_name || media.release_name || '';
+
+          // Force configurée pour ce flux
+          const configForce  = sourceUrl ? (feedMap[sourceUrl] || 'auto') : 'auto';
+          // URL hint en mode auto
+          const urlHint      = (configForce === 'auto') ? this.rssParser.guessForceFromUrl(sourceUrl) : null;
+          const effectiveForce = (configForce !== 'auto') ? configForce : (urlHint || 'auto');
+
+          // Détection depuis le titre (fallback)
+          const info = this.rssParser.parseReleaseName(releaseName);
+          const detectedCatalog = info.isAnime    ? 'animés'
+                                : info.isDoc      ? 'documentaires'
+                                : info.isEmission ? 'emissions'
+                                : info.isSeries   ? 'series'
+                                : 'films';
+          const detected = this.rssParser.applyForce(detectedCatalog, info.isSeries ? 'series' : 'movie', effectiveForce);
+
+          if (detected.catalogType !== media.catalog_type) {
+            updates.push({ imdb_id: media.imdb_id, catalog_type: detected.catalogType });
+            byCategory[detected.catalogType] = (byCategory[detected.catalogType] || 0) + 1;
+            console.log(`[Reclassify] ${media.catalog_type} → ${detected.catalogType} : ${media.release_name || media.imdb_id}`);
+          }
+        }
+
+        const reclassified = updates.length > 0 ? this.db.batchUpdateCatalogTypes(updates) : 0;
+        if (reclassified > 0) this.stremioAddon.clearCache();
+
+        console.log(`[Reclassify] ${reclassified}/${allMedia.length} médias reclassifiés`);
+        res.json({ success: true, total: allMedia.length, reclassified, byCategory });
+      } catch (err) {
+        console.error('[Reclassify]', err);
+        res.status(500).json({ error: err.message });
+      }
+    });
+
     // ─── Maintenance : Reclassifier animés ──────────────────────────────────
     this.app.post('/api/admin/reclassify-animes', this.authMiddleware.bind(this), async (req, res) => {
       const apiKey = this.db.getConfig('tmdb_api_key');
@@ -371,6 +425,26 @@ class WebUI {
       }
 
       res.json({ candidates: candidates.length, reclassified, skipped, errors });
+    });
+
+    // ─── Maintenance : Reclassifier documentaires (genre 99 déjà en base) ──
+    this.app.post('/api/admin/reclassify-docs', this.authMiddleware.bind(this), (req, res) => {
+      try {
+        const candidates = this.db.getDocumentaryCandidatesForReclassify();
+        if (candidates.length === 0) {
+          return res.json({ candidates: 0, reclassified: 0 });
+        }
+        const updates = candidates.map(c => ({ imdb_id: c.imdb_id, catalog_type: 'documentaires' }));
+        const reclassified = this.db.batchUpdateCatalogTypes(updates);
+        if (reclassified > 0) {
+          this.stremioAddon.clearCache();
+          candidates.forEach(c => console.log(`[Reclassify-Docs] ✓ documentaire : ${c.name} (était : ${c.catalog_type})`));
+        }
+        res.json({ candidates: candidates.length, reclassified });
+      } catch (err) {
+        console.error('[Reclassify-Docs]', err);
+        res.status(500).json({ error: err.message });
+      }
     });
 
     // ─── Apprise Test ───────────────────────────────────────────────────────

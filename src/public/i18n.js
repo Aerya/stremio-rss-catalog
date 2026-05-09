@@ -62,6 +62,7 @@ const translations = {
     // Config
     config_title: "Configuration",
     config_rss_films: "Flux RSS",
+    config_rss_main_label: "Flux principal",
     config_rss_films_hint: "Incluant votre clé API ou passkey",
     config_rss_additional_title: "Flux RSS additionnels",
     config_rss_additional_hint: "Même fonctionnement que le flux principal : Films, Documentaires et Séries détectés automatiquement.",
@@ -120,6 +121,11 @@ const translations = {
     sync_progress: "Progression",
     sync_matched_label: "Matchées",
     sync_unprocessed: "Non traitées",
+
+    // Reclassification
+    reclassify_title: "🔍 Reclassification des médias",
+    reclassify_desc: "Reclassifie tous les médias déjà indexés selon la configuration actuelle des flux (force manuel + détection automatique depuis l'URL). Utile après avoir modifié la catégorie d'un flux.",
+    reclassify_btn: "🔍 Reclassifier maintenant",
 
     // Install
     install_title: "Installation dans Stremio",
@@ -259,6 +265,7 @@ const translations = {
     // Config
     config_title: "Configuration",
     config_rss_films: "RSS Feed",
+    config_rss_main_label: "Main feed",
     config_rss_films_hint: "Including your API key or passkey",
     config_rss_additional_title: "Additional RSS Feeds",
     config_rss_additional_hint: "Same behavior as the main feed: Movies, Documentaries and Series detected automatically.",
@@ -317,6 +324,11 @@ const translations = {
     sync_progress: "Progress",
     sync_matched_label: "Matched",
     sync_unprocessed: "Unprocessed",
+
+    // Reclassification
+    reclassify_title: "🔍 Media Reclassification",
+    reclassify_desc: "Reclassifies all already-indexed media according to the current feed configuration (manual force + automatic URL detection). Useful after changing a feed's category.",
+    reclassify_btn: "🔍 Reclassify now",
 
     // Install
     install_title: "Install in Stremio",
@@ -456,6 +468,7 @@ const translations = {
     // Config
     config_title: "Konfiguration",
     config_rss_films: "RSS-Feed",
+    config_rss_main_label: "Haupt-Feed",
     config_rss_films_hint: "Einschließlich Ihres API-Schlüssels oder Passkeys",
     config_rss_additional_title: "Zusätzliche RSS-Feeds",
     config_rss_additional_hint: "Gleiche Funktionsweise wie der Haupt-Feed: Filme, Dokumentarfilme und Serien werden automatisch erkannt.",
@@ -514,6 +527,11 @@ const translations = {
     sync_progress: "Fortschritt",
     sync_matched_label: "Übereinstimmend",
     sync_unprocessed: "Nicht verarbeitet",
+
+    // Reclassification
+    reclassify_title: "🔍 Medien-Reklassifizierung",
+    reclassify_desc: "Klassifiziert alle bereits indizierten Medien gemäß der aktuellen Feed-Konfiguration neu (manuelle Erzwingung + automatische URL-Erkennung). Nützlich nach Änderung der Kategorie eines Feeds.",
+    reclassify_btn: "🔍 Jetzt reklassifizieren",
 
     // Install
     install_title: "In Stremio installieren",

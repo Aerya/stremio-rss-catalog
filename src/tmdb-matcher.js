@@ -300,33 +300,38 @@ class TMDBMatcher {
       if (match && match.imdb_id) {
         let catalogType = item.catalog_type;
 
-        // Reclassification automatique via genres TMDB (source_force='auto' uniquement)
-        if (item.source_force === 'auto' && match.genres) {
-          const isAnimeGenre = match.genres.includes(ANIMATION_GENRE_ID);
-          const isJapanese   = match.original_language === 'ja'
-                            || (Array.isArray(match.origin_country) && match.origin_country.includes('JP'));
+        if (match.genres) {
           const isDocGenre      = match.genres.includes(DOCUMENTARY_GENRE_ID);
+          const isAnimeGenre    = match.genres.includes(ANIMATION_GENRE_ID);
           const isEmissionGenre = match.genres.some(g => EMISSIONS_GENRE_IDS.has(g));
+          const isJapanese      = match.original_language === 'ja'
+                                || (Array.isArray(match.origin_country) && match.origin_country.includes('JP'));
 
-          if (isAnimeGenre && isJapanese) {
-            catalogType = 'animés';
-            console.log(`[TMDB] ↪ Reclassifié en animé (genre 16 + JP) : ${match.name}`);
-          } else if (isDocGenre && catalogType !== 'documentaires') {
+          // ── Couche de sécurité documentaires : s'applique toujours, quel que soit le flux ──
+          if (isDocGenre && catalogType !== 'documentaires') {
             catalogType = 'documentaires';
-            console.log(`[TMDB] ↪ Reclassifié en documentaire (genre 99) : ${match.name}`);
-          } else if (isEmissionGenre && catalogType === 'series') {
-            catalogType = 'emissions';
-            console.log(`[TMDB] ↪ Reclassifié en émission (genres) : ${match.name}`);
-          } else if (!isDocGenre && !isAnimeGenre && catalogType === 'series' && this.tvdb.isConfigured()) {
-            // TMDB n'a pas le genre 99 → vérification TVDB pour confirmation documentaire
-            try {
-              const tvdbResult = await this.tvdb.match(item.cleanName, item.year);
-              if (tvdbResult && tvdbResult.isDocumentary) {
-                catalogType = 'documentaires';
-                console.log(`[TVDB] ↪ Confirmé documentaire via TVDB : ${match.name}`);
+            console.log(`[TMDB] ↪ Forcé en documentaire (genre 99) : ${match.name}`);
+          }
+
+          // ── Reclassifications auto (uniquement si le flux est en mode auto) ──
+          if (item.source_force === 'auto' && !isDocGenre) {
+            if (isAnimeGenre && isJapanese) {
+              catalogType = 'animés';
+              console.log(`[TMDB] ↪ Reclassifié en animé (genre 16 + JP) : ${match.name}`);
+            } else if (isEmissionGenre && catalogType === 'series') {
+              catalogType = 'emissions';
+              console.log(`[TMDB] ↪ Reclassifié en émission (genres) : ${match.name}`);
+            } else if (!isAnimeGenre && catalogType === 'series' && this.tvdb.isConfigured()) {
+              // TMDB n'a pas le genre 99 → vérification TVDB pour confirmation documentaire
+              try {
+                const tvdbResult = await this.tvdb.match(item.cleanName, item.year);
+                if (tvdbResult && tvdbResult.isDocumentary) {
+                  catalogType = 'documentaires';
+                  console.log(`[TVDB] ↪ Confirmé documentaire via TVDB : ${match.name}`);
+                }
+              } catch (err) {
+                console.error(`[TVDB] Erreur vérification docu "${item.cleanName}":`, err.message);
               }
-            } catch (err) {
-              console.error(`[TVDB] Erreur vérification docu "${item.cleanName}":`, err.message);
             }
           }
         }

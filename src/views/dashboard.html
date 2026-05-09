@@ -294,7 +294,7 @@
         <div class="config-section">
           <h3 data-i18n="config_rss_films">Flux RSS</h3>
           <div class="field">
-            <label data-i18n="config_rss_films">Flux principal</label>
+            <label data-i18n="config_rss_main_label">Flux principal</label>
             <div class="rss-row" style="margin-bottom:6px">
               <input type="text" id="rss_films_name" name="rss_films_name"
                 placeholder="Nom du flux (ex: MonTracker)" class="rss-name-input">
@@ -565,9 +565,9 @@
 
       <!-- Maintenance -->
       <div class="card" style="margin-top:24px">
-        <h3 style="margin-bottom:6px">🔧 Maintenance</h3>
+        <h3 style="margin-bottom:6px">Maintenance</h3>
         <p class="text-muted" style="font-size:13px;margin-bottom:16px">
-          Actions ponctuelles sur la base de données. Nécessite une clé TMDB configurée.
+          Actions ponctuelles sur la base de données.
         </p>
 
         <div class="maintenance-row">
@@ -576,11 +576,40 @@
             <p class="text-muted" style="font-size:12px;margin:3px 0 0">
               Parcourt tous les films &amp; séries déjà indexés et détecte ceux qui sont des animés
               (genre Animation TMDB + langue japonaise). Met à jour leur catégorie en base.
+              Nécessite une clé TMDB.
             </p>
           </div>
-          <button class="btn-sm" onclick="reclassifyAnimes()" id="reclassifyBtn">▶ Lancer</button>
+          <button class="btn-sm" onclick="reclassifyAnimes()" id="reclassifyAnimesBtn">▶ Lancer</button>
         </div>
-        <div id="reclassifyResult" style="margin-top:12px;font-size:13px;display:none"></div>
+        <div id="reclassifyAnimesResult" style="margin-top:12px;font-size:13px;display:none"></div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+
+        <div class="maintenance-row">
+          <div>
+            <strong>Reclassifier les documentaires</strong>
+            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
+              Parcourt tous les médias déjà indexés et détecte ceux qui sont des documentaires
+              (genre 99 TMDB déjà stocké en base). Aucun appel API nécessaire.
+            </p>
+          </div>
+          <button class="btn-sm" onclick="reclassifyDocs()" id="reclassifyDocsBtn">▶ Lancer</button>
+        </div>
+        <div id="reclassifyDocsResult" style="margin-top:12px;font-size:13px;display:none"></div>
+
+        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+
+        <div class="maintenance-row">
+          <div>
+            <strong>Reclassifier par configuration de flux</strong>
+            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
+              Reclassifie tous les médias selon la configuration actuelle des flux
+              (force manuel + détection automatique depuis l'URL du flux). Aucun appel API nécessaire.
+            </p>
+          </div>
+          <button class="btn-sm" onclick="reclassifyAll()" id="reclassifyAllBtn">▶ Lancer</button>
+        </div>
+        <div id="reclassifyAllResult" style="margin-top:12px;font-size:13px;display:none"></div>
       </div>
     </section>
 
