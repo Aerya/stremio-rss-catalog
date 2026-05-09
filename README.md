@@ -79,6 +79,18 @@
 
 ---
 
+## Captures d'écran
+
+| | |
+|---|---|
+| ![Médiathèque](screens/Médiathèque.png) | ![Vue d'ensemble](screens/Vue.d.Ensemble.png) |
+| ![Synchronisation](screens/Synchronisation.png) | ![Échecs](screens/Echecs.png) |
+| ![Sources](screens/Sources.png) | ![Configuration](screens/Configuration.png) |
+
+![Notification Discord](screens/DiscordNotif.png)
+
+---
+
 ## Démarrage rapide
 
 Copier ou créer [le docker-compose.yml](./docker-compose.yml) :

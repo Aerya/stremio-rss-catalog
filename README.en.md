@@ -79,6 +79,18 @@
 
 ---
 
+## Screenshots
+
+| | |
+|---|---|
+| ![Media Library](screens/Médiathèque.png) | ![Overview](screens/Vue.d.Ensemble.png) |
+| ![Sync history](screens/Synchronisation.png) | ![Failed releases](screens/Echecs.png) |
+| ![Sources](screens/Sources.png) | ![Configuration](screens/Configuration.png) |
+
+![Discord notification](screens/DiscordNotif.png)
+
+---
+
 ## Quick Start
 
 Copy or create [docker-compose.yml](./docker-compose.yml):
