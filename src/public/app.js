@@ -112,11 +112,14 @@ async function loadOverview() {
     };
 
     container.innerHTML = cats.map(c => `
-      <div class="ov-cat-section">
-        <h4 class="ov-cat-label"><span class="badge badge-${c.badge}">${escHtml(c.label)}</span>
-          <span class="ov-cat-count">${c.items.length}</span></h4>
+      <details class="ov-cat-details">
+        <summary class="ov-cat-summary">
+          <span class="ov-cat-chevron">▶</span>
+          <span class="badge badge-${c.badge}">${escHtml(c.label)}</span>
+          <span class="ov-cat-count">${c.items.length} titre${c.items.length > 1 ? 's' : ''}</span>
+        </summary>
         <ul class="ov-list">${c.items.slice(0, 10).map(renderRow).join('')}</ul>
-      </div>
+      </details>
     `).join('');
   } catch (e) { console.error('loadOverview', e); }
 }
@@ -226,65 +229,48 @@ window.onSortChange = onSortChange;
 function selectYear(y) {
   libYear = y;
   libPage = 1;
-  document.querySelectorAll('.year-pill').forEach(b => {
+  // Sync quick pills
+  document.querySelectorAll('.year-qpill').forEach(b => {
     b.classList.toggle('active', b.dataset.year === y);
   });
+  // Clear text input if we clicked a pill
+  const inp = document.getElementById('libYearInput');
+  if (inp && y !== inp.value) inp.value = '';
   loadLibrary();
 }
 window.selectYear = selectYear;
 
+let libYearInputTimer = null;
+function debounceYearInput(val) {
+  clearTimeout(libYearInputTimer);
+  // Deactivate all quick pills
+  document.querySelectorAll('.year-qpill').forEach(b => b.classList.remove('active'));
+  libYearInputTimer = setTimeout(() => {
+    const v = val.trim();
+    // Validate: single year (4 digits) or range (YYYY-YYYY)
+    if (!v || /^\d{4}$/.test(v) || /^\d{4}-\d{4}$/.test(v)) {
+      libYear = v;
+      libPage = 1;
+      loadLibrary();
+    }
+  }, 600);
+}
+window.debounceYearInput = debounceYearInput;
+
 function setLibView(mode) {
   document.querySelectorAll('.vt-btn').forEach(b => b.classList.toggle('active', b.dataset.vt === mode));
-
-  const sortEl  = document.getElementById('libSort');
-  const yearEl  = document.getElementById('libYearPills');
-  const limitEl = document.getElementById('libLimit');
-  const searchEl = document.getElementById('libSearch');
-
-  if (mode === 'releases') {
-    libMode = 'releases';
-    if (sortEl)  sortEl.style.display  = 'none';
-    if (yearEl)  yearEl.style.display  = 'none';
-    if (!searchEl.dataset.origPlaceholder) searchEl.dataset.origPlaceholder = searchEl.placeholder;
-    searchEl.placeholder = 'Rechercher une release ou un titre…';
-    searchEl.value = libRlzSearch;
-    loadReleases();
-  } else {
-    const wasReleases = libMode === 'releases';
-    const prevView    = libView;
-    libMode = 'media';
-    libView = mode; // 'grid' | 'list'
-    if (sortEl)  sortEl.style.display  = '';
-    if (yearEl)  yearEl.style.display  = '';
-    if (searchEl.dataset.origPlaceholder) searchEl.placeholder = searchEl.dataset.origPlaceholder;
-    searchEl.value = libSearch;
-    document.querySelectorAll('.tab-btn[data-catalog]').forEach(b => {
-      b.classList.toggle('active', b.dataset.catalog === libCatalog);
-    });
-    if (wasReleases) {
-      loadLibrary();
-    } else if (prevView !== mode) {
-      const grid = document.getElementById('libraryGrid');
-      if (grid && grid.dataset.lastData) renderMediaContent(JSON.parse(grid.dataset.lastData));
-    }
+  const prevView = libView;
+  libView = mode; // 'grid' | 'list'
+  // Re-render without re-fetching if we already have data
+  if (prevView !== mode) {
+    const grid = document.getElementById('libraryGrid');
+    if (grid && grid.dataset.lastData) renderMediaContent(JSON.parse(grid.dataset.lastData));
   }
 }
 window.setLibView = setLibView;
 
 document.querySelectorAll('.tab-btn[data-catalog]').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (libMode === 'releases') {
-      // Exit releases view, switch to current libView without reloading yet
-      libMode = 'media';
-      const sortEl = document.getElementById('libSort');
-      const yearEl = document.getElementById('libYearPills');
-      const searchEl = document.getElementById('libSearch');
-      if (sortEl) sortEl.style.display = '';
-      if (yearEl) yearEl.style.display = '';
-      if (searchEl.dataset.origPlaceholder) searchEl.placeholder = searchEl.dataset.origPlaceholder;
-      searchEl.value = libSearch;
-      document.querySelectorAll('.vt-btn').forEach(b => b.classList.toggle('active', b.dataset.vt === libView));
-    }
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     libCatalog = btn.dataset.catalog;
@@ -340,21 +326,26 @@ async function loadLibraryCounts() {
 }
 
 
-async function loadYearsFilter() {
-  try {
-    const r = await fetch('/api/media/years');
-    const years = await r.json();
-    const container = document.getElementById('libYearPills');
-    if (!container) return;
-    const allYears = ['', ...years];
-    container.innerHTML = allYears.map(y => {
-      const label = y === '' ? (t('lib_year_all') || 'Toute année') : y;
-      const active = libYear === y ? ' active' : '';
-      return `<button class="year-pill${active}" data-year="${escHtml(String(y))}" onclick="selectYear('${escHtml(String(y))}')">${escHtml(String(label))}</button>`;
+function loadYearsFilter() {
+  const container = document.getElementById('libYearQuick');
+  if (!container) return;
+  const now = new Date().getFullYear();
+  const quick = [
+    { label: 'En cours', year: String(now) },
+    { label: String(now - 1), year: String(now - 1) },
+    { label: String(now - 2), year: String(now - 2) },
+    { label: String(now - 3), year: String(now - 3) },
+  ];
+  // "Toutes" pill first
+  const allActive = !libYear ? ' active' : '';
+  container.innerHTML = `<button class="year-qpill${allActive}" data-year="" onclick="selectYear('')">Toutes</button>` +
+    quick.map(q => {
+      const active = libYear === q.year ? ' active' : '';
+      return `<button class="year-qpill${active}" data-year="${q.year}" onclick="selectYear('${q.year}')">${escHtml(q.label)}</button>`;
     }).join('');
-    // Hide year pills when in releases mode
-    if (libMode === 'releases') container.style.display = 'none';
-  } catch (e) { /* silencieux */ }
+  // Restore input value if we had a custom year
+  const inp = document.getElementById('libYearInput');
+  if (inp && libYear && !quick.find(q => q.year === libYear)) inp.value = libYear;
 }
 
 function renderMediaContent(data) {
@@ -378,21 +369,27 @@ function renderMediaList(data) {
   grid.className = 'media-list-view';
   grid.innerHTML = `<table class="media-list-table">
     <thead><tr>
-      <th>Titre</th><th>Année</th><th>Catégorie</th><th>Releases</th><th>Ajouté le</th>
+      <th>Titre</th><th>Releases</th><th>Année</th><th>Catégorie</th><th>Ajouté le</th>
     </tr></thead>
     <tbody>
       ${data.items.map(m => {
         const badgeCls = 'catalog-badge badge-' + m.catalog_type;
         const mediaJson = escHtml(JSON.stringify(m));
         const thumb = posterUrl(m.imdb_id, m.poster);
+        const rlzNames = (m.release_names || []).map(n =>
+          `<span class="mlt-rlz-name">${escHtml(n)}</span>`
+        ).join('');
+        const rlzCell = rlzNames
+          ? `<div class="mlt-rlz-list">${rlzNames}</div>`
+          : `<span class="text-muted" style="font-size:11px">${m.release_count || 0} release${(m.release_count||0)>1?'s':''}</span>`;
         return `<tr class="media-list-row" onclick="openDrawer('${escHtml(m.imdb_id)}', JSON.parse(this.dataset.media))" data-media="${mediaJson}" title="${escHtml(m.name)}">
           <td class="mlt-title">
             ${thumb ? `<img class="mlt-thumb" src="${escHtml(thumb)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '<span class="mlt-thumb-ph"></span>'}
             <span>${escHtml(m.name)}</span>
           </td>
+          <td class="mlt-rlz-cell">${rlzCell}</td>
           <td class="mlt-year">${m.year || '—'}</td>
           <td><span class="${badgeCls}">${m.catalog_type}</span></td>
-          <td class="mlt-rlz">${m.release_count || 0}</td>
           <td class="mlt-date">${fmtDate(m.first_seen_at)}</td>
         </tr>`;
       }).join('')}

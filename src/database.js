@@ -504,7 +504,19 @@ class DatabaseManager {
 
     if (catalog) { conditions.push('m.catalog_type = ?'); params.push(catalog); }
     if (search)  { conditions.push('(m.name LIKE ? OR m.release_name LIKE ?)'); params.push(`%${search}%`, `%${search}%`); }
-    if (year)    { conditions.push('m.year = ?'); params.push(year); }
+
+    // Support plage d'années : "2010-2020" ou année seule "2024"
+    if (year) {
+      const rangeParts = String(year).match(/^(\d{4})-(\d{4})$/);
+      if (rangeParts) {
+        conditions.push('CAST(m.year AS INTEGER) >= ? AND CAST(m.year AS INTEGER) <= ?');
+        params.push(parseInt(rangeParts[1]), parseInt(rangeParts[2]));
+      } else {
+        conditions.push('m.year = ?');
+        params.push(String(year));
+      }
+    }
+
     if (quality) { conditions.push('EXISTS (SELECT 1 FROM releases rq WHERE rq.media_imdb_id = m.imdb_id AND rq.quality LIKE ?)'); params.push(`%${quality}%`); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -522,7 +534,10 @@ class DatabaseManager {
     const total = this.db.prepare(`SELECT COUNT(*) as c FROM media m ${where}`).get(...params).c;
 
     const rows = this.db.prepare(`
-      SELECT m.*, COUNT(r.id) as release_count
+      SELECT m.*, COUNT(r.id) as release_count,
+        (SELECT GROUP_CONCAT(release_name, '|||')
+         FROM (SELECT release_name FROM releases WHERE media_imdb_id = m.imdb_id ORDER BY added_at DESC LIMIT 3)
+        ) as release_names_raw
       FROM media m LEFT JOIN releases r ON r.media_imdb_id = m.imdb_id
       ${where}
       GROUP BY m.imdb_id
@@ -531,7 +546,11 @@ class DatabaseManager {
     `).all(...params, Number(limit), offset);
 
     return {
-      items: rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] })),
+      items: rows.map(r => ({
+        ...r,
+        genres: r.genres ? JSON.parse(r.genres) : [],
+        release_names: r.release_names_raw ? r.release_names_raw.split('|||') : []
+      })),
       total, page: Number(page), limit: Number(limit),
       pages: Math.ceil(total / Number(limit))
     };

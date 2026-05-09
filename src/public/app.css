@@ -472,18 +472,27 @@ input:checked + .slider::before { transform: translateX(22px); }
 .vt-btn:hover  { background: var(--surface-2); color: var(--text); }
 .vt-btn.active { background: var(--accent); color: #fff; }
 
-/* ─── Year pills ────────────────────────────────────────────────── */
-.year-pills {
-  display: flex; gap: 4px; flex-wrap: wrap; align-items: center;
+/* ─── Year filter ───────────────────────────────────────────────── */
+.year-filter-wrap {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
 }
-.year-pill {
-  padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 500;
+.year-quick-pills { display: flex; gap: 4px; }
+.year-qpill {
+  padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500;
   background: var(--surface-2); border: 1px solid var(--border);
   color: var(--text-muted); cursor: pointer; font-family: inherit;
   transition: all .12s; white-space: nowrap;
 }
-.year-pill:hover  { border-color: var(--accent); color: var(--accent); }
-.year-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.year-qpill:hover  { border-color: var(--accent); color: var(--accent); }
+.year-qpill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.year-input {
+  width: 130px; padding: 4px 10px; font-size: 11px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; color: var(--text); font-family: inherit;
+  transition: border-color .15s;
+}
+.year-input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-dim); }
+.year-input::placeholder { color: var(--text-muted); }
 
 /* ─── Library list view ─────────────────────────────────────────── */
 .media-list-view { margin-bottom: 24px; overflow-x: auto; }
@@ -505,9 +514,17 @@ input:checked + .slider::before { transform: translateX(22px); }
   width: 36px; height: 52px; flex-shrink: 0; border-radius: 4px;
   background: var(--surface-2); border: 1px solid var(--border);
 }
-.mlt-year { color: var(--text-muted); font-size: 12px; }
+.mlt-year { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
 .mlt-rlz  { color: var(--text-muted); text-align: center; }
 .mlt-date { white-space: nowrap; font-size: 11px; color: var(--text-muted); }
+.mlt-rlz-cell { max-width: 340px; }
+.mlt-rlz-list { display: flex; flex-direction: column; gap: 2px; }
+.mlt-rlz-name {
+  font-size: 10px; color: var(--text-muted); font-family: monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 340px; display: block;
+  padding: 1px 0;
+}
 
 .media-grid {
   display: grid;
@@ -727,17 +744,25 @@ input:checked + .slider::before { transform: translateX(22px); }
 
 /* ─── Overview recent — liste compacte par catégorie ─────────────── */
 .section-label { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 10px; }
-.ov-cat-section { margin-bottom: 22px; }
-.ov-cat-label {
+.ov-cat-details { margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.ov-cat-details[open] { margin-bottom: 12px; }
+.ov-cat-summary {
   display: flex; align-items: center; gap: 8px;
-  margin: 0 0 8px;
+  padding: 10px 14px; cursor: pointer; list-style: none;
+  background: var(--surface); user-select: none;
+  transition: background .12s;
 }
-.ov-cat-count {
-  font-size: 11px; font-weight: 500; color: var(--text-muted);
+.ov-cat-summary::-webkit-details-marker { display: none; }
+.ov-cat-summary:hover { background: var(--surface-2); }
+.ov-cat-chevron {
+  font-size: 9px; color: var(--text-muted);
+  transition: transform .18s; display: inline-block;
 }
+.ov-cat-details[open] .ov-cat-chevron { transform: rotate(90deg); }
+.ov-cat-count { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: auto; }
 .ov-list {
   list-style: none; margin: 0; padding: 0;
-  border: 1px solid var(--border); border-radius: 8px;
+  border-top: 1px solid var(--border);
   overflow: hidden;
 }
 .ov-row {

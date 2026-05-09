@@ -163,7 +163,13 @@
             <option value="year_asc"  data-i18n="lib_sort_year_asc">Année ↑</option>
             <option value="name_asc"  data-i18n="lib_sort_name">Titre A-Z</option>
           </select>
-          <div id="libYearPills" class="year-pills"></div>
+          <div class="year-filter-wrap" id="libYearWrap">
+            <div class="year-quick-pills" id="libYearQuick"></div>
+            <input type="text" id="libYearInput" class="year-input"
+              placeholder="ex: 2010 ou 2000-2009"
+              title="Année ou plage d'années"
+              oninput="debounceYearInput(this.value)">
+          </div>
           <select id="libLimit" class="select-sm" onchange="onLimitChange()">
             <option value="25">25</option>
             <option value="50">50</option>
@@ -173,7 +179,6 @@
           <div class="view-toggle" id="libViewToggle">
             <button class="vt-btn active" data-vt="grid" onclick="setLibView('grid')">⊞ Affiches</button>
             <button class="vt-btn" data-vt="list" onclick="setLibView('list')">☰ Liste</button>
-            <button class="vt-btn" data-vt="releases" onclick="setLibView('releases')">📋 Releases</button>
           </div>
         </div>
       </div>
