@@ -165,6 +165,17 @@ class WebUI {
         page: parseInt(page) || 1,
         limit: parseInt(limit) || 50
       });
+      // Build URL→name map from RSS config
+      let feedNameMap = {};
+      try {
+        const rawUrls = this.db.getConfig('rss_additional_urls') || '[]';
+        const feeds = JSON.parse(rawUrls);
+        feeds.forEach(f => { if (f.url && f.name) feedNameMap[f.url] = f.name; });
+      } catch (e) { /* silencieux */ }
+      result.items = result.items.map(item => ({
+        ...item,
+        source_name: (item.source_url && feedNameMap[item.source_url]) || null
+      }));
       res.json(result);
     });
 

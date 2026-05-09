@@ -15,7 +15,7 @@ function navigate(sectionId) {
   const navBtn = document.querySelector(`.nav-item[data-section="${sectionId}"]`);
   if (navBtn) navBtn.classList.add('active');
 
-  if (sectionId === 'library')  { loadRpdbConfig().then(() => loadLibrary()); loadLibraryCounts(); loadYearsFilter(); initQualityFilter(); }
+  if (sectionId === 'library')  { loadRpdbConfig().then(() => loadLibrary()); loadLibraryCounts(); loadYearsFilter(); }
   if (sectionId === 'sources')  loadSources();
   if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); }
   if (sectionId === 'failures') loadFailed();
@@ -166,7 +166,6 @@ let libCatalog = '';
 let libSearch = '';
 let libSort = 'date_desc';
 let libYear = '';
-let libQuality = '';
 let libView = 'grid';     // 'grid' | 'list'
 let libMode = 'media';    // 'media' | 'releases'
 let libSearchTimer = null;
@@ -212,9 +211,12 @@ function debounceLibSearch() {
 window.debounceLibSearch = debounceLibSearch;
 
 function onLimitChange() {
-  libLimit = parseInt(document.getElementById('libLimit').value) || 25;
-  libPage = 1;
-  loadLibrary();
+  const val = parseInt(document.getElementById('libLimit').value) || 25;
+  if (libMode === 'releases') {
+    libRlzLimit = val; libRlzPage = 1; loadReleases();
+  } else {
+    libLimit = val; libPage = 1; loadLibrary();
+  }
 }
 window.onLimitChange = onLimitChange;
 
@@ -225,60 +227,68 @@ function onSortChange() {
 }
 window.onSortChange = onSortChange;
 
-function onYearChange() {
-  libYear = document.getElementById('libYear').value;
+function selectYear(y) {
+  libYear = y;
   libPage = 1;
+  document.querySelectorAll('.year-pill').forEach(b => {
+    b.classList.toggle('active', b.dataset.year === y);
+  });
   loadLibrary();
 }
-window.onYearChange = onYearChange;
+window.selectYear = selectYear;
 
-function toggleLibView() {
-  libView = libView === 'grid' ? 'list' : 'grid';
-  const btn = document.getElementById('libViewBtn');
-  if (btn) btn.textContent = libView === 'grid' ? '☰' : '⊞';
-  // Re-render current data without re-fetching
-  const grid = document.getElementById('libraryGrid');
-  if (grid.dataset.lastData) {
-    renderMediaContent(JSON.parse(grid.dataset.lastData));
+function setLibView(mode) {
+  document.querySelectorAll('.vt-btn').forEach(b => b.classList.toggle('active', b.dataset.vt === mode));
+
+  const sortEl  = document.getElementById('libSort');
+  const yearEl  = document.getElementById('libYearPills');
+  const limitEl = document.getElementById('libLimit');
+  const searchEl = document.getElementById('libSearch');
+
+  if (mode === 'releases') {
+    libMode = 'releases';
+    if (sortEl)  sortEl.style.display  = 'none';
+    if (yearEl)  yearEl.style.display  = 'none';
+    if (!searchEl.dataset.origPlaceholder) searchEl.dataset.origPlaceholder = searchEl.placeholder;
+    searchEl.placeholder = 'Rechercher une release ou un titre…';
+    searchEl.value = libRlzSearch;
+    loadReleases();
+  } else {
+    const wasReleases = libMode === 'releases';
+    const prevView    = libView;
+    libMode = 'media';
+    libView = mode; // 'grid' | 'list'
+    if (sortEl)  sortEl.style.display  = '';
+    if (yearEl)  yearEl.style.display  = '';
+    if (searchEl.dataset.origPlaceholder) searchEl.placeholder = searchEl.dataset.origPlaceholder;
+    searchEl.value = libSearch;
+    document.querySelectorAll('.tab-btn[data-catalog]').forEach(b => {
+      b.classList.toggle('active', b.dataset.catalog === libCatalog);
+    });
+    if (wasReleases) {
+      loadLibrary();
+    } else if (prevView !== mode) {
+      const grid = document.getElementById('libraryGrid');
+      if (grid && grid.dataset.lastData) renderMediaContent(JSON.parse(grid.dataset.lastData));
+    }
   }
 }
-window.toggleLibView = toggleLibView;
-
-function switchToReleases() {
-  libMode = 'releases';
-  document.querySelectorAll('.tab-btn[data-catalog]').forEach(b => b.classList.remove('active'));
-  document.getElementById('releasesTabBtn')?.classList.add('active');
-  document.getElementById('libSort').style.display = 'none';
-  document.getElementById('libYear').style.display = 'none';
-  document.getElementById('libViewBtn').style.display = 'none';
-  document.getElementById('qualityFilter').style.display = 'none';
-  const searchEl = document.getElementById('libSearch');
-  if (!searchEl.dataset.origPlaceholder) searchEl.dataset.origPlaceholder = searchEl.placeholder;
-  searchEl.placeholder = 'Rechercher une release ou un titre…';
-  searchEl.value = libRlzSearch;
-  loadReleases();
-}
-window.switchToReleases = switchToReleases;
-
-function switchToMedia(skipLoad = false) {
-  libMode = 'media';
-  document.getElementById('releasesTabBtn')?.classList.remove('active');
-  document.getElementById('libSort').style.display = '';
-  document.getElementById('libYear').style.display = '';
-  document.getElementById('libViewBtn').style.display = '';
-  document.getElementById('qualityFilter').style.display = '';
-  const searchEl = document.getElementById('libSearch');
-  searchEl.placeholder = searchEl.dataset.origPlaceholder || 'Rechercher un titre…';
-  searchEl.value = libSearch;
-  document.querySelectorAll('.tab-btn[data-catalog]').forEach(b => {
-    b.classList.toggle('active', b.dataset.catalog === libCatalog);
-  });
-  if (!skipLoad) loadLibrary();
-}
+window.setLibView = setLibView;
 
 document.querySelectorAll('.tab-btn[data-catalog]').forEach(btn => {
   btn.addEventListener('click', () => {
-    if (libMode === 'releases') switchToMedia(true); // skip load, we'll load below
+    if (libMode === 'releases') {
+      // Exit releases view, switch to current libView without reloading yet
+      libMode = 'media';
+      const sortEl = document.getElementById('libSort');
+      const yearEl = document.getElementById('libYearPills');
+      const searchEl = document.getElementById('libSearch');
+      if (sortEl) sortEl.style.display = '';
+      if (yearEl) yearEl.style.display = '';
+      if (searchEl.dataset.origPlaceholder) searchEl.placeholder = searchEl.dataset.origPlaceholder;
+      searchEl.value = libSearch;
+      document.querySelectorAll('.vt-btn').forEach(b => b.classList.toggle('active', b.dataset.vt === libView));
+    }
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     libCatalog = btn.dataset.catalog;
@@ -291,6 +301,9 @@ async function loadLibrary() {
   if (libLoading) return;
   if (libMode === 'releases') { loadReleases(); return; }
   libLoading = true;
+  // Always sync limit from DOM to avoid state drift after tab switching
+  const limitEl = document.getElementById('libLimit');
+  if (limitEl) libLimit = parseInt(limitEl.value) || libLimit;
   const grid = document.getElementById('libraryGrid');
   grid.innerHTML = '<p class="text-muted" style="padding:20px">' + t('sync_loading') + '</p>';
 
@@ -299,7 +312,6 @@ async function loadLibrary() {
     if (libCatalog)  params.append('catalog',  libCatalog);
     if (libSearch)   params.append('search',   libSearch);
     if (libYear)     params.append('year',     libYear);
-    if (libQuality)  params.append('quality',  libQuality);
 
     const r = await fetch('/api/media/list?' + params);
     const d = await r.json();
@@ -331,36 +343,21 @@ async function loadLibraryCounts() {
   } catch (e) { /* silencieux */ }
 }
 
-function initQualityFilter() {
-  document.querySelectorAll('.qf-pill').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.qf-pill').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      libQuality = btn.dataset.quality;
-      libPage = 1;
-      loadLibrary();
-    });
-  });
-  // Sync active state with current libQuality
-  document.querySelectorAll('.qf-pill').forEach(b => {
-    b.classList.toggle('active', b.dataset.quality === libQuality);
-  });
-}
 
 async function loadYearsFilter() {
   try {
     const r = await fetch('/api/media/years');
     const years = await r.json();
-    const sel = document.getElementById('libYear');
-    if (!sel) return;
-    // Keep first option (Toute année), remove existing year options
-    while (sel.options.length > 1) sel.remove(1);
-    for (const y of years) {
-      const opt = document.createElement('option');
-      opt.value = y; opt.textContent = y;
-      sel.appendChild(opt);
-    }
-    sel.value = libYear;
+    const container = document.getElementById('libYearPills');
+    if (!container) return;
+    const allYears = ['', ...years];
+    container.innerHTML = allYears.map(y => {
+      const label = y === '' ? (t('lib_year_all') || 'Toute année') : y;
+      const active = libYear === y ? ' active' : '';
+      return `<button class="year-pill${active}" data-year="${escHtml(String(y))}" onclick="selectYear('${escHtml(String(y))}')">${escHtml(String(label))}</button>`;
+    }).join('');
+    // Hide year pills when in releases mode
+    if (libMode === 'releases') container.style.display = 'none';
   } catch (e) { /* silencieux */ }
 }
 
@@ -541,7 +538,7 @@ function renderReleasesList(data, pager) {
 
   grid.innerHTML = `<table class="media-list-table">
     <thead><tr>
-      <th>Média</th><th>Release</th><th>Qualité</th><th>Hash</th><th>Ajouté le</th>
+      <th>Média</th><th>Release</th><th>Source</th><th>Qualité</th><th>Hash</th><th>Ajouté le</th>
     </tr></thead>
     <tbody>
       ${data.items.map(r => {
@@ -552,6 +549,7 @@ function renderReleasesList(data, pager) {
             <span>${r.media_name ? escHtml(r.media_name) : '<span class="text-muted">—</span>'}${r.media_year ? ` <span class="mlt-year">(${r.media_year})</span>` : ''}</span>
           </td>
           <td style="font-size:11px;max-width:280px;word-break:break-word">${escHtml(r.release_name)}</td>
+          <td style="font-size:11px;white-space:nowrap">${r.source_name ? `<span class="source-name-badge">${escHtml(r.source_name)}</span>` : '<span class="text-muted">—</span>'}</td>
           <td>${r.quality ? `<span class="quality-badge">${escHtml(r.quality)}</span>` : '<span class="text-muted">—</span>'}</td>
           <td>${r.hash ? `<span class="hash-mono" title="${escHtml(r.hash)}">${r.hash.substring(0, 10)}…</span>` : '<span class="text-muted">—</span>'}</td>
           <td class="mlt-date">${fmtDate(r.added_at)}</td>

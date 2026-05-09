@@ -163,16 +163,18 @@
             <option value="year_asc"  data-i18n="lib_sort_year_asc">Année ↑</option>
             <option value="name_asc"  data-i18n="lib_sort_name">Titre A-Z</option>
           </select>
-          <select id="libYear" class="select-sm" onchange="onYearChange()" title="Filtrer par année">
-            <option value="" data-i18n="lib_year_all">Toute année</option>
-          </select>
+          <div id="libYearPills" class="year-pills"></div>
           <select id="libLimit" class="select-sm" onchange="onLimitChange()">
             <option value="25">25</option>
             <option value="50">50</option>
             <option value="100">100</option>
             <option value="250">250</option>
           </select>
-          <button id="libViewBtn" class="btn-sm btn-icon" onclick="toggleLibView()" title="Vue liste / grille">☰</button>
+          <div class="view-toggle" id="libViewToggle">
+            <button class="vt-btn active" data-vt="grid" onclick="setLibView('grid')">⊞ Affiches</button>
+            <button class="vt-btn" data-vt="list" onclick="setLibView('list')">☰ Liste</button>
+            <button class="vt-btn" data-vt="releases" onclick="setLibView('releases')">📋 Releases</button>
+          </div>
         </div>
       </div>
 
@@ -201,28 +203,6 @@
           <span data-i18n="stat_animes">Animés</span>
           <span class="tab-count" id="tabCountAnimes"></span>
         </button>
-        <span class="tab-separator"></span>
-        <button class="tab-btn" id="releasesTabBtn" onclick="switchToReleases()" data-i18n="lib_releases_tab">Releases</button>
-      </div>
-
-      <div class="quality-filter" id="qualityFilter">
-        <span class="quality-filter-label">Qualité :</span>
-        <button class="qf-pill active" data-quality="">Tout</button>
-        <button class="qf-pill" data-quality="4K">4K</button>
-        <button class="qf-pill" data-quality="1080p">1080p</button>
-        <button class="qf-pill" data-quality="720p">720p</button>
-        <button class="qf-pill" data-quality="SD">SD</button>
-        <button class="qf-pill" data-quality="HDR">HDR</button>
-        <button class="qf-pill" data-quality="DV">DV</button>
-        <span class="qf-sep"></span>
-        <button class="qf-pill" data-quality="BluRay">BluRay</button>
-        <button class="qf-pill" data-quality="WEB-DL">WEB-DL</button>
-        <button class="qf-pill" data-quality="WEBRip">WEBRip</button>
-        <button class="qf-pill" data-quality="WEB">WEB</button>
-        <button class="qf-pill" data-quality="HDTV">HDTV</button>
-        <button class="qf-pill" data-quality="TVRip">TVRip</button>
-        <button class="qf-pill" data-quality="DVDRip">DVDRip</button>
-        <button class="qf-pill" data-quality="DVD">DVD</button>
       </div>
 
       <div id="libraryGrid" class="media-grid"></div>
