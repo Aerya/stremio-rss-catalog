@@ -12,7 +12,7 @@
     "stremio-addon-sdk": "^1.6.10",
     "axios": "^1.16.1",
     "xml2js": "^0.6.2",
-    "better-sqlite3": "^9.2.2",
+    "better-sqlite3": "^12.10.0",
     "bcrypt": "^6.0.0",
     "express-session": "^1.19.0",
     "body-parser": "^1.20.2",
