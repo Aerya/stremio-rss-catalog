@@ -7,26 +7,27 @@
   <strong>Transformez vos flux RSS, Prowlarr et NZBHydra2 en catalogues Stremio — Films · Documentaires · Séries · Émissions TV · Animés · Concerts · Spectacles</strong>
 </p>
 
+> 🇬🇧 [English](./README.en.md) · 🇩🇪 [Deutsch](./README.de.md)
+
 <p align="center">
-  <a href="./README.en.md">🇬🇧 English</a> · <a href="./README.de.md">🇩🇪 Deutsch</a>
+  <img src="https://img.shields.io/github/actions/workflow/status/Aerya/stremio-rss-catalog/ghcr.yml?branch=main&label=build&style=flat-square" alt="Build">
+  <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker">
+  <img src="https://img.shields.io/badge/multi--arch-amd64%20%7C%20arm64-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Multi-arch">
+  <img src="https://img.shields.io/github/last-commit/Aerya/stremio-rss-catalog?style=flat-square" alt="Last commit">
+  <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE-orange?style=flat-square" alt="i18n">
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Stremio-addon-purple?style=flat-square" alt="Stremio">
-  <img src="https://img.shields.io/badge/Docker-ready-blue?style=flat-square&logo=docker" alt="Docker">
-  <img src="https://img.shields.io/badge/TMDB%20%2B%20TVDB%20%2B%20OMDb-matched-green?style=flat-square" alt="TMDB+TVDB+OMDb">
+  <img src="https://img.shields.io/badge/RSS-compatible-F6A623?style=flat-square&logo=rss&logoColor=white" alt="RSS">
   <img src="https://img.shields.io/badge/Prowlarr-compatible-blue?style=flat-square" alt="Prowlarr">
   <img src="https://img.shields.io/badge/NZBHydra2-compatible-blue?style=flat-square" alt="NZBHydra2">
-  <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE-orange?style=flat-square" alt="i18n">
-  <img src="https://img.shields.io/badge/MyAnimeList-intégré-blue?style=flat-square" alt="MAL">
-  <img src="https://img.shields.io/badge/AniList-intégré-teal?style=flat-square" alt="AniList">
+  <img src="https://img.shields.io/badge/TMDB%20%2B%20TVDB%20%2B%20OMDb-matched-green?style=flat-square" alt="TMDB+TVDB+OMDb">
+  <img src="https://img.shields.io/badge/MyAnimeList-int%C3%A9gr%C3%A9-2E51A2?style=flat-square" alt="MAL">
+  <img src="https://img.shields.io/badge/AniList-int%C3%A9gr%C3%A9-02A9FF?style=flat-square" alt="AniList">
 </p>
 
----
-
-<p align="center">
-  Vous l'utilisez ? Vous l'aimez ? <a href="https://github.com/Aerya/stremio-rss-catalogs/stargazers">Mettez une étoile !</a> — ça prend une seconde.
-</p>
+> **Tu l'utilises ? Tu l'aimes ? [⭐ Mets une étoile !](https://github.com/Aerya/stremio-rss-catalog/stargazers)** — ça prend deux secondes.
 
 ---
 
@@ -43,9 +44,9 @@
 | **Détection par URL de flux** | La catégorie est devinée automatiquement depuis les mots-clés dans l'URL du flux RSS (`concert`, `anime`, `docu`, `serie`…) |
 | **Animés** | Détectés via TMDB genre 16 + origine japonaise, OVA/OAV dans le titre, ou forcé par flux |
 | **MAL** | MyAnimeList API v2 — normalisateur de titre EN pour améliorer le match TMDB des animés (optionnel, clé gratuite) |
-| **AniList** | API GraphQL AniList — normalisateur complémentaire (titres romaji + natifs), entièrement gratuit et anonyme, sans inscription |
-| **Concerts** | Détectés via TMDB genre 10402 (Music) + confirmation OMDb, sans genres narratifs (Drama, Action…) |
-| **Spectacles** | Détectés via mots-clés titre (Stand-up, One Man Show, Théâtre, Cirque…) + confirmation OMDb |
+| **AniList** 🆕 NEW | API GraphQL AniList — normalisateur complémentaire (titres romaji + natifs) + déduplication animés, entièrement gratuit et anonyme, sans inscription |
+| **Concerts** 🆕 NEW | Détectés via TMDB genre 10402 (Music) + confirmation OMDb, sans genres narratifs (Drama, Action…) |
+| **Spectacles** 🆕 NEW | Détectés via mots-clés titre (Stand-up, One Man Show, Théâtre, Cirque…) + confirmation OMDb |
 | **OMDb** | API OMDb interrogée après chaque match TMDB pour confirmer la classification concerts et spectacles |
 | **Matching TMDB** | 5 tentatives par release (FR/EN, avec/sans année, titre simplifié) |
 | **Fallback TVDB** | Fallback pour séries non trouvées sur TMDB + confirmation documentaires (optionnel) |
@@ -60,12 +61,12 @@
 | **Retry** | Releases non matchées conservées et relançables |
 | **Cache** | Réponses catalog mises en cache, invalidation automatique post-sync |
 | **RPDB** | Affiches avec notes intégrées (optionnel) |
-| **Discord** | Notifications enrichies avec galerie d'affiches à chaque sync |
-| **Apprise** | Notifications multi-services via serveur Apprise (optionnel) |
-| **Langue des notifs** | Langue Discord/Apprise configurable indépendamment de la WebUI (FR/EN/DE) |
+| **Notifs Discord** 🆕 NEW | Notifications enrichies avec galerie d'affiches à chaque sync |
+| **Notifs Apprise** 🆕 NEW | Notifications multi-services via serveur Apprise (optionnel) |
+| **Langue des notifs** 🆕 NEW | Langue Discord/Apprise configurable indépendamment de la WebUI (FR/EN/DE) |
 | **Sync auto** | Planification configurable — déclenchement uniquement au démarrage et sur minuterie |
 | **WebUI moderne** | Sidebar, thème sombre/clair, multilingue FR/EN/DE |
-| **Médiathèque** | Vue affiches/liste, tri, filtre année (raccourcis + saisie libre/plage), releases inline, affiches RPDB, pagination persistante |
+| **Médiathèque** 🆕 NEW | Refonte : vue affiches/liste, tri, filtre année (raccourcis + saisie libre/plage), releases inline, affiches RPDB, pagination persistante |
 | **Vue d'ensemble** | Derniers ajouts en tiroirs dépliables par catégorie (titre + année + lien IMDB) |
 | **Suite de maintenance** | 8 actions de reclassification en base (animés, documentaires, faux docs, fausses émissions, concerts, faux concerts, spectacles, config flux) |
 | **Sources** | Stats par flux RSS avec nommage personnalisé |
@@ -86,6 +87,7 @@
 | ![Médiathèque](screens/Mediatheque.png) | ![Vue d'ensemble](screens/Vue.d.Ensemble.png) |
 | ![Configuration](screens/Configuration.png) | ![Échecs](screens/Echecs.png) |
 | ![Sources](screens/Sources.png) | ![Synchronisation](screens/Synchronisation.png) |
+
 ![Notification Discord](screens/DiscordNotif.png)
 
 ---
@@ -155,45 +157,6 @@ Les boutons génèrent des flux **agrégés** (toutes vos sources) :
 | Séries | `/api?t=rss&apikey=XXXX&cat=5000` |
 
 > Chaque bouton ajoute une **nouvelle ligne** dans la liste des flux RSS — vous pouvez cliquer sur plusieurs pour avoir Films et Séries en flux séparés. L'URL de base sauvegardée sert uniquement à l'intégration rapide, elle n'est pas un flux RSS en elle-même.
-
----
-
-## Migration depuis UseFlow-FR
-
-Vous utilisez l'[ancienne version (UseFlow-FR)](https://github.com/Aerya/UseFlow-FR) ? La migration est transparente — votre base de données est entièrement compatible.
-
-**1. Arrêter l'ancien conteneur**
-```bash
-docker compose down
-```
-
-**2. Mettre à jour le `docker-compose.yml`**
-
-```yaml
-# Avant
-image: ghcr.io/aerya/useflow-fr:latest
-
-# Après
-image: ghcr.io/aerya/stremio-rss-catalogs:latest
-```
-
-> Le chemin du volume (`/data`) et la variable `DB_PATH` ne changent pas.
-
-**3. Démarrer le nouveau conteneur**
-```bash
-docker compose up -d
-```
-
-La migration de la base de données s'effectue automatiquement si nécessaire. Toute votre configuration existante est conservée.
-
-**4. (Optionnel) Configurer les nouvelles fonctionnalités**
-
-- **Clé API TVDB** — améliore la détection des docu-séries (gratuit sur [thetvdb.com](https://thetvdb.com))
-- **Client ID MAL** — améliore le matching des animés (gratuit sur [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig))
-- **AniList** — activé par défaut, aucune clé requise
-- **Clé API OMDb** — active la détection des concerts et spectacles (gratuit sur [omdbapi.com](https://www.omdbapi.com/apikey.aspx), 1000 req/jour)
-
-**5. Réinstaller l'addon dans Stremio** si vous avez changé de port.
 
 ---
 
@@ -297,6 +260,45 @@ Depuis la section **Configuration → Maintenance** de la WebUI, 8 actions sont 
 
 ---
 
+## Migration depuis UseFlow-FR
+
+Vous utilisez l'[ancienne version (UseFlow-FR)](https://github.com/Aerya/UseFlow-FR) ? La migration est transparente — votre base de données est entièrement compatible.
+
+**1. Arrêter l'ancien conteneur**
+```bash
+docker compose down
+```
+
+**2. Mettre à jour le `docker-compose.yml`**
+
+```yaml
+# Avant
+image: ghcr.io/aerya/useflow-fr:latest
+
+# Après
+image: ghcr.io/aerya/stremio-rss-catalog:latest
+```
+
+> Le chemin du volume (`/data`) et la variable `DB_PATH` ne changent pas.
+
+**3. Démarrer le nouveau conteneur**
+```bash
+docker compose up -d
+```
+
+La migration de la base de données s'effectue automatiquement si nécessaire. Toute votre configuration existante est conservée.
+
+**4. (Optionnel) Configurer les nouvelles fonctionnalités**
+
+- **Clé API TVDB** — améliore la détection des docu-séries (gratuit sur [thetvdb.com](https://thetvdb.com))
+- **Client ID MAL** — améliore le matching des animés (gratuit sur [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig))
+- **AniList** — activé par défaut, aucune clé requise
+- **Clé API OMDb** — active la détection des concerts et spectacles (gratuit sur [omdbapi.com](https://www.omdbapi.com/apikey.aspx), 1000 req/jour)
+
+**5. Réinstaller l'addon dans Stremio** si vous avez changé de port.
+
+---
+
 ## Notes
 
 - La 1ère synchronisation peut prendre plusieurs minutes selon la taille du flux RSS — à faire **avant** d'installer l'addon dans Stremio
@@ -322,9 +324,17 @@ Les outils de maintenance (reclassification manuelle, correction des faux positi
 
 ---
 
+## Crédits
+
+- Successeur de [UseFlow-FR](https://github.com/Aerya/UseFlow-FR) — base de code historique, base de données compatible
+- Bâti sur le [Stremio Addon SDK](https://github.com/Stremio/stremio-addon-sdk)
+- Métadonnées : [TMDB](https://www.themoviedb.org/), [TVDB](https://thetvdb.com/), [OMDb](https://www.omdbapi.com/), [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/)
+- Intégrations : [Prowlarr](https://prowlarr.com/), [NZBHydra2](https://github.com/theotherp/nzbhydra2), [Apprise](https://github.com/caronc/apprise), [RPDB](https://ratingposterdb.com/)
+
+---
 
 ## Licence
 
-GNU GPL v3 — Merci de citer la source.
+[GNU GPL v3](./LICENSE) — Merci de citer la source.
 
 **Bon streaming**
