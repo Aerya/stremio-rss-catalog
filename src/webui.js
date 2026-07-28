@@ -215,6 +215,7 @@ class WebUI {
       delete config.stremio_manifest_sources;
       delete config.newznab_sources;
       delete config.webdav_sources;
+      delete config.wacustom_sources;
       res.json(config);
     });
 
@@ -252,7 +253,8 @@ class WebUI {
         'schema_v2_migrated', 'classification_migration_version',
         'rss_films_name', 'rss_films_url', 'rss_films_force',
         'rss_films_paused', 'rss_films_sync_interval', 'rss_additional_urls',
-        'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources', 'webdav_sources'
+        'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources', 'webdav_sources',
+        'wacustom_sources'
       ]);
       const config = Object.fromEntries(Object.entries(this.db.getAllConfig())
         .filter(([key]) => !excludedConfigKeys.has(key))
@@ -262,7 +264,10 @@ class WebUI {
         url: includeSecrets ? source.url : null,
         ...(Object.hasOwn(source, 'apiKey') ? { apiKey: includeSecrets ? source.apiKey : null } : {}),
         ...(Object.hasOwn(source, 'username') ? { username: includeSecrets ? source.username : null } : {}),
-        ...(Object.hasOwn(source, 'password') ? { password: includeSecrets ? source.password : null } : {})
+        ...(Object.hasOwn(source, 'password') ? { password: includeSecrets ? source.password : null } : {}),
+        ...(Object.hasOwn(source, 'adminPassword') ? {
+          adminPassword: includeSecrets ? source.adminPassword : null
+        } : {})
       });
       res.setHeader('Content-Disposition', `attachment; filename="stremio-rss-catalog-${new Date().toISOString().slice(0, 10)}.json"`);
       res.json({
@@ -276,7 +281,8 @@ class WebUI {
           pastebin: this.rssParser.pastebinParser.getSources().map(redactUrl),
           stremio: this.rssParser.stremioManifestParser.getSources().map(redactUrl),
           indexers: this.rssParser.newznabParser.getSources().map(redactUrl),
-          webdav: this.rssParser.webdavParser.getSources().map(redactUrl)
+          webdav: this.rssParser.webdavParser.getSources().map(redactUrl),
+          wacustom: this.rssParser.waCustomParser.getSources().map(redactUrl)
         },
         catalogs: this.db.listCustomCatalogs().map(catalog => ({
           ...catalog,
@@ -307,6 +313,7 @@ class WebUI {
             stremio: payload.sources.stremio?.length || 0,
             indexers: payload.sources.indexers?.length || 0,
             webdav: payload.sources.webdav?.length || 0,
+            wacustom: payload.sources.wacustom?.length || 0,
             catalogs: payload.catalogs.length
           }
         });
@@ -360,6 +367,9 @@ class WebUI {
       this.db.setConfig('webdav_sources', JSON.stringify(mergeSources(
         this.rssParser.webdavParser.getSources(), payload.sources.webdav, ['url', 'username', 'password']
       )));
+      this.db.setConfig('wacustom_sources', JSON.stringify(mergeSources(
+        this.rssParser.waCustomParser.getSources(), payload.sources.wacustom, ['url', 'adminPassword']
+      )));
       this.db.clearSourceSyncStates();
       for (const catalog of payload.catalogs) {
         if (catalog?.id && catalog?.name && ['movie', 'series'].includes(catalog.type)) {
@@ -383,6 +393,7 @@ class WebUI {
       if (kind === 'stremio') source = this.rssParser.stremioManifestParser.getSources().find(item => item.id === id);
       if (kind === 'indexer') source = this.rssParser.newznabParser.getSources().find(item => item.id === id);
       if (kind === 'webdav') source = this.rssParser.webdavParser.getSources().find(item => item.id === id);
+      if (kind === 'wacustom') source = this.rssParser.waCustomParser.getSources().find(item => item.id === id);
       if (!source) return res.status(404).json({ error: 'Source introuvable' });
       res.setHeader('Cache-Control', 'no-store');
       res.json({
@@ -391,7 +402,8 @@ class WebUI {
         ...(kind === 'webdav' ? {
           username: source.username || null,
           password: source.password || null
-        } : {})
+        } : {}),
+        ...(kind === 'wacustom' ? { admin_password: source.adminPassword || null } : {})
       });
     });
 
@@ -1018,6 +1030,127 @@ class WebUI {
       res.json({ success: true });
     });
 
+    // ─── Sources WaCustom ──────────────────────────────────────────────────
+    const waCustomParser = this.rssParser.waCustomParser;
+    const waCustomForApi = source => ({
+      id: source.id,
+      name: source.name,
+      url: source.url,
+      paused: Boolean(source.paused),
+      has_admin_password: Boolean(source.adminPassword),
+      max_items_per_sync: Number(source.maxItemsPerSync) || 20000,
+      page_size: Number(source.pageSize) || 1000,
+      request_delay_ms: Number(source.requestDelayMs) || 250,
+      sync_interval_minutes: source.syncIntervalMinutes || null,
+      source_key: waCustomParser.sourceKey(source.id),
+      runtime: this.getSourceRuntime(
+        waCustomParser.sourceKey(source.id),
+        source.syncIntervalMinutes
+      )
+    });
+
+    this.app.get('/api/wacustom-sources', this.authMiddleware.bind(this), (req, res) => {
+      res.json(waCustomParser.getSources().map(waCustomForApi));
+    });
+
+    this.app.post('/api/wacustom-sources/preview', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const existing = req.body.source_id
+          ? waCustomParser.getSources().find(source => source.id === req.body.source_id)
+          : null;
+        const source = {
+          ...(existing || {}),
+          url: req.body.url || existing?.url,
+          adminPassword: req.body.admin_password || existing?.adminPassword
+        };
+        if (!/^https?:\/\//i.test(source.url || '')) {
+          return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        }
+        res.json(await waCustomParser.inspect(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/wacustom-sources', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const { name = '', url, admin_password: adminPassword } = req.body;
+        if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        if (!String(adminPassword || '').trim()) {
+          return res.status(400).json({ error: 'Mot de passe administrateur requis' });
+        }
+        const sources = waCustomParser.getSources();
+        if (sources.some(source => waCustomParser.baseUrl(source.url) === waCustomParser.baseUrl(url))) {
+          return res.status(409).json({ error: 'Cette source existe déjà' });
+        }
+        const source = {
+          id: crypto.randomUUID(),
+          name: String(name).trim() || 'WaCustom',
+          url: waCustomParser.baseUrl(url),
+          adminPassword: String(adminPassword),
+          paused: Boolean(req.body.paused),
+          maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 20000, 1), 50000),
+          pageSize: Math.min(Math.max(Number(req.body.page_size) || 1000, 10), 5000),
+          requestDelayMs: Math.min(Math.max(Number(req.body.request_delay_ms) || 250, 0), 10000),
+          syncIntervalMinutes: this.normalizeSourceInterval(req.body.sync_interval_minutes)
+        };
+        await waCustomParser.inspect(source);
+        sources.push(source);
+        this.db.setConfig('wacustom_sources', JSON.stringify(sources));
+        res.status(201).json(waCustomForApi(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.put('/api/wacustom-sources/:id', this.authMiddleware.bind(this), async (req, res) => {
+      const sources = waCustomParser.getSources();
+      const index = sources.findIndex(source => source.id === req.params.id);
+      if (index < 0) return res.status(404).json({ error: 'Source introuvable' });
+      const current = sources[index];
+      try {
+        const next = {
+          ...current,
+          ...(req.body.name !== undefined ? { name: String(req.body.name).trim() || current.name } : {}),
+          ...(req.body.url !== undefined ? { url: waCustomParser.baseUrl(req.body.url) } : {}),
+          ...(req.body.admin_password ? { adminPassword: String(req.body.admin_password) } : {}),
+          ...(req.body.paused !== undefined ? { paused: Boolean(req.body.paused) } : {}),
+          ...(req.body.max_items_per_sync !== undefined ? {
+            maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 20000, 1), 50000)
+          } : {}),
+          ...(req.body.page_size !== undefined ? {
+            pageSize: Math.min(Math.max(Number(req.body.page_size) || 1000, 10), 5000)
+          } : {}),
+          ...(req.body.request_delay_ms !== undefined ? {
+            requestDelayMs: Math.min(Math.max(Number(req.body.request_delay_ms) || 250, 0), 10000)
+          } : {}),
+          ...(req.body.sync_interval_minutes !== undefined ? {
+            syncIntervalMinutes: this.normalizeSourceInterval(req.body.sync_interval_minutes)
+          } : {})
+        };
+        if (!/^https?:\/\//i.test(next.url || '')) {
+          return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        }
+        const connectionChanged = next.url !== current.url || next.adminPassword !== current.adminPassword;
+        if (connectionChanged) await waCustomParser.inspect(next);
+        sources[index] = next;
+        this.db.setConfig('wacustom_sources', JSON.stringify(sources));
+        if (connectionChanged) this.db.deleteSourceSyncState(waCustomParser.sourceKey(next.id));
+        res.json(waCustomForApi(next));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.delete('/api/wacustom-sources/:id', this.authMiddleware.bind(this), (req, res) => {
+      const sources = waCustomParser.getSources();
+      const next = sources.filter(source => source.id !== req.params.id);
+      if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
+      this.db.setConfig('wacustom_sources', JSON.stringify(next));
+      this.db.deleteSourceSyncState(waCustomParser.sourceKey(req.params.id));
+      res.json({ success: true });
+    });
+
     // ─── Catalogues personnalisés ──────────────────────────────────────────
     this.app.get('/api/catalogs', this.authMiddleware.bind(this), (req, res) => {
       res.json(this.db.listCustomCatalogs());
@@ -1226,8 +1359,9 @@ class WebUI {
       const hasStremio = this.rssParser.stremioManifestParser.getSources().some(source => !source.paused);
       const hasNewznab = this.rssParser.newznabParser.getSources().some(source => !source.paused);
       const hasWebdav = this.rssParser.webdavParser.getSources().some(source => !source.paused);
+      const hasWaCustom = this.rssParser.waCustomParser.getSources().some(source => !source.paused);
       const hasRss = this.getRssSources().some(source => !source.paused);
-      if (!hasRss && !hasPastebin && !hasStremio && !hasNewznab && !hasWebdav) {
+      if (!hasRss && !hasPastebin && !hasStremio && !hasNewznab && !hasWebdav && !hasWaCustom) {
         return res.status(400).json({ error: 'Au moins une source active est requise' });
       }
       if ((hasRss || hasPastebin || hasNewznab || hasWebdav) && !tmdbKey) {
@@ -1782,6 +1916,9 @@ class WebUI {
     });
     this.rssParser.webdavParser.getSources().forEach(source => {
       nameMap[this.rssParser.webdavParser.sourceKey(source.id)] = source.name || 'WebDAV';
+    });
+    this.rssParser.waCustomParser.getSources().forEach(source => {
+      nameMap[this.rssParser.waCustomParser.sourceKey(source.id)] = source.name || 'WaCustom';
     });
     return nameMap;
   }

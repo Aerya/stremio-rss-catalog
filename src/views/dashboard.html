@@ -249,6 +249,7 @@
           <button class="source-tab" data-source-tab="pastebin" onclick="selectSourceTab('pastebin')">Pastebin</button>
           <button class="source-tab" data-source-tab="webdav" onclick="selectSourceTab('webdav')">WebDAV</button>
           <button class="source-tab" data-source-tab="indexer" onclick="selectSourceTab('indexer')">Indexeurs</button>
+          <button class="source-tab" data-source-tab="wacustom" onclick="selectSourceTab('wacustom')">WaCustom</button>
           <button class="source-tab" data-source-tab="stremio" onclick="selectSourceTab('stremio')">Stremio</button>
           <button class="source-tab" data-source-tab="diagnostics" onclick="selectSourceTab('diagnostics')">Diagnostics</button>
         </div>
@@ -445,6 +446,60 @@
         </div>
         <div id="newznabSourcePreview" class="text-muted" style="margin-top:10px"></div>
         <div id="newznabSourceList" style="margin-top:14px"></div>
+      </details>
+
+      <details class="card source-group" data-source-group="wacustom">
+        <summary><span>Instances WaCustom</span> <span class="source-group-count" id="wacustomGroupCount"></span></summary>
+        <p class="text-muted" style="margin:8px 0 14px">
+          Indexe les contenus WASource d’une instance WaCustom via son API administrateur paginée.
+          Les liens de lecture ne sont pas copiés : seuls les identifiants, titres, types et années
+          nécessaires aux catalogues sont importés.
+        </p>
+        <p class="source-project-links">
+          Projet : <a href="https://github.com/dydy13014/wacustom" target="_blank" rel="noopener noreferrer">WaCustom ↗</a>
+        </p>
+        <input id="wacustomEditId" type="hidden">
+        <div class="config-grid">
+          <div class="field">
+            <label>Nom de l’instance</label>
+            <input id="wacustomName" type="text" placeholder="Mon WaCustom">
+          </div>
+          <div class="field">
+            <label>URL de l’instance</label>
+            <input id="wacustomUrl" type="password" autocomplete="off" placeholder="https://wacustom.example.net">
+          </div>
+          <div class="field">
+            <label>Mot de passe administrateur</label>
+            <input id="wacustomPassword" type="password" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label>Maximum par collecte</label>
+            <input id="wacustomMaxItems" type="number" min="1" max="50000" value="20000">
+          </div>
+          <div class="field">
+            <label>Taille d’une page</label>
+            <input id="wacustomPageSize" type="number" min="10" max="5000" value="1000">
+          </div>
+          <div class="field">
+            <label>Délai entre les pages (ms)</label>
+            <input id="wacustomDelay" type="number" min="0" max="10000" step="50" value="250">
+          </div>
+          <div class="field">
+            <label>Fréquence de collecte (min)</label>
+            <input id="wacustomInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale">
+          </div>
+        </div>
+        <div class="integration-cat-hint" style="margin-top:12px">
+          Le premier parcours est repris sur plusieurs synchronisations lorsque le plafond est atteint.
+          Ensuite, l’API est relue depuis les contenus les plus récents.
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button type="button" class="btn-sm" onclick="previewWaCustomSource()">Tester</button>
+          <button type="button" class="btn-primary" id="wacustomSubmit" onclick="saveWaCustomSource()">Ajouter</button>
+          <button type="button" class="btn-sm" id="wacustomCancel" onclick="resetWaCustomForm()" hidden>Annuler</button>
+        </div>
+        <div id="wacustomPreview" class="text-muted" style="margin-top:10px"></div>
+        <div id="wacustomList" style="margin-top:14px"></div>
       </details>
 
       <details class="card source-group" data-source-group="stremio">

@@ -10,6 +10,7 @@ const StremioAddon = require('../src/addon');
 const StremioManifestParser = require('../src/stremio-manifest-parser');
 const RSSParser = require('../src/rss-parser');
 const WebUI = require('../src/webui');
+const WaCustomParser = require('../src/wacustom-parser');
 
 const header = 'CAT;TMDB;TITLE;SAISON;GROUPES;CAST;DIRECTOR;NETWORK;YEAR;GENRES;RES;URLS=https://alldebrid.com/f/';
 const movieRow = "film;123;Film Test;;[];[];[];[];2026;[28];['MULTI - 1080p'];['abc']";
@@ -20,6 +21,7 @@ async function main() {
   let catalogRequestKeptSecret = false;
   let newznabKeyReceived = false;
   let webdavAuthReceived = false;
+  let waCustomCookieReceived = false;
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     if (req.method === 'PROPFIND' && (req.url === '/dav/' || req.url === '/dav/Films/')) {
@@ -123,6 +125,34 @@ async function main() {
           </channel>
         </rss>`);
     }
+    if (req.url === '/wacustom/admin/login' && req.method === 'POST') {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Set-Cookie', 'admin_token=test-session; HttpOnly; SameSite=Strict');
+      return res.end(JSON.stringify({ success: true }));
+    }
+    if (req.url.startsWith('/wacustom/admin/api/wasource')) {
+      waCustomCookieReceived = req.headers.cookie === 'admin_token=test-session';
+      const requestUrl = new URL(req.url, baseUrl);
+      const offset = Number(requestUrl.searchParams.get('offset') || 0);
+      const limit = Number(requestUrl.searchParams.get('limit') || 1000);
+      const contents = [
+        {
+          id: 1, imdb_id: 'tt0000920', tmdb_id: '920', title: 'WaCustom Film',
+          year: 2026, season: null, episode: null,
+          releases: [{ release_name: 'WaCustom.Film.2026.FRENCH.1080p' }],
+          created_at: 1, updated_at: 2
+        },
+        {
+          id: 2, imdb_id: 'tt0000921', tmdb_id: '921', title: 'WaCustom Série',
+          year: 2025, season: 1, episode: 1,
+          releases: [{ release_name: 'WaCustom.Serie.S01E01.FRENCH.1080p' }],
+          created_at: 1, updated_at: 2
+        }
+      ].slice(offset, offset + limit);
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({ total: 2, limit, offset, contents }));
+    }
 
     if (req.url.startsWith('/3/movie/123')) {
       res.setHeader('Content-Type', 'application/json');
@@ -207,6 +237,35 @@ async function main() {
     assert.equal(webdavItems[0].source_url, 'webdav:webdav-test');
     assert.equal(webdavItems[0].catalog_type, 'films');
 
+    const waCustomParser = new WaCustomParser(db);
+    const waCustomSource = {
+      id: 'wacustom-test',
+      name: 'WaCustom de test',
+      url: `${baseUrl}/wacustom`,
+      adminPassword: 'admin-test',
+      maxItemsPerSync: 1,
+      pageSize: 1,
+      requestDelayMs: 0
+    };
+    const waCustomInspection = await waCustomParser.inspect(waCustomSource);
+    assert.equal(waCustomInspection.total, 2);
+    const waCustomFirst = await waCustomParser.fetchSource(waCustomSource);
+    assert.equal(waCustomFirst.length, 1);
+    assert.equal(waCustomFirst[0].direct_meta.imdb_id, 'tt0000920');
+    assert.equal(waCustomFirst[0].source_url, 'wacustom:wacustom-test');
+    assert.ok(waCustomCookieReceived);
+    assert.equal(db.commitPendingSourceCursors(['wacustom:wacustom-test']), 1);
+    const waCustomSecond = await waCustomParser.fetchSource(waCustomSource);
+    assert.equal(waCustomSecond.length, 1);
+    assert.equal(waCustomSecond[0].direct_meta.imdb_id, 'tt0000921');
+    assert.equal(db.commitPendingSourceCursors(['wacustom:wacustom-test']), 1);
+    assert.equal(
+      db.getSourceSyncState('wacustom:wacustom-test').cursor.committed.backfill_complete,
+      true
+    );
+    const waCustomMatch = await matcher.matchBatch([...waCustomFirst, ...waCustomSecond]);
+    assert.equal(waCustomMatch.matched, 2);
+
     const newznabSource = {
       id: 'newznab-test',
       name: 'API de test',
@@ -277,6 +336,7 @@ async function main() {
       remoteSource,
       { ...remoteSource, id: 'remote-second', name: 'Manifeste secondaire' }
     ]));
+    db.setConfig('wacustom_sources', JSON.stringify([waCustomSource]));
     const webuiForNames = Object.create(WebUI.prototype);
     webuiForNames.db = db;
     webuiForNames.rssParser = rssParser;
@@ -286,6 +346,7 @@ async function main() {
     assert.equal(sourceNames['stremio-manifest:remote-test:movie:remote_movies'], 'Source distante de test — Sélection distante');
     assert.equal(sourceNames['stremio-manifest:remote-second:movie:remote_movies'], 'Manifeste secondaire — Sélection distante');
     assert.equal(sourceNames['webdav:webdav-test'], 'WebDAV de test');
+    assert.equal(sourceNames['wacustom:wacustom-test'], 'WaCustom de test');
     const apiMedia = db.getMediaList({ search: 'API Film One' }).items[0];
     assert.ok(apiMedia.source_urls.includes('newznab:newznab-test:movie'));
 
@@ -327,7 +388,7 @@ async function main() {
     const historical = await addon.handleCatalog({ type: 'movie', id: 'useflowfr_films', extra: {} });
     assert.deepEqual(
       new Set(historical.metas.map(item => item.id)),
-      new Set(['tt0000123', 'tt0000789', 'tt0000901', 'tt0000902', 'tt0000903'])
+      new Set(['tt0000123', 'tt0000789', 'tt0000901', 'tt0000902', 'tt0000903', 'tt0000920'])
     );
     const response = await addon.handleCatalog({ type: 'movie', id: 'custom_films_2026', extra: {} });
     assert.deepEqual(response.metas.map(item => item.id), ['tt0000123']);
@@ -354,7 +415,7 @@ async function main() {
     });
     assert.equal(db.listManifestHistory(1)[0].event, 'catalog_deleted');
     const maintenanceAnalysis = db.getMaintenanceAnalysis();
-    assert.equal(maintenanceAnalysis.media_count, 6);
+    assert.equal(maintenanceAnalysis.media_count, 8);
     const backupPath = await db.createMaintenanceBackup('integration-test');
     assert.ok(fs.existsSync(backupPath));
     const maintenanceId = db.startMaintenanceHistory('integration_test', maintenanceAnalysis);
@@ -392,6 +453,7 @@ async function main() {
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
     console.log('✓ API Newznab/Torznab paginée avec types Prowlarr et Jackett');
     console.log('✓ Parcours WebDAV récursif, authentifié et filtré par extension');
+    console.log('✓ Import WaCustom paginé avec reprise du parcours et identifiants IMDb directs');
     console.log('✓ Curseur Newznab incrémental, états de collecte et test à blanc exact');
     console.log('✓ Historique versionné du manifeste');
     console.log('✓ Analyse, sauvegarde, réparation groupée et historique de maintenance');

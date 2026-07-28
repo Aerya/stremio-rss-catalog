@@ -32,7 +32,7 @@
 
 ---
 
-> Addon Stremio auto-hébergé qui crée des catalogues à partir des contenus trouvés sur vos propres indexeurs **BitTorrent, Usenet ou autres**. L’objectif est que les sources de vos catalogues correspondent aux sources réellement utilisées par vos addons de stream. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2 et manifestes Stremio peuvent être combinés.
+> Addon Stremio auto-hébergé qui crée des catalogues à partir des contenus trouvés sur vos propres indexeurs **BitTorrent, Usenet ou autres**. L’objectif est que les sources de vos catalogues correspondent aux sources réellement utilisées par vos addons de stream. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaCustom et manifestes Stremio peuvent être combinés.
 
 ---
 
@@ -41,7 +41,7 @@
 | | |
 |---|---|
 | **Catalogues gérés** | Les 9 catalogues historiques sont repris dans le gestionnaire et conservent leurs contenus ; créez ensuite autant de catalogues personnalisés que nécessaire |
-| **Sources mixtes** | Un catalogue peut combiner RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2 et catalogues importés depuis des manifestes Stremio |
+| **Sources mixtes** | Un catalogue peut combiner RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaCustom et catalogues importés depuis des manifestes Stremio |
 | **Dossiers WebDAV** | Parcours récursif authentifié, filtrage des extensions, profondeur et plafond configurables ; les noms de fichiers alimentent les catalogues et [Davio](https://github.com/arvida42/davio) peut assurer leur lecture dans Stremio |
 | **Filtres personnalisés** | Années incluses ou exclues, plage d'années, genres requis/exclus, mots-clés requis/exclus et sélection des sources |
 | **Deux pauses distinctes** | Gel des nouveaux contenus indépendamment de la visibilité du catalogue dans le manifeste Stremio |
@@ -81,6 +81,7 @@
 | **Gestion des sources** | Onglets, recherche, groupes repliables, modification complète et fréquence propre à chaque source |
 | **Suivi par source** | Dernier succès, prochaine collecte, durée, éléments lus, erreurs consécutives et consommation du plafond |
 | **API d’indexeurs** | Sources multiples et renommables Newznab, Prowlarr, Jackett/Torznab et NZBHydra2, avec pagination, curseur incrémental, plafond et délai configurables |
+| **WaCustom** | Plusieurs instances renommables ; import paginé des contenus WASource avec IMDb/TMDB, reprise du parcours, fréquence, pause et plafond propres |
 | **Sauvegarde de configuration** | Export/import versionné ; clés et URLs sensibles exclues sauf demande explicite |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + test de connexion intégré |
 | **SQLite** | Données persistantes, contenu incrémental, index optimisés |
@@ -133,7 +134,7 @@ services:
 
 Puis ouvrir la WebUI sur `http://localhost:7973` :
 
-1. Ajouter les sources dans **Sources** : RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2 ou manifeste Stremio.
+1. Ajouter les sources dans **Sources** : RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaCustom ou manifeste Stremio.
 2. Ouvrir **Catalogues** pour gérer les catalogues historiques ou en créer de nouveaux avec des sources uniques ou mixtes.
 3. Configurer la clé TMDB si des sources RSS ou Pastebin sont utilisées.
 4. Lancer une première synchronisation, puis installer l'addon dans Stremio avec l'URL fournie.
@@ -185,6 +186,12 @@ Les sources Pastebin acceptent :
 - un index maître utilisant des sections telles que `#FILMS`, `#SERIES` ou `#DOCUMENTAIRES`, suivies de codes ou d'URLs enfants.
 
 Les manifestes Stremio sont ajoutés avec leur URL `manifest.json`. L'addon découvre les catalogues déclarés et les expose comme sources sélectionnables dans le gestionnaire de catalogues.
+
+Une source [WaCustom](https://github.com/dydy13014/wacustom) utilise l’URL de
+l’instance et son mot de passe administrateur. L’addon lit l’API WASource
+paginée, conserve les identifiants et métadonnées utiles au catalogue, mais ne
+copie pas les liens de lecture. Un parcours volumineux reprend à la
+synchronisation suivante jusqu’à son achèvement.
 
 Une source WebDAV pointe vers un dossier racine. L’addon parcourt ses
 sous-dossiers avec `PROPFIND`, retient les extensions vidéo configurées, puis

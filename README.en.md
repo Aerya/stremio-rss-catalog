@@ -32,7 +32,7 @@
 
 ---
 
-> A self-hosted Stremio addon that builds catalogs from content found on your own **BitTorrent, Usenet, or other indexers**. The goal is to keep catalog sources aligned with the sources actually used by your streaming addons. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, and Stremio manifests can be combined.
+> A self-hosted Stremio addon that builds catalogs from content found on your own **BitTorrent, Usenet, or other indexers**. The goal is to keep catalog sources aligned with the sources actually used by your streaming addons. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaCustom, and Stremio manifests can be combined.
 
 ---
 
@@ -41,7 +41,7 @@
 | | |
 |---|---|
 | **Managed catalogs** | The 9 historical catalogs are migrated into the manager with their existing content preserved; create any number of custom catalogs |
-| **Mixed sources** | A catalog may combine RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, and catalogs imported from Stremio manifests |
+| **Mixed sources** | A catalog may combine RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaCustom, and catalogs imported from Stremio manifests |
 | **WebDAV folders** | Authenticated recursive scan with configurable extensions, depth, and cap; filenames feed catalogs and [Davio](https://github.com/arvida42/davio) can handle playback in Stremio |
 | **Custom filters** | Included or excluded years, year ranges, included/excluded genres and keywords, and source selection |
 | **Two separate pauses** | Freeze new catalog content independently from catalog visibility in the Stremio manifest |
@@ -81,6 +81,7 @@
 | **Source management** | Tabs, search, collapsible groups, complete editing, and a schedule per source |
 | **Per-source status** | Last success, next collection, duration, fetched items, consecutive errors, and cap usage |
 | **Indexer APIs** | Multiple renameable Newznab, Prowlarr, Jackett/Torznab, and NZBHydra2 sources with pagination, an incremental cursor, cap, and delay |
+| **WaCustom** | Multiple renameable instances; paginated WASource content import with IMDb/TMDB IDs, resumable traversal, per-source frequency, pause, and cap |
 | **Configuration backup** | Versioned export/import; sensitive keys and URLs are excluded unless explicitly requested |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
 | **SQLite** | Persistent data, incremental content, optimized indexes |
@@ -175,6 +176,11 @@ cleanup and TMDB matching used for RSS. It does not play files: install
 [Davio](https://github.com/arvida42/davio) separately in Stremio to resolve the
 same WebDAV. Local WebDAV sources bypass the global proxy by default, with an
 opt-in switch per source.
+
+A [WaCustom](https://github.com/dydy13014/wacustom) source uses the instance URL
+and its administrator password. The addon reads the paginated WASource API and
+stores only identifiers and catalog metadata, not playback links. Large initial
+imports resume on subsequent synchronizations until the traversal is complete.
 
 Source cards mask sensitive URLs and keys; revealing or copying them requires
 an explicit action. Configuration exports follow the same rule: secrets are

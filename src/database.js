@@ -286,6 +286,7 @@ class DatabaseManager {
       pastebin_sources: '[]',
       stremio_manifest_sources: '[]',
       newznab_sources: '[]',
+      wacustom_sources: '[]',
       manifest_revision: '0',
       tmdb_api_key: '',
       tvdb_api_key: '',

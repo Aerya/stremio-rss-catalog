@@ -5,6 +5,7 @@ const PastebinParser = require('./pastebin-parser');
 const StremioManifestParser = require('./stremio-manifest-parser');
 const NewznabParser = require('./newznab-parser');
 const WebDavParser = require('./webdav-parser');
+const WaCustomParser = require('./wacustom-parser');
 
 class RSSParser {
   constructor(config, db) {
@@ -23,6 +24,7 @@ class RSSParser {
       () => this.getAxiosConfig(),
       (items, force, sourceUrl) => this._parseItems(items, force, sourceUrl)
     );
+    this.waCustomParser = new WaCustomParser(db, () => this.getAxiosConfig());
   }
 
   getAxiosConfig() {
@@ -386,9 +388,16 @@ class RSSParser {
     const stremioItems = await this.stremioManifestParser.parseAll(parserOptions);
     const newznabItems = await this.newznabParser.parseAll(parserOptions);
     const webdavItems = await this.webdavParser.parseAll(parserOptions);
+    const waCustomItems = await this.waCustomParser.parseAll(parserOptions);
     return {
-      films: [...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems, ...newznabItems, ...webdavItems],
-      pendingCursorKeys: this.newznabParser.lastPendingCursorKeys || []
+      films: [
+        ...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems,
+        ...newznabItems, ...webdavItems, ...waCustomItems
+      ],
+      pendingCursorKeys: [
+        ...(this.newznabParser.lastPendingCursorKeys || []),
+        ...(this.waCustomParser.lastPendingCursorKeys || [])
+      ]
     };
   }
 }

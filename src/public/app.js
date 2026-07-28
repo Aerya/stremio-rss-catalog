@@ -801,7 +801,9 @@ window.createCatalogForSource = createCatalogForSource;
 
 // ═══════════════════════════ CATALOGUES ═══════════════════════════════
 
-let catalogManagerData = { catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [], webdav: [] };
+let catalogManagerData = {
+  catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [], webdav: [], wacustom: []
+};
 
 function csvValues(id) {
   return (document.getElementById(id)?.value || '').split(',').map(v => v.trim()).filter(Boolean);
@@ -831,19 +833,22 @@ function catalogPayload() {
 
 async function loadCatalogManager() {
   try {
-    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes] = await Promise.all([
+    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes, waCustomRes] = await Promise.all([
       fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/rss-sources'),
-      fetch('/api/stremio-sources'), fetch('/api/newznab-sources'), fetch('/api/webdav-sources')
+      fetch('/api/stremio-sources'), fetch('/api/newznab-sources'), fetch('/api/webdav-sources'),
+      fetch('/api/wacustom-sources')
     ]);
-    const [catalogs, pastebins, rss, stremio, newznab, webdav] = await Promise.all([
-      catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json(), newznabRes.json(), webdavRes.json()
+    const [catalogs, pastebins, rss, stremio, newznab, webdav, wacustom] = await Promise.all([
+      catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json(), newznabRes.json(),
+      webdavRes.json(), waCustomRes.json()
     ]);
-    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav };
+    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav, wacustom };
     renderRssSources();
     renderPastebins();
     renderNewznabSources();
     renderStremioSources();
     renderWebdavSources();
+    renderWaCustomSources();
     renderCatalogSourceChoices();
     renderCatalogs();
     updateSourceGroupCounts();
@@ -948,6 +953,7 @@ function updateSourceGroupCounts() {
     rssGroupCount: catalogManagerData.rss.length,
     pastebinGroupCount: catalogManagerData.pastebins.length,
     webdavGroupCount: catalogManagerData.webdav.length,
+    wacustomGroupCount: catalogManagerData.wacustom.length,
     indexerGroupCount: catalogManagerData.newznab.length,
     stremioGroupCount: catalogManagerData.stremio.length
   };
@@ -1002,7 +1008,7 @@ async function importConfiguration() {
     ? (includeSecrets ? '\nLes secrets présents seront importés.' : '\nLes secrets présents resteront exclus.')
     : '';
   if (!confirm(
-    `Import valide : ${counts.rss} RSS, ${counts.pastebin} Pastebin, ${counts.webdav || 0} WebDAV, ${counts.indexers} indexeurs, ${counts.stremio} manifestes et ${counts.catalogs} catalogues.${secretWarning}\n\nUne sauvegarde SQLite sera créée avant application. Continuer ?`
+    `Import valide : ${counts.rss} RSS, ${counts.pastebin} Pastebin, ${counts.webdav || 0} WebDAV, ${counts.wacustom || 0} WaCustom, ${counts.indexers} indexeurs, ${counts.stremio} manifestes et ${counts.catalogs} catalogues.${secretWarning}\n\nUne sauvegarde SQLite sera créée avant application. Continuer ?`
   )) return;
   const response = await fetch('/api/config/import', {
     method: 'POST',
@@ -1134,6 +1140,12 @@ function renderCatalogSourceChoices(selected = []) {
       name: source.name,
       url: source.source_key,
       kind: 'Dossier WebDAV',
+      paused: source.paused
+    })),
+    ...catalogManagerData.wacustom.map(source => ({
+      name: source.name,
+      url: source.source_key,
+      kind: 'API WaCustom',
       paused: source.paused
     })),
     ...catalogManagerData.newznab.flatMap(source => (source.catalogs || []).map(catalog => ({
@@ -1411,6 +1423,130 @@ async function deleteWebdavSource(id) {
   loadSourceManager();
 }
 window.deleteWebdavSource = deleteWebdavSource;
+
+function waCustomPayload() {
+  return {
+    source_id: document.getElementById('wacustomEditId').value || null,
+    name: document.getElementById('wacustomName').value.trim(),
+    url: document.getElementById('wacustomUrl').value.trim(),
+    admin_password: document.getElementById('wacustomPassword').value,
+    max_items_per_sync: Number(document.getElementById('wacustomMaxItems').value) || 20000,
+    page_size: Number(document.getElementById('wacustomPageSize').value) || 1000,
+    request_delay_ms: Number(document.getElementById('wacustomDelay').value) || 0,
+    sync_interval_minutes: document.getElementById('wacustomInterval').value || null
+  };
+}
+
+function renderWaCustomSources() {
+  const container = document.getElementById('wacustomList');
+  if (!container) return;
+  if (!catalogManagerData.wacustom.length) {
+    container.innerHTML = '<p class="text-muted">Aucune instance WaCustom configurée.</p>';
+    return;
+  }
+  container.innerHTML = catalogManagerData.wacustom.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} wacustom wasource`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'WaCustom')} <span class="source-name-badge">WaCustom</span> ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">
+          plafond ${Number(source.max_items_per_sync).toLocaleString()} éléments
+          · page ${Number(source.page_size).toLocaleString()}
+          · délai ${Number(source.request_delay_ms).toLocaleString()} ms
+        </div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editWaCustomSource('${source.id}')">Modifier</button>
+        ${sourceSecretActions('wacustom', source.id)}
+        ${source.has_admin_password ? `<button class="btn-sm" data-secret="admin_password" onclick="revealSourceSecret('wacustom','${source.id}',this,true)">Copier le mot de passe</button>` : ''}
+        <button class="btn-sm" onclick="toggleWaCustomSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteWaCustomSource('${source.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`).join('');
+}
+
+async function previewWaCustomSource() {
+  const output = document.getElementById('wacustomPreview');
+  const payload = waCustomPayload();
+  if (!payload.url) return;
+  output.textContent = 'Connexion à WaCustom…';
+  const response = await fetch('/api/wacustom-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${Number(data.total || 0).toLocaleString()} contenu(s) WASource disponibles`
+    : (data.error || 'Erreur');
+}
+window.previewWaCustomSource = previewWaCustomSource;
+
+async function saveWaCustomSource() {
+  const id = document.getElementById('wacustomEditId').value;
+  const response = await fetch(id ? `/api/wacustom-sources/${id}` : '/api/wacustom-sources', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(waCustomPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetWaCustomForm();
+  await loadSourceManager();
+}
+window.saveWaCustomSource = saveWaCustomSource;
+
+async function editWaCustomSource(id) {
+  const source = catalogManagerData.wacustom.find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/wacustom/${id}`)).json();
+  document.getElementById('wacustomEditId').value = id;
+  document.getElementById('wacustomName').value = source.name || '';
+  document.getElementById('wacustomUrl').value = secrets.url || '';
+  document.getElementById('wacustomPassword').value = '';
+  document.getElementById('wacustomPassword').placeholder = source.has_admin_password
+    ? 'Laisser vide pour conserver'
+    : '';
+  document.getElementById('wacustomMaxItems').value = source.max_items_per_sync || 20000;
+  document.getElementById('wacustomPageSize').value = source.page_size || 1000;
+  document.getElementById('wacustomDelay').value = source.request_delay_ms ?? 250;
+  document.getElementById('wacustomInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('wacustomSubmit').textContent = 'Enregistrer';
+  document.getElementById('wacustomCancel').hidden = false;
+}
+window.editWaCustomSource = editWaCustomSource;
+
+function resetWaCustomForm() {
+  document.getElementById('wacustomEditId').value = '';
+  document.getElementById('wacustomName').value = '';
+  document.getElementById('wacustomUrl').value = '';
+  document.getElementById('wacustomPassword').value = '';
+  document.getElementById('wacustomPassword').placeholder = '';
+  document.getElementById('wacustomMaxItems').value = 20000;
+  document.getElementById('wacustomPageSize').value = 1000;
+  document.getElementById('wacustomDelay').value = 250;
+  document.getElementById('wacustomInterval').value = '';
+  document.getElementById('wacustomPreview').textContent = '';
+  document.getElementById('wacustomSubmit').textContent = 'Ajouter';
+  document.getElementById('wacustomCancel').hidden = true;
+}
+window.resetWaCustomForm = resetWaCustomForm;
+
+async function toggleWaCustomSource(id, paused) {
+  const response = await fetch(`/api/wacustom-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.toggleWaCustomSource = toggleWaCustomSource;
+
+async function deleteWaCustomSource(id) {
+  if (!confirm('Supprimer cette source WaCustom ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/wacustom-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteWaCustomSource = deleteWaCustomSource;
 
 function newznabPayload() {
   return {

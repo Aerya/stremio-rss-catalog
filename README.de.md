@@ -32,7 +32,7 @@
 
 ---
 
-> Ein selbst gehostetes Stremio-Addon, das Kataloge aus Inhalten Ihrer eigenen **BitTorrent-, Usenet- oder sonstigen Indexer** erstellt. Die Katalogquellen sollen den Quellen entsprechen, die Ihre Streaming-Addons tatsächlich verwenden. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2 und Stremio-Manifeste lassen sich kombinieren.
+> Ein selbst gehostetes Stremio-Addon, das Kataloge aus Inhalten Ihrer eigenen **BitTorrent-, Usenet- oder sonstigen Indexer** erstellt. Die Katalogquellen sollen den Quellen entsprechen, die Ihre Streaming-Addons tatsächlich verwenden. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaCustom und Stremio-Manifeste lassen sich kombinieren.
 
 ---
 
@@ -41,7 +41,7 @@
 | | |
 |---|---|
 | **Verwaltete Kataloge** | Die 9 bisherigen Kataloge werden mit ihren vorhandenen Inhalten in die Verwaltung übernommen; beliebig viele eigene Kataloge können ergänzt werden |
-| **Gemischte Quellen** | Ein Katalog kann RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2 und aus Stremio-Manifesten importierte Quellen kombinieren |
+| **Gemischte Quellen** | Ein Katalog kann RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaCustom und aus Stremio-Manifesten importierte Quellen kombinieren |
 | **WebDAV-Ordner** | Authentifizierter rekursiver Scan mit konfigurierbaren Erweiterungen, Tiefe und Obergrenze; Dateinamen speisen Kataloge und [Davio](https://github.com/arvida42/davio) kann die Wiedergabe in Stremio übernehmen |
 | **Eigene Filter** | Ein- oder ausgeschlossene Jahre, Jahresbereiche, Genres, Schlüsselwörter und Quellenauswahl |
 | **Zwei getrennte Pausen** | Neue Kataloginhalte unabhängig von der Sichtbarkeit im Stremio-Manifest einfrieren |
@@ -81,6 +81,7 @@
 | **Quellenverwaltung** | Tabs, Suche, einklappbare Gruppen, vollständige Bearbeitung und eigener Zeitplan pro Quelle |
 | **Status pro Quelle** | Letzter Erfolg, nächste Sammlung, Dauer, gelesene Elemente, aufeinanderfolgende Fehler und Nutzung der Obergrenze |
 | **Indexer-APIs** | Mehrere umbenennbare Newznab-, Prowlarr-, Jackett/Torznab- und NZBHydra2-Quellen mit Pagination, inkrementellem Cursor, Obergrenze und Verzögerung |
+| **WaCustom** | Mehrere umbenennbare Instanzen; paginierter WASource-Import mit IMDb/TMDB, fortsetzbarer Erfassung, eigener Frequenz, Pause und Obergrenze |
 | **Konfigurationssicherung** | Versionierter Export/Import; sensible Schlüssel und URLs nur auf ausdrücklichen Wunsch |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + integrierter Verbindungstest |
 | **SQLite** | Persistente Daten, inkrementelle Inhalte, optimierte Indizes |
@@ -174,6 +175,12 @@ dieselbe Titelbereinigung und TMDB-Zuordnung wie bei RSS. Es spielt keine
 Dateien ab: Installieren Sie [Davio](https://github.com/arvida42/davio)
 separat in Stremio, um dasselbe WebDAV aufzulösen. Lokale WebDAV-Quellen umgehen
 den globalen Proxy standardmäßig; er kann pro Quelle aktiviert werden.
+
+Eine [WaCustom](https://github.com/dydy13014/wacustom)-Quelle verwendet die URL
+der Instanz und das Administratorpasswort. Das Addon liest die paginierte
+WASource-API und speichert nur Kennungen und Katalogmetadaten, keine
+Wiedergabelinks. Große Erstimporte werden bei den folgenden Synchronisierungen
+fortgesetzt.
 
 Quellkarten verbergen sensible URLs und Schlüssel. Anzeigen oder Kopieren
 erfordert eine ausdrückliche Aktion. Konfigurationsexporte verhalten sich
