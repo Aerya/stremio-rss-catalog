@@ -26,7 +26,7 @@ class StremioAddon {
       version: '1.0.0',
       name: 'Stremio RSS Catalog',
       description: 'Catalogues Films, Documentaires et Séries depuis vos flux RSS',
-      logo: 'https://raw.githubusercontent.com/Aerya/stremio-rss-catalogs/main/src/public/logo.png',
+      logo: 'https://raw.githubusercontent.com/Aerya/stremio-rss-catalog/main/src/public/logo.png',
       resources: ['catalog'],
       types: ['movie', 'series'],
       idPrefixes: ['tt'],
@@ -99,6 +99,20 @@ class StremioAddon {
     if (size > 0) console.log(`[Cache] Invalidé — ${size} entrées supprimées`);
   }
 
+  getManifest() {
+    const customCatalogs = this.db.listCustomCatalogs(false).map(catalog => ({
+      type: catalog.type,
+      id: catalog.id,
+      name: `Stremio RSS Catalog - ${catalog.name}`,
+      extra: [{ name: 'skip', isRequired: false }, { name: 'search', isRequired: false }]
+    }));
+    return {
+      ...this.manifest,
+      version: `1.1.${Math.max(0, Number(this.db.getConfig('manifest_revision')) || 0)}`,
+      catalogs: [...this.manifest.catalogs, ...customCatalogs]
+    };
+  }
+
   _cacheKey(id, skip, search) {
     return `${id}:${skip}:${search || ''}`;
   }
@@ -145,6 +159,22 @@ class StremioAddon {
 
   async handleCatalog({ type, id, extra }) {
     try {
+      const custom = this.db.getCustomCatalog(id);
+      if (custom) {
+        if (!custom.enabled || custom.type !== type) return { metas: [] };
+        const skip = parseInt(extra?.skip) || 0;
+        const search = extra?.search || null;
+        const key = this._cacheKey(id, skip, search);
+        if (!search && this._cache.has(key)) return this._cache.get(key);
+        const items = this.db.getCustomCatalogMedia(custom, skip, PAGE_SIZE + 1, search);
+        const response = {
+          metas: items.slice(0, PAGE_SIZE).map(item => this.itemToMetaPreview(item)),
+          hasMore: items.length > PAGE_SIZE
+        };
+        if (!search) this._cache.set(key, response);
+        return response;
+      }
+
       const entry = CATALOG_MAP[id];
       if (!entry) return { metas: [] };
 

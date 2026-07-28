@@ -21,6 +21,7 @@ function navigate(sectionId) {
     loadRpdbConfig().then(() => loadLibrary()); loadLibraryCounts(); loadYearsFilter();
   }
   if (sectionId === 'sources')  loadSources();
+  if (sectionId === 'catalogs') loadCatalogManager();
   if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); }
   if (sectionId === 'failures') loadFailed();
   if (sectionId === 'config')   loadConfig();
@@ -764,6 +765,232 @@ async function loadSources() {
   }
 }
 window.loadSources = loadSources;
+
+// ═══════════════════════════ CATALOGUES ═══════════════════════════════
+
+let catalogManagerData = { catalogs: [], pastebins: [], rss: [] };
+
+function csvValues(id) {
+  return (document.getElementById(id)?.value || '').split(',').map(v => v.trim()).filter(Boolean);
+}
+
+function catalogPayload() {
+  return {
+    name: document.getElementById('catalogName').value.trim(),
+    type: document.getElementById('catalogMediaType').value,
+    source_urls: [...document.querySelectorAll('#catalogSourceChoices input:checked')].map(input => input.value),
+    filters: {
+      year_mode: document.getElementById('catalogYearMode').value,
+      years: csvValues('catalogYears'),
+      year_min: document.getElementById('catalogYearMin').value || null,
+      year_max: document.getElementById('catalogYearMax').value || null,
+      keywords_include: csvValues('catalogKeywordsInclude'),
+      keywords_exclude: csvValues('catalogKeywordsExclude')
+    }
+  };
+}
+
+async function loadCatalogManager() {
+  try {
+    const [catalogRes, pasteRes, configRes] = await Promise.all([
+      fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/config')
+    ]);
+    const [catalogs, pastebins, config] = await Promise.all([
+      catalogRes.json(), pasteRes.json(), configRes.json()
+    ]);
+    const rss = [];
+    if (config.rss_films_url) rss.push({ name: config.rss_films_name || 'Flux principal', url: config.rss_films_url, kind: 'RSS' });
+    try {
+      JSON.parse(config.rss_additional_urls || '[]').forEach(source => {
+        const value = typeof source === 'string' ? { url: source } : source;
+        if (value.url) rss.push({ name: value.name || value.url, url: value.url, kind: 'RSS' });
+      });
+    } catch {}
+    catalogManagerData = { catalogs, pastebins, rss };
+    renderPastebins();
+    renderCatalogSourceChoices();
+    renderCatalogs();
+  } catch (error) {
+    console.error('loadCatalogManager', error);
+  }
+}
+window.loadCatalogManager = loadCatalogManager;
+
+function renderPastebins() {
+  const container = document.getElementById('pastebinList');
+  if (!catalogManagerData.pastebins.length) {
+    container.innerHTML = '<p class="text-muted">Aucune source Pastebin.</p>';
+    return;
+  }
+  container.innerHTML = catalogManagerData.pastebins.map(source => `
+    <div class="manager-row">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'Pastebin')} ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta" title="${escHtml(source.url)}">${escHtml(source.url)}</div>
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="togglePastebin('${source.id}', ${!source.paused})">${source.paused ? 'Reprendre' : 'Pause'}</button>
+        <button class="btn-danger btn-sm" onclick="deletePastebin('${source.id}')">Supprimer</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderCatalogSourceChoices(selected = []) {
+  const sources = [
+    ...catalogManagerData.rss,
+    ...catalogManagerData.pastebins.map(source => ({ ...source, kind: 'Pastebin' }))
+  ];
+  const container = document.getElementById('catalogSourceChoices');
+  container.innerHTML = sources.length ? sources.map(source => `
+    <label class="catalog-source-choice">
+      <input type="checkbox" value="${escHtml(source.url)}" ${selected.includes(source.url) ? 'checked' : ''}>
+      <span><strong>${escHtml(source.name || source.url)}</strong><br><small class="text-muted">${source.kind}</small></span>
+    </label>`).join('') : '<span class="text-muted">Ajoutez d’abord une source RSS ou Pastebin.</span>';
+}
+
+function renderCatalogs() {
+  const container = document.getElementById('catalogList');
+  if (!catalogManagerData.catalogs.length) {
+    container.innerHTML = '<p class="text-muted">Aucun catalogue personnalisé.</p>';
+    return;
+  }
+  container.innerHTML = catalogManagerData.catalogs.map(catalog => {
+    const years = catalog.filters?.years?.length
+      ? `${catalog.filters.year_mode === 'exclude' ? 'hors ' : ''}${catalog.filters.years.join(', ')}`
+      : 'toutes années';
+    return `<div class="manager-row">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${catalog.enabled ? '●' : '⏸'} ${escHtml(catalog.name)}</div>
+        <div class="manager-row-meta">${catalog.type === 'movie' ? 'Films' : 'Séries'} · ${escHtml(years)} · ${catalog.source_urls.length || 'toutes'} source(s)</div>
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="editCatalog('${catalog.id}')">Modifier</button>
+        <button class="btn-sm" onclick="toggleCatalog('${catalog.id}', ${!catalog.enabled})">${catalog.enabled ? 'Pause' : 'Reprendre'}</button>
+        <button class="btn-danger btn-sm" onclick="deleteCatalog('${catalog.id}')">Supprimer</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function previewPastebin() {
+  const url = document.getElementById('pastebinUrl').value.trim();
+  const output = document.getElementById('pastebinPreview');
+  if (!url) return;
+  output.textContent = 'Analyse en cours…';
+  const response = await fetch('/api/pastebins/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, maxPages: 25 })
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${data.items.toLocaleString()} médias · ${data.visited} pages · ${Object.entries(data.categories).map(([k,v]) => `${k}: ${v}`).join(' · ')}${data.truncated ? ' · aperçu limité' : ''}`
+    : (data.error || 'Erreur');
+}
+window.previewPastebin = previewPastebin;
+
+async function addPastebin() {
+  const response = await fetch('/api/pastebins', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: document.getElementById('pastebinName').value,
+      url: document.getElementById('pastebinUrl').value.trim()
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  document.getElementById('pastebinName').value = '';
+  document.getElementById('pastebinUrl').value = '';
+  document.getElementById('pastebinPreview').textContent = '';
+  await loadCatalogManager();
+}
+window.addPastebin = addPastebin;
+
+async function togglePastebin(id, paused) {
+  await fetch(`/api/pastebins/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  loadCatalogManager();
+}
+window.togglePastebin = togglePastebin;
+
+async function deletePastebin(id) {
+  if (!confirm('Supprimer cette source Pastebin ?')) return;
+  await fetch(`/api/pastebins/${id}`, { method: 'DELETE' });
+  loadCatalogManager();
+}
+window.deletePastebin = deletePastebin;
+
+async function previewCatalog() {
+  const output = document.getElementById('catalogPreview');
+  const response = await fetch('/api/catalogs/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(catalogPayload())
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${data.count_at_least > 20 ? 'Plus de 20' : data.count_at_least} résultat(s)`
+    : (data.error || 'Erreur');
+}
+window.previewCatalog = previewCatalog;
+
+async function saveCatalog() {
+  const id = document.getElementById('catalogEditId').value;
+  const response = await fetch(id ? `/api/catalogs/${id}` : '/api/catalogs', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(catalogPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetCatalogForm();
+  await loadCatalogManager();
+}
+window.saveCatalog = saveCatalog;
+
+function editCatalog(id) {
+  const catalog = catalogManagerData.catalogs.find(item => item.id === id);
+  if (!catalog) return;
+  document.getElementById('catalogEditId').value = catalog.id;
+  document.getElementById('catalogFormTitle').textContent = 'Modifier le catalogue';
+  document.getElementById('catalogName').value = catalog.name;
+  document.getElementById('catalogMediaType').value = catalog.type;
+  document.getElementById('catalogYearMode').value = catalog.filters?.year_mode || 'include';
+  document.getElementById('catalogYears').value = (catalog.filters?.years || []).join(', ');
+  document.getElementById('catalogYearMin').value = catalog.filters?.year_min || '';
+  document.getElementById('catalogYearMax').value = catalog.filters?.year_max || '';
+  document.getElementById('catalogKeywordsInclude').value = (catalog.filters?.keywords_include || []).join(', ');
+  document.getElementById('catalogKeywordsExclude').value = (catalog.filters?.keywords_exclude || []).join(', ');
+  renderCatalogSourceChoices(catalog.source_urls);
+  document.getElementById('catalogName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+window.editCatalog = editCatalog;
+
+async function toggleCatalog(id, enabled) {
+  const response = await fetch(`/api/catalogs/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadCatalogManager();
+}
+window.toggleCatalog = toggleCatalog;
+
+async function deleteCatalog(id) {
+  if (!confirm('Supprimer ce catalogue ?')) return;
+  await fetch(`/api/catalogs/${id}`, { method: 'DELETE' });
+  loadCatalogManager();
+}
+window.deleteCatalog = deleteCatalog;
+
+function resetCatalogForm() {
+  document.getElementById('catalogEditId').value = '';
+  document.getElementById('catalogFormTitle').textContent = 'Créer un catalogue';
+  ['catalogName','catalogYears','catalogYearMin','catalogYearMax','catalogKeywordsInclude','catalogKeywordsExclude']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('catalogMediaType').value = 'movie';
+  document.getElementById('catalogYearMode').value = 'include';
+  document.getElementById('catalogPreview').textContent = '';
+  renderCatalogSourceChoices();
+}
+window.resetCatalogForm = resetCatalogForm;
 
 // ═══════════════════════════ SYNC ══════════════════════════════════════
 

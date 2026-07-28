@@ -8,6 +8,7 @@ const { HttpsProxyAgent } = require('https-proxy-agent');
 const { sendDiscordNotification } = require('./services/discordService');
 const { sendAppriseNotification } = require('./services/appriseService');
 const { getStrings }              = require('./services/notifStrings');
+const crypto = require('crypto');
 
 class WebUI {
   constructor(db, rssParser, tmdbMatcher, stremioAddon) {
@@ -104,6 +105,127 @@ class WebUI {
       } catch (error) {
         res.status(500).json({ error: error.message });
       }
+    });
+
+    // ─── Sources Pastebin ──────────────────────────────────────────────────
+    this.app.get('/api/pastebins', this.authMiddleware.bind(this), (req, res) => {
+      res.json(this.rssParser.pastebinParser.getSources());
+    });
+
+    this.app.post('/api/pastebins/preview', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const { url, maxPages = 25 } = req.body;
+        if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        const result = await this.rssParser.pastebinParser.discover(url, {
+          maxPages: Math.min(Number(maxPages) || 25, 100),
+          maxDepth: 5
+        });
+        res.json({
+          visited: result.visited,
+          truncated: result.truncated,
+          items: result.items.length,
+          categories: result.items.reduce((acc, item) => {
+            acc[item.catalog_type] = (acc[item.catalog_type] || 0) + 1;
+            return acc;
+          }, {}),
+          pages: result.pages
+        });
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/pastebins', this.authMiddleware.bind(this), (req, res) => {
+      const { name = '', url, paused = false, force = 'auto' } = req.body;
+      if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+      const sources = this.rssParser.pastebinParser.getSources();
+      if (sources.some(source => source.url === url)) return res.status(409).json({ error: 'Cette source existe déjà' });
+      const source = {
+        id: crypto.randomUUID(),
+        name: String(name).trim() || new URL(url).hostname,
+        url,
+        paused: Boolean(paused),
+        force,
+        maxDepth: 5,
+        maxPages: 1000
+      };
+      sources.push(source);
+      this.db.setConfig('pastebin_sources', JSON.stringify(sources));
+      res.status(201).json(source);
+    });
+
+    this.app.put('/api/pastebins/:id', this.authMiddleware.bind(this), (req, res) => {
+      const sources = this.rssParser.pastebinParser.getSources();
+      const index = sources.findIndex(source => source.id === req.params.id);
+      if (index < 0) return res.status(404).json({ error: 'Source introuvable' });
+      const next = { ...sources[index], ...req.body, id: sources[index].id };
+      if (!/^https?:\/\//i.test(next.url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+      sources[index] = next;
+      this.db.setConfig('pastebin_sources', JSON.stringify(sources));
+      res.json(next);
+    });
+
+    this.app.delete('/api/pastebins/:id', this.authMiddleware.bind(this), (req, res) => {
+      const sources = this.rssParser.pastebinParser.getSources();
+      const next = sources.filter(source => source.id !== req.params.id);
+      if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
+      this.db.setConfig('pastebin_sources', JSON.stringify(next));
+      res.json({ success: true });
+    });
+
+    // ─── Catalogues personnalisés ──────────────────────────────────────────
+    this.app.get('/api/catalogs', this.authMiddleware.bind(this), (req, res) => {
+      res.json(this.db.listCustomCatalogs());
+    });
+
+    this.app.post('/api/catalogs', this.authMiddleware.bind(this), (req, res) => {
+      const { name, type, source_urls = [], filters = {}, enabled = true } = req.body;
+      if (!String(name || '').trim()) return res.status(400).json({ error: 'Nom requis' });
+      if (!['movie', 'series'].includes(type)) return res.status(400).json({ error: 'Type invalide' });
+      const slug = String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'catalogue';
+      const catalog = this.db.saveCustomCatalog({
+        id: `custom_${slug}_${crypto.randomUUID().slice(0, 8)}`,
+        name: String(name).trim(), type, source_urls, filters, enabled
+      });
+      this.bumpManifestRevision();
+      this.stremioAddon.clearCache();
+      res.status(201).json(catalog);
+    });
+
+    this.app.put('/api/catalogs/:id', this.authMiddleware.bind(this), (req, res) => {
+      const current = this.db.getCustomCatalog(req.params.id);
+      if (!current) return res.status(404).json({ error: 'Catalogue introuvable' });
+      const next = { ...current, ...req.body, id: current.id };
+      if (!String(next.name || '').trim() || !['movie', 'series'].includes(next.type)) {
+        return res.status(400).json({ error: 'Nom ou type invalide' });
+      }
+      const catalog = this.db.saveCustomCatalog(next);
+      this.bumpManifestRevision();
+      this.stremioAddon.clearCache();
+      res.json(catalog);
+    });
+
+    this.app.delete('/api/catalogs/:id', this.authMiddleware.bind(this), (req, res) => {
+      if (!this.db.deleteCustomCatalog(req.params.id)) return res.status(404).json({ error: 'Catalogue introuvable' });
+      this.bumpManifestRevision();
+      this.stremioAddon.clearCache();
+      res.json({ success: true });
+    });
+
+    this.app.post('/api/catalogs/preview', this.authMiddleware.bind(this), (req, res) => {
+      const virtual = {
+        type: req.body.type,
+        source_urls: req.body.source_urls || [],
+        filters: req.body.filters || {}
+      };
+      if (!['movie', 'series'].includes(virtual.type)) return res.status(400).json({ error: 'Type invalide' });
+      const items = this.db.getCustomCatalogMedia(virtual, 0, 21);
+      res.json({
+        count_at_least: items.length,
+        truncated: items.length > 20,
+        items: items.slice(0, 20).map(item => ({ imdb_id: item.imdb_id, name: item.name, year: item.year }))
+      });
     });
 
     // ─── Stats ──────────────────────────────────────────────────────────────
@@ -237,7 +359,10 @@ class WebUI {
       if (this.syncInProgress) return res.status(409).json({ error: 'Synchronisation déjà en cours' });
       const rssUrl  = this.db.getConfig('rss_films_url');
       const tmdbKey = this.db.getConfig('tmdb_api_key');
-      if (!rssUrl || !tmdbKey) return res.status(400).json({ error: 'Configuration RSS et TMDB requise' });
+      const hasPastebin = this.rssParser.pastebinParser.getSources().some(source => !source.paused);
+      if ((!rssUrl && !hasPastebin) || !tmdbKey) {
+        return res.status(400).json({ error: 'Au moins une source RSS/Pastebin et la clé TMDB sont requises' });
+      }
 
       const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
       const host     = req.headers['x-forwarded-host'] || req.headers.host || req.hostname;
@@ -638,7 +763,8 @@ class WebUI {
 
     // ─── Stremio Addon ──────────────────────────────────────────────────────
     this.app.get('/manifest.json', (req, res) => {
-      res.json(this.stremioAddon.manifest);
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
+      res.json(this.stremioAddon.getManifest());
     });
 
     this.app.get('/catalog/:type/:id.json', async (req, res) => {
@@ -654,6 +780,11 @@ class WebUI {
         res.status(500).json({ metas: [] });
       }
     });
+  }
+
+  bumpManifestRevision() {
+    const next = (Number(this.db.getConfig('manifest_revision')) || 0) + 1;
+    this.db.setConfig('manifest_revision', String(next));
   }
 
   async runSync() {

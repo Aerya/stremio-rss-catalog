@@ -365,7 +365,9 @@ class TMDBMatcher {
       let match = null;
       try {
         const isAnime = item.catalog_type === 'animés';
-        match = isAnime ? await this.matchAnimeItem(item) : await this.matchItem(item);
+        match = item.tmdb_id
+          ? await this.fetchByTmdbId(item.tmdb_id, item.type === 'series' ? 'tv' : 'movie')
+          : (isAnime ? await this.matchAnimeItem(item) : await this.matchItem(item));
       } catch (err) {
         console.error(`[TMDB] Erreur inattendue sur "${item.cleanName}":`, err.message);
       }

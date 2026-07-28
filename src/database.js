@@ -116,6 +116,19 @@ class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_failed_indexer ON failed_releases(indexer_rlz_id);
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS custom_catalogs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('movie', 'series')),
+        enabled INTEGER NOT NULL DEFAULT 1,
+        source_urls TEXT NOT NULL DEFAULT '[]',
+        filters TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
     // Migration depuis l'ancien schéma catalog_items si nécessaire
     const alreadyMigrated = this.db.prepare("SELECT value FROM config WHERE key = 'schema_v2_migrated'").get();
     if (!alreadyMigrated) {
@@ -186,6 +199,8 @@ class DatabaseManager {
       rss_films_url: '',
       rss_films_force: 'auto',
       rss_additional_urls: '[]',
+      pastebin_sources: '[]',
+      manifest_revision: '0',
       tmdb_api_key: '',
       tvdb_api_key: '',
       proxy_enabled: 'false',
@@ -237,6 +252,112 @@ class DatabaseManager {
   getAllConfig() {
     const rows = this.db.prepare('SELECT key, value FROM config').all();
     return rows.reduce((acc, row) => { acc[row.key] = row.value; return acc; }, {});
+  }
+
+  // ─── Catalogues personnalisés ────────────────────────────────────────────
+
+  listCustomCatalogs(includeDisabled = true) {
+    const rows = includeDisabled
+      ? this.db.prepare('SELECT * FROM custom_catalogs ORDER BY created_at ASC').all()
+      : this.db.prepare('SELECT * FROM custom_catalogs WHERE enabled = 1 ORDER BY created_at ASC').all();
+    return rows.map(row => ({
+      ...row,
+      enabled: Boolean(row.enabled),
+      source_urls: JSON.parse(row.source_urls || '[]'),
+      filters: JSON.parse(row.filters || '{}')
+    }));
+  }
+
+  getCustomCatalog(id) {
+    const row = this.db.prepare('SELECT * FROM custom_catalogs WHERE id = ?').get(id);
+    if (!row) return null;
+    return {
+      ...row,
+      enabled: Boolean(row.enabled),
+      source_urls: JSON.parse(row.source_urls || '[]'),
+      filters: JSON.parse(row.filters || '{}')
+    };
+  }
+
+  saveCustomCatalog(catalog) {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO custom_catalogs (id, name, type, enabled, source_urls, filters, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        type = excluded.type,
+        enabled = excluded.enabled,
+        source_urls = excluded.source_urls,
+        filters = excluded.filters,
+        updated_at = excluded.updated_at
+    `).run(
+      catalog.id, catalog.name, catalog.type, catalog.enabled === false ? 0 : 1,
+      JSON.stringify(catalog.source_urls || []), JSON.stringify(catalog.filters || {}),
+      catalog.created_at || now, now
+    );
+    return this.getCustomCatalog(catalog.id);
+  }
+
+  deleteCustomCatalog(id) {
+    return this.db.prepare('DELETE FROM custom_catalogs WHERE id = ?').run(id).changes > 0;
+  }
+
+  getCustomCatalogMedia(catalog, skip = 0, limit = 101, search = null) {
+    const conditions = ['m.type = ?'];
+    const params = [catalog.type];
+    const filters = catalog.filters || {};
+
+    if (catalog.source_urls?.length) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM releases r
+        WHERE r.media_imdb_id = m.imdb_id
+          AND r.source_url IN (${catalog.source_urls.map(() => '?').join(',')})
+      )`);
+      params.push(...catalog.source_urls);
+    }
+
+    const years = Array.isArray(filters.years)
+      ? filters.years.map(String).filter(year => /^\d{4}$/.test(year))
+      : [];
+    if (years.length) {
+      conditions.push(`m.year ${filters.year_mode === 'exclude' ? 'NOT ' : ''}IN (${years.map(() => '?').join(',')})`);
+      params.push(...years);
+    }
+    if (/^\d{4}$/.test(String(filters.year_min || ''))) {
+      conditions.push('CAST(m.year AS INTEGER) >= ?');
+      params.push(Number(filters.year_min));
+    }
+    if (/^\d{4}$/.test(String(filters.year_max || ''))) {
+      conditions.push('CAST(m.year AS INTEGER) <= ?');
+      params.push(Number(filters.year_max));
+    }
+
+    const baseCatalogs = Array.isArray(filters.catalog_types) ? filters.catalog_types.filter(Boolean) : [];
+    if (baseCatalogs.length) {
+      conditions.push(`m.catalog_type IN (${baseCatalogs.map(() => '?').join(',')})`);
+      params.push(...baseCatalogs);
+    }
+    if (search) {
+      conditions.push('(m.name LIKE ? OR m.release_name LIKE ?)');
+      params.push(`%${search}%`, `%${search}%`);
+    }
+    for (const [key, negate] of [['keywords_include', false], ['keywords_exclude', true]]) {
+      const words = Array.isArray(filters[key]) ? filters[key].map(String).filter(Boolean) : [];
+      for (const word of words) {
+        conditions.push(`${negate ? 'NOT ' : ''}(m.name LIKE ? OR m.release_name LIKE ?)`);
+        params.push(`%${word}%`, `%${word}%`);
+      }
+    }
+
+    params.push(Number(limit), Number(skip));
+    const rows = this.db.prepare(`
+      SELECT m.* FROM media m
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY m.first_seen_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params);
+    return rows.map(row => ({ ...row, genres: row.genres ? JSON.parse(row.genres) : [] }));
   }
 
   // ─── Médias ───────────────────────────────────────────────────────────────

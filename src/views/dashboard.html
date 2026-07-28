@@ -28,6 +28,9 @@
       <button class="nav-item" data-section="sources">
         <span class="nav-label" data-i18n="nav_sources">Sources</span>
       </button>
+      <button class="nav-item" data-section="catalogs">
+        <span class="nav-label">Catalogues</span>
+      </button>
       <button class="nav-item" data-section="sync">
         <span class="nav-label" data-i18n="nav_sync">Synchronisation</span>
       </button>
@@ -42,7 +45,7 @@
 
     <div class="sidebar-footer">
       <div class="footer-links">
-        <a href="https://github.com/Aerya/stremio-rss-catalogs" target="_blank">GitHub</a>
+        <a href="https://github.com/Aerya/stremio-rss-catalog" target="_blank">GitHub</a>
         <a href="https://upandclear.org" target="_blank">Blog</a>
         <a href="https://ko-fi.com/upandclear" target="_blank" data-i18n="donate">Dragibus 🍬</a>
       </div>
@@ -238,6 +241,89 @@
       </div>
       <div id="sourcesContainer" class="card">
         <p class="text-muted" data-i18n="sync_loading">Chargement...</p>
+      </div>
+    </section>
+
+    <!-- ─── Catalogues personnalisés ──────────────────────────────── -->
+    <section id="section-catalogs" class="page-section">
+      <div class="page-header">
+        <h2>Catalogues</h2>
+        <button class="btn-sm" onclick="loadCatalogManager()">↺ Actualiser</button>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <h3>Sources Pastebin</h3>
+        <p class="text-muted" style="margin:8px 0 14px">
+          URL directe, pointeur JSON ou index maître catégorisé.
+        </p>
+        <div class="rss-row">
+          <input id="pastebinName" type="text" placeholder="Nom de la source" class="rss-name-input">
+          <input id="pastebinUrl" type="url" placeholder="https://paste.example/raw/..." class="flex-1">
+          <button type="button" class="btn-sm" onclick="previewPastebin()">Prévisualiser</button>
+          <button type="button" class="btn-primary" onclick="addPastebin()">Ajouter</button>
+        </div>
+        <div id="pastebinPreview" class="text-muted" style="margin-top:10px"></div>
+        <div id="pastebinList" style="margin-top:14px"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <h3 id="catalogFormTitle">Créer un catalogue</h3>
+        <input id="catalogEditId" type="hidden">
+        <div class="config-grid" style="margin-top:14px">
+          <div class="field">
+            <label>Nom affiché dans Stremio</label>
+            <input id="catalogName" type="text" placeholder="Films 2026">
+          </div>
+          <div class="field">
+            <label>Type Stremio</label>
+            <select id="catalogMediaType">
+              <option value="movie">Films</option>
+              <option value="series">Séries</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Filtre année</label>
+            <select id="catalogYearMode">
+              <option value="include">Uniquement les années</option>
+              <option value="exclude">Tout sauf les années</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Années, séparées par des virgules</label>
+            <input id="catalogYears" type="text" placeholder="2026 ou 2025,2026">
+          </div>
+          <div class="field">
+            <label>Année minimale</label>
+            <input id="catalogYearMin" type="number" min="1900" max="2100" placeholder="2020">
+          </div>
+          <div class="field">
+            <label>Année maximale</label>
+            <input id="catalogYearMax" type="number" min="1900" max="2100" placeholder="2026">
+          </div>
+          <div class="field">
+            <label>Mots requis, séparés par des virgules</label>
+            <input id="catalogKeywordsInclude" type="text" placeholder="Marvel, IMAX">
+          </div>
+          <div class="field">
+            <label>Mots exclus, séparés par des virgules</label>
+            <input id="catalogKeywordsExclude" type="text" placeholder="CAM, TS">
+          </div>
+        </div>
+        <div class="field" style="margin-top:14px">
+          <label>Sources utilisées — aucune sélection signifie toutes les sources</label>
+          <div id="catalogSourceChoices" class="catalog-source-choices"></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap">
+          <button type="button" class="btn-sm" onclick="previewCatalog()">Prévisualiser</button>
+          <button type="button" class="btn-primary" onclick="saveCatalog()">Enregistrer</button>
+          <button type="button" class="btn-sm" onclick="resetCatalogForm()">Annuler</button>
+          <span id="catalogPreview" class="text-muted"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Catalogues configurés</h3>
+        <div id="catalogList" style="margin-top:14px"></div>
       </div>
     </section>
 

@@ -2,7 +2,7 @@ const axios   = require('axios');
 const sharp   = require('sharp');
 const { getStrings } = require('./notifStrings');
 
-const AVATAR_URL = 'https://raw.githubusercontent.com/Aerya/stremio-rss-catalogs/main/src/public/logo.png';
+const AVATAR_URL = 'https://raw.githubusercontent.com/Aerya/stremio-rss-catalog/main/src/public/logo.png';
 
 function getPosterUrl(item, rpdbEnabled, rpdbKey) {
   if (rpdbEnabled && rpdbKey && item.imdb_id) {

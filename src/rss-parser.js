@@ -1,12 +1,14 @@
 const axios = require('axios');
 const xml2js = require('xml2js');
 const { SocksProxyAgent } = require('socks-proxy-agent');
+const PastebinParser = require('./pastebin-parser');
 
 class RSSParser {
   constructor(config, db) {
     this.config = config;
     this.db = db;
     this.axiosConfig = this.getAxiosConfig();
+    this.pastebinParser = new PastebinParser(db, () => this.getAxiosConfig());
   }
 
   getAxiosConfig() {
@@ -336,7 +338,8 @@ class RSSParser {
   async parseAll() {
     const filmsItems = await this.parseFilmsRSS();
     const additionalItems = await this.parseAdditionalRSS();
-    return { films: [...filmsItems, ...additionalItems] };
+    const pastebinItems = await this.pastebinParser.parseAll();
+    return { films: [...filmsItems, ...additionalItems, ...pastebinItems] };
   }
 }
 
