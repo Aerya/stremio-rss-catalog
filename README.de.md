@@ -39,7 +39,12 @@
 
 | | |
 |---|---|
-| **9 Kataloge** | Filme · Dokumentarfilme (Filme) · Dokumentarfilme (Serien) · Serien · TV-Sendungen · Anime (Filme) · Anime (Serien) · Konzerte · Aufführungen |
+| **Verwaltete Kataloge** | Die 9 bisherigen Kataloge werden mit ihren vorhandenen Inhalten in die Verwaltung übernommen; beliebig viele eigene Kataloge können ergänzt werden |
+| **Gemischte Quellen** | Ein Katalog kann RSS-, Pastebin- und aus generischen Stremio-Manifesten importierte Katalogquellen kombinieren |
+| **Eigene Filter** | Ein- oder ausgeschlossene Jahre, Jahresbereiche, Genres, Schlüsselwörter und Quellenauswahl |
+| **Dynamischer Lebenszyklus** | Kataloge erstellen, bearbeiten, pausieren, fortsetzen oder löschen, ohne indexierte Medien zu entfernen |
+| **Verschachtelte Pastebins** | Direkte Seiten, JSON-Verweise und kategorisierte Hauptindizes mit begrenzter Rekursion und Deduplizierung |
+| **Stremio-Manifeste** | Generische Erkennung externer Kataloge und Import ihrer Inhalte |
 | **Auto-Erkennung** | Kategorie aus Release-Name, Feed-URL-Schlüsselwörtern oder TMDB/OMDb-Genres ermittelt |
 | **Feed-URL-Erkennung** | Kategorie wird im Auto-Modus automatisch aus Schlüsselwörtern in der RSS-Feed-URL abgeleitet (`concert`, `anime`, `docu`, `serie`…) |
 | **Anime** | Via TMDB-Genre 16 + japanische Herkunft, OVA/OAV im Titel oder per Feed erzwungen |

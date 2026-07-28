@@ -17,12 +17,7 @@ class StremioManifestParser {
   }
 
   maskUrl(value) {
-    try {
-      const url = new URL(value);
-      return `${url.origin}${url.pathname}${url.search ? '?…' : ''}`;
-    } catch {
-      return 'URL masquée';
-    }
+    return value ? 'manifest.json — URL masquée' : 'URL masquée';
   }
 
   async fetchJson(url) {
@@ -58,6 +53,33 @@ class StremioManifestParser {
     };
   }
 
+  anonymizeInspection(inspection) {
+    const counts = {};
+    const labels = {
+      films: 'Films importés',
+      series: 'Séries importées',
+      documentaires: 'Documentaires importés',
+      'animés': 'Animés importés',
+      concerts: 'Concerts importés',
+      spectacles: 'Spectacles importés',
+      emissions: 'Émissions importées'
+    };
+    const catalogs = inspection.catalogs.map(catalog => {
+      const category = this.guessCatalogType(catalog);
+      counts[category] = (counts[category] || 0) + 1;
+      return {
+        ...catalog,
+        name: `${labels[category] || 'Catalogue importé'}${counts[category] > 1 ? ` ${counts[category]}` : ''}`
+      };
+    });
+    return {
+      name: 'Manifeste Stremio',
+      id: '',
+      version: inspection.version,
+      catalogs
+    };
+  }
+
   catalogUrl(manifestUrl, catalog, skip = 0) {
     const url = new URL(manifestUrl);
     const basePath = url.pathname.replace(/\/manifest\.json$/i, '').replace(/\/$/, '');
@@ -66,6 +88,12 @@ class StremioManifestParser {
     url.pathname = skip > 0
       ? `${basePath}/catalog/${type}/${id}/skip=${skip}.json`
       : `${basePath}/catalog/${type}/${id}.json`;
+    return url.href;
+  }
+
+  catalogUrlWithQuerySkip(manifestUrl, catalog, skip) {
+    const url = new URL(this.catalogUrl(manifestUrl, catalog, 0));
+    url.searchParams.set('skip', String(skip));
     return url.href;
   }
 
@@ -117,6 +145,7 @@ class StremioManifestParser {
   async fetchCatalog(source, catalog) {
     const limit = Math.min(Math.max(Number(source.maxItemsPerCatalog) || 5000, 1), 20000);
     const items = [];
+    const seenIds = new Set();
     let skip = 0;
     while (items.length < limit) {
       let data;
@@ -124,15 +153,22 @@ class StremioManifestParser {
         data = await this.fetchJson(this.catalogUrl(source.url, catalog, skip));
       } catch (error) {
         if (skip === 0) throw error;
-        break;
+        try {
+          data = await this.fetchJson(this.catalogUrlWithQuerySkip(source.url, catalog, skip));
+        } catch {
+          break;
+        }
       }
       const metas = Array.isArray(data?.metas) ? data.metas : [];
+      let added = 0;
       for (const meta of metas) {
+        if (!meta?.id || seenIds.has(String(meta.id))) continue;
+        seenIds.add(String(meta.id));
         const item = this.metaToItem(meta, source, catalog);
-        if (item) items.push(item);
+        if (item) { items.push(item); added++; }
         if (items.length >= limit) break;
       }
-      if (metas.length < 100 || data?.hasMore === false) break;
+      if (added === 0 || metas.length < 100 || data?.hasMore === false) break;
       skip += metas.length;
     }
     return items;

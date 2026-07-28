@@ -95,6 +95,10 @@ async function main() {
     const inspected = await stremioParser.inspect(remoteUrl);
     assert.deepEqual(inspected.catalogs.map(catalog => catalog.id), ['remote_movies']);
     assert.ok(!stremioParser.maskUrl(remoteUrl).includes('secret-test'));
+    assert.ok(!stremioParser.maskUrl(remoteUrl).includes('127.0.0.1'));
+    const anonymous = stremioParser.anonymizeInspection(inspected);
+    assert.equal(anonymous.name, 'Manifeste Stremio');
+    assert.deepEqual(anonymous.catalogs.map(catalog => catalog.name), ['Films importés']);
     const remoteSource = {
       id: 'remote-test',
       name: inspected.name,
@@ -146,12 +150,17 @@ async function main() {
 
     db.saveCustomCatalog({ ...catalog, enabled: false });
     assert.ok(!addon.getManifest().catalogs.some(item => item.id === 'custom_films_2026'));
+    assert.ok(db.deleteCustomCatalog('useflowfr_films'));
+    db.seedManagedCatalogs();
+    assert.equal(db.getCustomCatalog('useflowfr_films'), null);
+    assert.ok(db.getMediaByImdbId('tt0000123'));
     console.log('✓ Pastebin direct, pointeur JSON et index catégorisé');
     console.log('✓ Import TMDB direct films/séries');
     console.log('✓ Filtres source, année et genre');
     console.log('✓ Manifeste dynamique et mise en pause');
     console.log('✓ Reprise des catalogues historiques et de leurs contenus');
-    console.log('✓ Import générique de manifestes Stremio avec URL sensible masquée');
+    console.log('✓ Suppression durable sans suppression des médias');
+    console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
   } finally {
     db.close();
     await new Promise(resolve => server.close(resolve));

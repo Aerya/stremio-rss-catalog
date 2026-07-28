@@ -234,7 +234,7 @@ class WebUI {
       res.json(parser.getSources().map(source => ({
         id: source.id,
         name: source.name,
-        display_url: parser.maskUrl(source.url),
+        display_url: source.url,
         paused: Boolean(source.paused),
         catalogs: (source.catalogs || []).map(catalog => ({
           ...catalog,
@@ -247,7 +247,8 @@ class WebUI {
       try {
         const { url } = req.body;
         if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
-        res.json(await this.rssParser.stremioManifestParser.inspect(url));
+        const parser = this.rssParser.stremioManifestParser;
+        res.json(parser.anonymizeInspection(await parser.inspect(url)));
       } catch (error) {
         res.status(400).json({ error: error.message });
       }
@@ -260,10 +261,10 @@ class WebUI {
         const parser = this.rssParser.stremioManifestParser;
         const sources = parser.getSources();
         if (sources.some(source => source.url === url)) return res.status(409).json({ error: 'Cette source existe déjà' });
-        const inspected = await parser.inspect(url);
+        const inspected = parser.anonymizeInspection(await parser.inspect(url));
         const source = {
           id: crypto.randomUUID(),
-          name: String(name).trim() || inspected.name,
+          name: String(name).trim() || 'Manifeste Stremio',
           url,
           paused: false,
           maxItemsPerCatalog: 5000,
@@ -274,7 +275,7 @@ class WebUI {
         res.status(201).json({
           id: source.id,
           name: source.name,
-          display_url: parser.maskUrl(source.url),
+          display_url: source.url,
           paused: false,
           catalogs: source.catalogs.map(catalog => ({
             ...catalog,

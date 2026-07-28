@@ -50,6 +50,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.manager-row-url {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-family: monospace;
+}
 .manager-row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .catalog-source-choice input[type="checkbox"] {
   width: 18px;

@@ -841,7 +841,7 @@ function renderRssSources() {
   const container = document.getElementById('rssSourceList');
   if (!container) return;
   if (!catalogManagerData.rss.length) {
-    container.innerHTML = '<p class="text-muted">Aucune source RSS.</p>';
+    container.innerHTML = `<p class="text-muted">${t('sources_rss_none')}</p>`;
     return;
   }
   container.innerHTML = catalogManagerData.rss.map(source => `
@@ -851,9 +851,9 @@ function renderRssSources() {
         <div class="manager-row-meta" title="${escHtml(source.url)}">${escHtml(source.url)} · ${escHtml(source.force || 'auto')}</div>
       </div>
       <div class="manager-row-actions">
-        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.url).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">Catalogue</button>
-        <button class="btn-sm" onclick="toggleRssSource('${source.id}', ${!source.paused})">${source.paused ? 'Reprendre' : 'Pause'}</button>
-        <button class="btn-danger btn-sm" onclick="deleteRssSource('${source.id}')">Supprimer</button>
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.url).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="toggleRssSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteRssSource('${source.id}')">${t('sources_delete')}</button>
       </div>
     </div>`).join('');
 }
@@ -894,7 +894,7 @@ window.deleteRssSource = deleteRssSource;
 function renderPastebins() {
   const container = document.getElementById('pastebinList');
   if (!catalogManagerData.pastebins.length) {
-    container.innerHTML = '<p class="text-muted">Aucune source Pastebin.</p>';
+    container.innerHTML = `<p class="text-muted">${t('sources_pastebin_none')}</p>`;
     return;
   }
   container.innerHTML = catalogManagerData.pastebins.map(source => `
@@ -904,9 +904,9 @@ function renderPastebins() {
         <div class="manager-row-meta" title="${escHtml(source.url)}">${escHtml(source.url)}</div>
       </div>
       <div class="manager-row-actions">
-        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.url).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">Catalogue</button>
-        <button class="btn-sm" onclick="togglePastebin('${source.id}', ${!source.paused})">${source.paused ? 'Reprendre' : 'Pause'}</button>
-        <button class="btn-danger btn-sm" onclick="deletePastebin('${source.id}')">Supprimer</button>
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.url).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="togglePastebin('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deletePastebin('${source.id}')">${t('sources_delete')}</button>
       </div>
     </div>`).join('');
 }
@@ -933,22 +933,22 @@ function renderCatalogSourceChoices(selected = []) {
 function renderCatalogs() {
   const container = document.getElementById('catalogList');
   if (!catalogManagerData.catalogs.length) {
-    container.innerHTML = '<p class="text-muted">Aucun catalogue personnalisé.</p>';
+    container.innerHTML = `<p class="text-muted">${t('catalogs_none')}</p>`;
     return;
   }
   container.innerHTML = catalogManagerData.catalogs.map(catalog => {
     const years = catalog.filters?.years?.length
       ? `${catalog.filters.year_mode === 'exclude' ? 'hors ' : ''}${catalog.filters.years.join(', ')}`
-      : 'toutes années';
+      : t('catalogs_all_years');
     return `<div class="manager-row">
       <div class="manager-row-main">
         <div class="manager-row-title">${catalog.enabled ? '●' : '⏸'} ${escHtml(catalog.name)}</div>
-        <div class="manager-row-meta">${catalog.type === 'movie' ? 'Films' : 'Séries'} · ${escHtml(years)} · ${catalog.source_urls.length || 'toutes'} source(s)</div>
+        <div class="manager-row-meta">${catalog.type === 'movie' ? t('stat_films') : t('stat_series')} · ${escHtml(years)} · ${catalog.source_urls.length ? `${catalog.source_urls.length} ${t('catalogs_source_count')}` : t('catalogs_all_sources')}</div>
       </div>
       <div class="manager-row-actions">
-        <button class="btn-sm" onclick="editCatalog('${catalog.id}')">Modifier</button>
-        <button class="btn-sm" onclick="toggleCatalog('${catalog.id}', ${!catalog.enabled})">${catalog.enabled ? 'Pause' : 'Reprendre'}</button>
-        <button class="btn-danger btn-sm" onclick="deleteCatalog('${catalog.id}')">Supprimer</button>
+        <button class="btn-sm" onclick="editCatalog('${catalog.id}')">${t('catalogs_edit')}</button>
+        <button class="btn-sm" onclick="toggleCatalog('${catalog.id}', ${!catalog.enabled})">${catalog.enabled ? t('sources_pause') : t('sources_resume')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteCatalog('${catalog.id}')">${t('sources_delete')}</button>
       </div>
     </div>`;
   }).join('');
@@ -1006,21 +1006,22 @@ function renderStremioSources() {
   const container = document.getElementById('stremioSourceList');
   if (!container) return;
   if (!catalogManagerData.stremio.length) {
-    container.innerHTML = '<p class="text-muted">Aucun manifeste Stremio.</p>';
+    container.innerHTML = `<p class="text-muted">${t('sources_stremio_none')}</p>`;
     return;
   }
   container.innerHTML = catalogManagerData.stremio.map(source => `
     <div class="manager-row">
       <div class="manager-row-main">
         <div class="manager-row-title">${escHtml(source.name)} ${source.paused ? '⏸' : '●'}</div>
-        <div class="manager-row-meta">${escHtml(source.display_url)} · ${(source.catalogs || []).length} catalogue(s)</div>
+        <div class="manager-row-meta manager-row-url" title="${escHtml(source.display_url)}">${escHtml(source.display_url)}</div>
+        <div class="manager-row-meta">${(source.catalogs || []).length} catalogue(s)</div>
         <div style="margin-top:6px">${(source.catalogs || []).map(catalog =>
           `<span class="src-cat badge-${catalog.type === 'series' ? 'series' : 'films'}">${escHtml(catalog.name)}</span>`
         ).join(' ')}</div>
       </div>
       <div class="manager-row-actions">
-        <button class="btn-sm" onclick="toggleStremioSource('${source.id}', ${!source.paused})">${source.paused ? 'Reprendre' : 'Pause'}</button>
-        <button class="btn-danger btn-sm" onclick="deleteStremioSource('${source.id}')">Supprimer</button>
+        <button class="btn-sm" onclick="toggleStremioSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteStremioSource('${source.id}')">${t('sources_delete')}</button>
       </div>
     </div>`).join('');
 }
@@ -1102,7 +1103,7 @@ function editCatalog(id) {
   const catalog = catalogManagerData.catalogs.find(item => item.id === id);
   if (!catalog) return;
   document.getElementById('catalogEditId').value = catalog.id;
-  document.getElementById('catalogFormTitle').textContent = 'Modifier le catalogue';
+  document.getElementById('catalogFormTitle').textContent = t('catalogs_edit');
   document.getElementById('catalogName').value = catalog.name;
   document.getElementById('catalogMediaType').value = catalog.type;
   document.getElementById('catalogYearMode').value = catalog.filters?.year_mode || 'include';
@@ -1142,7 +1143,7 @@ window.deleteCatalog = deleteCatalog;
 
 function resetCatalogForm() {
   document.getElementById('catalogEditId').value = '';
-  document.getElementById('catalogFormTitle').textContent = 'Créer un catalogue';
+  document.getElementById('catalogFormTitle').textContent = t('catalogs_create');
   ['catalogName','catalogYears','catalogYearMin','catalogYearMax','catalogKeywordsInclude','catalogKeywordsExclude']
     .forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('catalogMediaType').value = 'movie';

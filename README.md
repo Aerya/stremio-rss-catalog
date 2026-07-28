@@ -39,7 +39,12 @@
 
 | | |
 |---|---|
-| **9 catalogues** | Films · Documentaires (films) · Documentaires (séries) · Séries · Émissions TV · Animés (films) · Animés (séries) · Concerts · Spectacles |
+| **Catalogues gérés** | Les 9 catalogues historiques sont repris dans le gestionnaire et conservent leurs contenus ; créez ensuite autant de catalogues personnalisés que nécessaire |
+| **Sources mixtes** | Un catalogue peut utiliser une ou plusieurs sources RSS, Pastebin et/ou des catalogues importés depuis un manifeste Stremio |
+| **Filtres personnalisés** | Années incluses ou exclues, plage d'années, genres requis/exclus, mots-clés requis/exclus et sélection des sources |
+| **Cycle de vie dynamique** | Création, modification, pause, reprise et suppression des catalogues sans supprimer les médias indexés |
+| **Pastebins imbriqués** | Pages directes, pointeurs JSON et index maîtres catégorisés avec récursion bornée, déduplication et protection des hôtes découverts |
+| **Manifestes Stremio** | Découverte générique des catalogues d'un autre addon et import de leurs contenus |
 | **Détection automatique** | Catégorie identifiée depuis le nom de release, l'URL du flux ou les genres TMDB/OMDb |
 | **Détection par URL de flux** | La catégorie est devinée automatiquement depuis les mots-clés dans l'URL du flux RSS (`concert`, `anime`, `docu`, `serie`…) |
 | **Animés** | Détectés via TMDB genre 16 + origine japonaise, OVA/OAV dans le titre, ou forcé par flux |
@@ -120,7 +125,12 @@ services:
       - SESSION_SECRET=changeme
 ```
 
-Puis ouvrir la WebUI sur `http://localhost:7973`, configurer le(s) flux RSS + la clé TMDB, lancer une première synchronisation, et installer l'addon dans Stremio avec l'URL fournie.
+Puis ouvrir la WebUI sur `http://localhost:7973` :
+
+1. Ajouter les sources dans **Sources** : RSS, Pastebin ou manifeste Stremio.
+2. Ouvrir **Catalogues** pour gérer les catalogues historiques ou en créer de nouveaux avec des sources uniques ou mixtes.
+3. Configurer la clé TMDB si des sources RSS ou Pastebin sont utilisées.
+4. Lancer une première synchronisation, puis installer l'addon dans Stremio avec l'URL fournie.
 
 > **`TZ=Europe/Paris`** est recommandé pour un affichage correct des dates dans la WebUI et un regroupement juste de l'historique des syncs.
 
@@ -157,6 +167,18 @@ Les boutons génèrent des flux **agrégés** (toutes vos sources) :
 | Séries | `/api?t=rss&apikey=XXXX&cat=5000` |
 
 > Chaque bouton ajoute une **nouvelle ligne** dans la liste des flux RSS — vous pouvez cliquer sur plusieurs pour avoir Films et Séries en flux séparés. L'URL de base sauvegardée sert uniquement à l'intégration rapide, elle n'est pas un flux RSS en elle-même.
+
+## Sources Pastebin et manifestes Stremio
+
+Les sources Pastebin acceptent :
+
+- une page de contenu directe au format `CAT;TMDB;TITLE;...` ;
+- un document JSON pointant vers un index maître ;
+- un index maître utilisant des sections telles que `#FILMS`, `#SERIES` ou `#DOCUMENTAIRES`, suivies de codes ou d'URLs enfants.
+
+Les manifestes Stremio sont ajoutés avec leur URL `manifest.json`. L'addon découvre les catalogues déclarés et les expose comme sources sélectionnables dans le gestionnaire de catalogues.
+
+> L'ajout, la pause ou la suppression modifie immédiatement le manifeste servi par l'addon et incrémente sa version. Le contenu des catalogues existants est immédiatement dynamique. Selon le cache du client Stremio, l'apparition d'un tout nouveau catalogue peut toutefois nécessiter un redémarrage ou une actualisation du client.
 
 ---
 

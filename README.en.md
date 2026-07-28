@@ -39,7 +39,12 @@
 
 | | |
 |---|---|
-| **9 catalogs** | Movies · Documentaries (films) · Documentaries (series) · Series · TV Shows · Anime (films) · Anime (series) · Concerts · Live Shows |
+| **Managed catalogs** | The 9 historical catalogs are migrated into the manager with their existing content preserved; create any number of custom catalogs |
+| **Mixed sources** | A catalog may combine RSS, Pastebin, and catalogs imported from generic Stremio manifests |
+| **Custom filters** | Included or excluded years, year ranges, included/excluded genres and keywords, and source selection |
+| **Dynamic lifecycle** | Create, edit, pause, resume, or delete catalogs without deleting indexed media |
+| **Nested Pastebins** | Direct pages, JSON pointers, and categorized master indexes with bounded recursion and deduplication |
+| **Stremio manifests** | Generic remote catalog discovery and content import |
 | **Auto detection** | Category identified from release name, feed URL keywords, or TMDB/OMDb genres |
 | **Feed URL detection** | Category automatically guessed from keywords in the RSS feed URL (`concert`, `anime`, `docu`, `serie`, `film`…) |
 | **Anime** | Detected via TMDB genre 16 + Japanese origin, OVA/OAV in title, or forced per feed |
@@ -120,7 +125,7 @@ services:
       - SESSION_SECRET=changeme
 ```
 
-Then open the WebUI at `http://localhost:7973`, configure your RSS feed(s) + TMDB API key, run a first sync, and install the addon in Stremio using the provided URL.
+Then open the WebUI at `http://localhost:7973`, add RSS, Pastebin, or Stremio-manifest sources under **Sources**, manage historical and custom catalogs under **Catalogs**, run a first sync, and install the addon in Stremio using the provided URL. A TMDB key is required for RSS and Pastebin sources.
 
 > **`TZ`** sets the container timezone. Adjust to your own timezone (e.g. `America/New_York`) for correct date display in the WebUI and proper sync history grouping.
 
