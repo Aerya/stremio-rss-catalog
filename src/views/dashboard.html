@@ -247,6 +247,7 @@
           <button class="source-tab active" data-source-tab="all" onclick="selectSourceTab('all')">Toutes</button>
           <button class="source-tab" data-source-tab="rss" onclick="selectSourceTab('rss')">RSS</button>
           <button class="source-tab" data-source-tab="pastebin" onclick="selectSourceTab('pastebin')">Pastebin</button>
+          <button class="source-tab" data-source-tab="webdav" onclick="selectSourceTab('webdav')">WebDAV</button>
           <button class="source-tab" data-source-tab="indexer" onclick="selectSourceTab('indexer')">Indexeurs</button>
           <button class="source-tab" data-source-tab="stremio" onclick="selectSourceTab('stremio')">Stremio</button>
           <button class="source-tab" data-source-tab="diagnostics" onclick="selectSourceTab('diagnostics')">Diagnostics</button>
@@ -302,10 +303,87 @@
         <div id="pastebinList" style="margin-top:14px"></div>
       </details>
 
+      <details class="card source-group" data-source-group="webdav">
+        <summary><span>Sources WebDAV</span> <span class="source-group-count" id="webdavGroupCount"></span></summary>
+        <p class="text-muted" style="margin:8px 0 14px">
+          Parcourt récursivement un dossier WebDAV et identifie les films ou séries à partir des noms de fichiers.
+          La lecture reste assurée dans Stremio par un addon dédié comme
+          <a href="https://github.com/arvida42/davio" target="_blank" rel="noopener noreferrer">Davio ↗</a>.
+        </p>
+        <input id="webdavEditId" type="hidden">
+        <div class="config-grid">
+          <div class="field">
+            <label>Nom</label>
+            <input id="webdavName" type="text" placeholder="Ma vidéothèque WebDAV">
+          </div>
+          <div class="field">
+            <label>URL du dossier racine</label>
+            <input id="webdavUrl" type="password" autocomplete="off" placeholder="https://dav.example.net/Films/">
+          </div>
+          <div class="field">
+            <label>Utilisateur</label>
+            <input id="webdavUsername" type="password" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>Mot de passe</label>
+            <input id="webdavPassword" type="password" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label>Classement</label>
+            <select id="webdavForce">
+              <option value="auto">Détection automatique</option>
+              <option value="films">Films</option><option value="series">Séries</option>
+              <option value="documentaires">Documentaires</option>
+              <option value="documentaires_series">Documentaires (séries)</option>
+              <option value="emissions">Émissions TV</option>
+              <option value="animes_films">Animés (films)</option><option value="animes_series">Animés (séries)</option>
+              <option value="concerts">Concerts</option><option value="spectacles">Spectacles</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Profondeur maximale</label>
+            <input id="webdavMaxDepth" type="number" min="0" max="20" value="8">
+          </div>
+          <div class="field">
+            <label>Maximum de fichiers par collecte</label>
+            <input id="webdavMaxItems" type="number" min="1" max="20000" value="5000">
+          </div>
+          <div class="field">
+            <label>Extensions vidéo</label>
+            <input id="webdavExtensions" type="text" value="mkv,mp4,avi,mov,m4v,webm,ts,m2ts,iso,strm">
+          </div>
+          <div class="field">
+            <label>Fréquence de collecte (min)</label>
+            <input id="webdavInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale">
+          </div>
+          <div class="field">
+            <label><input id="webdavUseProxy" type="checkbox"> Utiliser le proxy global</label>
+            <small>Désactivé par défaut pour les serveurs WebDAV locaux.</small>
+          </div>
+          <div class="field">
+            <label><input id="webdavClearCredentials" type="checkbox"> Supprimer les identifiants enregistrés</label>
+            <small>À utiliser si le WebDAV devient accessible sans authentification.</small>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button type="button" class="btn-sm" onclick="previewWebdavSource()">Tester le parcours</button>
+          <button type="button" class="btn-primary" id="webdavSubmit" onclick="saveWebdavSource()">Ajouter</button>
+          <button type="button" class="btn-sm" id="webdavCancel" onclick="resetWebdavForm()" hidden>Annuler</button>
+        </div>
+        <div id="webdavPreview" class="text-muted" style="margin-top:10px"></div>
+        <div id="webdavList" style="margin-top:14px"></div>
+      </details>
+
       <details class="card source-group" data-source-group="indexer">
         <summary><span data-i18n="sources_newznab_title">API d’indexeurs</span> <span class="source-group-count" id="indexerGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_newznab_desc">
           Sources Newznab, Prowlarr, Jackett/Torznab et NZBHydra2 paginées.
+        </p>
+        <p class="source-project-links">
+          Projets :
+          <a href="https://github.com/Prowlarr/Prowlarr" target="_blank" rel="noopener noreferrer">Prowlarr ↗</a>
+          · <a href="https://github.com/Jackett/Jackett" target="_blank" rel="noopener noreferrer">Jackett ↗</a>
+          · <a href="https://github.com/theotherp/nzbhydra2" target="_blank" rel="noopener noreferrer">NZBHydra2 ↗</a>
         </p>
         <input id="newznabEditId" type="hidden">
         <div class="config-grid">
@@ -373,6 +451,16 @@
         <summary><span data-i18n="sources_stremio_title">Manifestes Stremio</span> <span class="source-group-count" id="stremioGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_stremio_desc">
           Importe les catalogues déclarés par un autre addon.
+        </p>
+        <p class="source-project-links">
+          Documentation :
+          <a href="https://github.com/Stremio/stremio-addon-sdk" target="_blank" rel="noopener noreferrer">protocole des addons Stremio ↗</a>.
+          Exemples :
+          <a href="https://github.com/xXCrash2BomberXx/YouTubio" target="_blank" rel="noopener noreferrer">YouTubio ↗</a>
+          · <a href="https://github.com/vanchaxy/plexio" target="_blank" rel="noopener noreferrer">Plexio ↗</a>
+          · <a href="https://github.com/akarazniewicz/stremio-jellyfin" target="_blank" rel="noopener noreferrer">Stremio Jellyfin ↗</a>
+          · <a href="https://github.com/TheBeastLT/stremio-kitsu-anime" target="_blank" rel="noopener noreferrer">Kitsu Anime ↗</a>
+          · métadonnées : <a href="https://github.com/cedya77/aiometadata" target="_blank" rel="noopener noreferrer">AIOMetadata ↗</a>.
         </p>
         <input id="stremioEditId" type="hidden">
         <div class="rss-row">

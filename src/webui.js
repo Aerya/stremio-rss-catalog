@@ -214,6 +214,7 @@ class WebUI {
       const config = this.db.getAllConfig();
       delete config.stremio_manifest_sources;
       delete config.newznab_sources;
+      delete config.webdav_sources;
       res.json(config);
     });
 
@@ -251,7 +252,7 @@ class WebUI {
         'schema_v2_migrated', 'classification_migration_version',
         'rss_films_name', 'rss_films_url', 'rss_films_force',
         'rss_films_paused', 'rss_films_sync_interval', 'rss_additional_urls',
-        'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources'
+        'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources', 'webdav_sources'
       ]);
       const config = Object.fromEntries(Object.entries(this.db.getAllConfig())
         .filter(([key]) => !excludedConfigKeys.has(key))
@@ -259,7 +260,9 @@ class WebUI {
       const redactUrl = source => ({
         ...source,
         url: includeSecrets ? source.url : null,
-        ...(Object.hasOwn(source, 'apiKey') ? { apiKey: includeSecrets ? source.apiKey : null } : {})
+        ...(Object.hasOwn(source, 'apiKey') ? { apiKey: includeSecrets ? source.apiKey : null } : {}),
+        ...(Object.hasOwn(source, 'username') ? { username: includeSecrets ? source.username : null } : {}),
+        ...(Object.hasOwn(source, 'password') ? { password: includeSecrets ? source.password : null } : {})
       });
       res.setHeader('Content-Disposition', `attachment; filename="stremio-rss-catalog-${new Date().toISOString().slice(0, 10)}.json"`);
       res.json({
@@ -272,7 +275,8 @@ class WebUI {
           rss: this.getRssSources().map(redactUrl),
           pastebin: this.rssParser.pastebinParser.getSources().map(redactUrl),
           stremio: this.rssParser.stremioManifestParser.getSources().map(redactUrl),
-          indexers: this.rssParser.newznabParser.getSources().map(redactUrl)
+          indexers: this.rssParser.newznabParser.getSources().map(redactUrl),
+          webdav: this.rssParser.webdavParser.getSources().map(redactUrl)
         },
         catalogs: this.db.listCustomCatalogs().map(catalog => ({
           ...catalog,
@@ -302,6 +306,7 @@ class WebUI {
             pastebin: payload.sources.pastebin?.length || 0,
             stremio: payload.sources.stremio?.length || 0,
             indexers: payload.sources.indexers?.length || 0,
+            webdav: payload.sources.webdav?.length || 0,
             catalogs: payload.catalogs.length
           }
         });
@@ -352,6 +357,9 @@ class WebUI {
       this.db.setConfig('newznab_sources', JSON.stringify(mergeSources(
         this.rssParser.newznabParser.getSources(), payload.sources.indexers, ['url', 'apiKey']
       )));
+      this.db.setConfig('webdav_sources', JSON.stringify(mergeSources(
+        this.rssParser.webdavParser.getSources(), payload.sources.webdav, ['url', 'username', 'password']
+      )));
       this.db.clearSourceSyncStates();
       for (const catalog of payload.catalogs) {
         if (catalog?.id && catalog?.name && ['movie', 'series'].includes(catalog.type)) {
@@ -374,11 +382,16 @@ class WebUI {
       if (kind === 'pastebin') source = this.rssParser.pastebinParser.getSources().find(item => item.id === id);
       if (kind === 'stremio') source = this.rssParser.stremioManifestParser.getSources().find(item => item.id === id);
       if (kind === 'indexer') source = this.rssParser.newznabParser.getSources().find(item => item.id === id);
+      if (kind === 'webdav') source = this.rssParser.webdavParser.getSources().find(item => item.id === id);
       if (!source) return res.status(404).json({ error: 'Source introuvable' });
       res.setHeader('Cache-Control', 'no-store');
       res.json({
         url: source.url || null,
-        ...(kind === 'indexer' ? { api_key: source.apiKey || null } : {})
+        ...(kind === 'indexer' ? { api_key: source.apiKey || null } : {}),
+        ...(kind === 'webdav' ? {
+          username: source.username || null,
+          password: source.password || null
+        } : {})
       });
     });
 
@@ -603,9 +616,9 @@ class WebUI {
           syncIntervalMinutes: this.normalizeSourceInterval(sync_interval_minutes),
           catalogs: inspected.catalogs.map(catalog => ({
             ...catalog,
-            enabled: Array.isArray(requestedCatalogs)
+            enabled: catalog.supported !== false && (Array.isArray(requestedCatalogs)
               ? requestedCatalogs.find(item => item.id === catalog.id && item.type === catalog.type)?.enabled !== false
-              : true
+              : true)
           }))
         };
         sources.push(source);
@@ -637,7 +650,12 @@ class WebUI {
       const allowed = {};
       if (req.body.name !== undefined) allowed.name = String(req.body.name).trim();
       if (req.body.paused !== undefined) allowed.paused = Boolean(req.body.paused);
-      if (Array.isArray(req.body.catalogs)) allowed.catalogs = req.body.catalogs;
+      if (Array.isArray(req.body.catalogs)) {
+        allowed.catalogs = req.body.catalogs.map(catalog => ({
+          ...catalog,
+          enabled: catalog.supported === false ? false : catalog.enabled !== false
+        }));
+      }
       if (req.body.max_items_per_catalog !== undefined) {
         allowed.maxItemsPerCatalog = Math.min(Math.max(Number(req.body.max_items_per_catalog) || 5000, 1), 20000);
       }
@@ -654,7 +672,7 @@ class WebUI {
           allowed.url = req.body.url;
           allowed.catalogs = inspected.catalogs.map(catalog => ({
             ...catalog,
-            enabled: enabledById.get(`${catalog.type}:${catalog.id}`) ?? true
+            enabled: catalog.supported !== false && (enabledById.get(`${catalog.type}:${catalog.id}`) ?? true)
           }));
         }
         sources[index] = { ...sources[index], ...allowed };
@@ -858,6 +876,145 @@ class WebUI {
       if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
       this.db.setConfig('newznab_sources', JSON.stringify(next));
       this.db.deleteSourceSyncState(this.rssParser.newznabParser.scheduleKey(sources.find(source => source.id === req.params.id)));
+      res.json({ success: true });
+    });
+
+    // ─── Sources WebDAV ────────────────────────────────────────────────────
+    const webdavParser = this.rssParser.webdavParser;
+    const webdavForApi = source => ({
+      id: source.id,
+      name: source.name,
+      url: source.url,
+      paused: Boolean(source.paused),
+      force: source.force || 'auto',
+      max_depth: Number(source.maxDepth) || 8,
+      max_items: Number(source.maxItems) || 5000,
+      extensions: source.extensions || webdavParser.constructor.DEFAULT_EXTENSIONS,
+      sync_interval_minutes: source.syncIntervalMinutes || null,
+      use_proxy: Boolean(source.useProxy),
+      has_username: Boolean(source.username),
+      has_password: Boolean(source.password),
+      source_key: webdavParser.sourceKey(source.id),
+      runtime: this.getSourceRuntime(webdavParser.sourceKey(source.id), source.syncIntervalMinutes)
+    });
+    const validWebdavForce = value => [
+      'auto', 'films', 'series', 'documentaires', 'documentaires_series',
+      'emissions', 'animes_films', 'animes_series', 'concerts', 'spectacles'
+    ].includes(value);
+    const normalizeExtensions = value => {
+      const values = Array.isArray(value) ? value : String(value || '').split(',');
+      const normalized = [...new Set(values.map(item => String(item).trim().replace(/^\./, '').toLowerCase())
+        .filter(item => /^[a-z0-9]{1,10}$/.test(item)))];
+      return normalized.length ? normalized : webdavParser.constructor.DEFAULT_EXTENSIONS;
+    };
+
+    this.app.get('/api/webdav-sources', this.authMiddleware.bind(this), (req, res) => {
+      res.json(webdavParser.getSources().map(webdavForApi));
+    });
+
+    this.app.post('/api/webdav-sources/preview', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const url = String(req.body.url || '').trim();
+        if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'URL WebDAV HTTP(S) invalide' });
+        const existing = req.body.source_id
+          ? webdavParser.getSources().find(source => source.id === req.body.source_id)
+          : null;
+        const result = await webdavParser.inspect({
+          url,
+          username: req.body.clear_credentials ? '' : String(req.body.username || existing?.username || ''),
+          password: req.body.clear_credentials ? '' : String(req.body.password || existing?.password || ''),
+          maxDepth: Math.min(Math.max(Number(req.body.max_depth) || 8, 0), 20),
+          maxItems: Math.min(Math.max(Number(req.body.max_items) || 100, 1), 100),
+          extensions: normalizeExtensions(req.body.extensions),
+          useProxy: Boolean(req.body.use_proxy)
+        });
+        res.json(result);
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/webdav-sources', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const url = String(req.body.url || '').trim();
+        const force = String(req.body.force || 'auto');
+        if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'URL WebDAV HTTP(S) invalide' });
+        if (!validWebdavForce(force)) return res.status(400).json({ error: 'Classement WebDAV invalide' });
+        const sources = webdavParser.getSources();
+        if (sources.some(source => source.url === url)) return res.status(409).json({ error: 'Cette source existe déjà' });
+        const source = {
+          id: crypto.randomUUID(),
+          name: String(req.body.name || '').trim() || new URL(url).hostname,
+          url,
+          username: String(req.body.username || ''),
+          password: String(req.body.password || ''),
+          paused: Boolean(req.body.paused),
+          force,
+          maxDepth: Math.min(Math.max(Number(req.body.max_depth) || 8, 0), 20),
+          maxItems: Math.min(Math.max(Number(req.body.max_items) || 5000, 1), 20000),
+          extensions: normalizeExtensions(req.body.extensions),
+          syncIntervalMinutes: this.normalizeSourceInterval(req.body.sync_interval_minutes),
+          useProxy: Boolean(req.body.use_proxy)
+        };
+        await webdavParser.inspect(source);
+        sources.push(source);
+        this.db.setConfig('webdav_sources', JSON.stringify(sources));
+        res.status(201).json(webdavForApi(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.put('/api/webdav-sources/:id', this.authMiddleware.bind(this), async (req, res) => {
+      const sources = webdavParser.getSources();
+      const index = sources.findIndex(source => source.id === req.params.id);
+      if (index < 0) return res.status(404).json({ error: 'Source introuvable' });
+      const current = sources[index];
+      const next = { ...current };
+      if (req.body.name !== undefined) next.name = String(req.body.name).trim() || current.name;
+      if (req.body.paused !== undefined) next.paused = Boolean(req.body.paused);
+      if (req.body.url !== undefined) {
+        if (!/^https?:\/\//i.test(req.body.url || '')) return res.status(400).json({ error: 'URL WebDAV HTTP(S) invalide' });
+        next.url = String(req.body.url).trim();
+      }
+      if (req.body.username !== undefined && String(req.body.username).trim()) next.username = String(req.body.username);
+      if (req.body.password !== undefined && String(req.body.password)) next.password = String(req.body.password);
+      if (req.body.clear_credentials === true) {
+        next.username = '';
+        next.password = '';
+      }
+      if (req.body.force !== undefined) {
+        if (!validWebdavForce(req.body.force)) return res.status(400).json({ error: 'Classement WebDAV invalide' });
+        next.force = req.body.force;
+      }
+      if (req.body.max_depth !== undefined) next.maxDepth = Math.min(Math.max(Number(req.body.max_depth) || 0, 0), 20);
+      if (req.body.max_items !== undefined) next.maxItems = Math.min(Math.max(Number(req.body.max_items) || 5000, 1), 20000);
+      if (req.body.extensions !== undefined) next.extensions = normalizeExtensions(req.body.extensions);
+      if (req.body.sync_interval_minutes !== undefined) {
+        next.syncIntervalMinutes = this.normalizeSourceInterval(req.body.sync_interval_minutes);
+      }
+      if (req.body.use_proxy !== undefined) next.useProxy = Boolean(req.body.use_proxy);
+      try {
+        const connectionChanged = next.url !== current.url
+          || next.username !== current.username
+          || next.password !== current.password
+          || next.useProxy !== current.useProxy;
+        if (connectionChanged) await webdavParser.inspect(next);
+        sources[index] = next;
+        this.db.setConfig('webdav_sources', JSON.stringify(sources));
+        if (connectionChanged) this.db.deleteSourceSyncState(webdavParser.sourceKey(next.id));
+        res.json(webdavForApi(next));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.delete('/api/webdav-sources/:id', this.authMiddleware.bind(this), (req, res) => {
+      const sources = webdavParser.getSources();
+      const next = sources.filter(source => source.id !== req.params.id);
+      if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
+      this.db.setConfig('webdav_sources', JSON.stringify(next));
+      this.db.deleteSourceSyncState(webdavParser.sourceKey(req.params.id));
       res.json({ success: true });
     });
 
@@ -1068,12 +1225,13 @@ class WebUI {
       const hasPastebin = this.rssParser.pastebinParser.getSources().some(source => !source.paused);
       const hasStremio = this.rssParser.stremioManifestParser.getSources().some(source => !source.paused);
       const hasNewznab = this.rssParser.newznabParser.getSources().some(source => !source.paused);
+      const hasWebdav = this.rssParser.webdavParser.getSources().some(source => !source.paused);
       const hasRss = this.getRssSources().some(source => !source.paused);
-      if (!hasRss && !hasPastebin && !hasStremio && !hasNewznab) {
+      if (!hasRss && !hasPastebin && !hasStremio && !hasNewznab && !hasWebdav) {
         return res.status(400).json({ error: 'Au moins une source active est requise' });
       }
-      if ((hasRss || hasPastebin || hasNewznab) && !tmdbKey) {
-        return res.status(400).json({ error: 'La clé TMDB est requise pour les sources RSS, Pastebin et Newznab' });
+      if ((hasRss || hasPastebin || hasNewznab || hasWebdav) && !tmdbKey) {
+        return res.status(400).json({ error: 'La clé TMDB est requise pour les sources RSS, Pastebin, Newznab et WebDAV' });
       }
 
       const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
@@ -1621,6 +1779,9 @@ class WebUI {
       if (source.categories?.series) {
         nameMap[this.rssParser.newznabParser.sourceKey(source.id, 'series')] = `${source.name} — Séries`;
       }
+    });
+    this.rssParser.webdavParser.getSources().forEach(source => {
+      nameMap[this.rssParser.webdavParser.sourceKey(source.id)] = source.name || 'WebDAV';
     });
     return nameMap;
   }

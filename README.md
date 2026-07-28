@@ -32,7 +32,7 @@
 
 ---
 
-> Addon Stremio auto-hébergé qui crée des catalogues à partir des contenus trouvés sur vos propres indexeurs **BitTorrent, Usenet ou autres**. L’objectif est que les sources de vos catalogues correspondent aux sources réellement utilisées par vos addons de stream. RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2 et manifestes Stremio peuvent être combinés.
+> Addon Stremio auto-hébergé qui crée des catalogues à partir des contenus trouvés sur vos propres indexeurs **BitTorrent, Usenet ou autres**. L’objectif est que les sources de vos catalogues correspondent aux sources réellement utilisées par vos addons de stream. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2 et manifestes Stremio peuvent être combinés.
 
 ---
 
@@ -41,7 +41,8 @@
 | | |
 |---|---|
 | **Catalogues gérés** | Les 9 catalogues historiques sont repris dans le gestionnaire et conservent leurs contenus ; créez ensuite autant de catalogues personnalisés que nécessaire |
-| **Sources mixtes** | Un catalogue peut combiner RSS, Pastebin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2 et catalogues importés depuis des manifestes Stremio |
+| **Sources mixtes** | Un catalogue peut combiner RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2 et catalogues importés depuis des manifestes Stremio |
+| **Dossiers WebDAV** | Parcours récursif authentifié, filtrage des extensions, profondeur et plafond configurables ; les noms de fichiers alimentent les catalogues et [Davio](https://github.com/arvida42/davio) peut assurer leur lecture dans Stremio |
 | **Filtres personnalisés** | Années incluses ou exclues, plage d'années, genres requis/exclus, mots-clés requis/exclus et sélection des sources |
 | **Deux pauses distinctes** | Gel des nouveaux contenus indépendamment de la visibilité du catalogue dans le manifeste Stremio |
 | **Pastebins imbriqués** | Pages directes, pointeurs JSON et index maîtres catégorisés avec récursion bornée, déduplication et protection des hôtes découverts |
@@ -184,6 +185,14 @@ Les sources Pastebin acceptent :
 - un index maître utilisant des sections telles que `#FILMS`, `#SERIES` ou `#DOCUMENTAIRES`, suivies de codes ou d'URLs enfants.
 
 Les manifestes Stremio sont ajoutés avec leur URL `manifest.json`. L'addon découvre les catalogues déclarés et les expose comme sources sélectionnables dans le gestionnaire de catalogues.
+
+Une source WebDAV pointe vers un dossier racine. L’addon parcourt ses
+sous-dossiers avec `PROPFIND`, retient les extensions vidéo configurées, puis
+applique le même nettoyage de titre et le même matching TMDB que pour un flux
+RSS. Il n’effectue aucune lecture : installez séparément
+[Davio](https://github.com/arvida42/davio) dans Stremio pour résoudre les
+fichiers du même WebDAV. Les WebDAV locaux contournent le proxy global par
+défaut ; son utilisation reste activable source par source.
 
 La page **Sources** masque les URLs et clés sensibles dans les cartes. Leur
 révélation ou leur copie exige une action explicite. L’export de configuration

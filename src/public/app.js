@@ -801,7 +801,7 @@ window.createCatalogForSource = createCatalogForSource;
 
 // ═══════════════════════════ CATALOGUES ═══════════════════════════════
 
-let catalogManagerData = { catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [] };
+let catalogManagerData = { catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [], webdav: [] };
 
 function csvValues(id) {
   return (document.getElementById(id)?.value || '').split(',').map(v => v.trim()).filter(Boolean);
@@ -831,18 +831,19 @@ function catalogPayload() {
 
 async function loadCatalogManager() {
   try {
-    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes] = await Promise.all([
+    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes] = await Promise.all([
       fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/rss-sources'),
-      fetch('/api/stremio-sources'), fetch('/api/newznab-sources')
+      fetch('/api/stremio-sources'), fetch('/api/newznab-sources'), fetch('/api/webdav-sources')
     ]);
-    const [catalogs, pastebins, rss, stremio, newznab] = await Promise.all([
-      catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json(), newznabRes.json()
+    const [catalogs, pastebins, rss, stremio, newznab, webdav] = await Promise.all([
+      catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json(), newznabRes.json(), webdavRes.json()
     ]);
-    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab };
+    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav };
     renderRssSources();
     renderPastebins();
     renderNewznabSources();
     renderStremioSources();
+    renderWebdavSources();
     renderCatalogSourceChoices();
     renderCatalogs();
     updateSourceGroupCounts();
@@ -924,7 +925,7 @@ async function revealSourceSecret(kind, id, button, copy = false) {
   if (!response.ok) return alert(data.error || 'Erreur');
   const row = button.closest('.source-entry');
   const target = row?.querySelector('.sensitive-source-value');
-  const value = kind === 'indexer' && button.dataset.secret === 'api_key' ? data.api_key : data.url;
+  const value = button.dataset.secret ? data[button.dataset.secret] : data.url;
   if (copy) {
     await navigator.clipboard.writeText(value || '');
     button.textContent = 'Copié ✓';
@@ -946,6 +947,7 @@ function updateSourceGroupCounts() {
   const values = {
     rssGroupCount: catalogManagerData.rss.length,
     pastebinGroupCount: catalogManagerData.pastebins.length,
+    webdavGroupCount: catalogManagerData.webdav.length,
     indexerGroupCount: catalogManagerData.newznab.length,
     stremioGroupCount: catalogManagerData.stremio.length
   };
@@ -1000,7 +1002,7 @@ async function importConfiguration() {
     ? (includeSecrets ? '\nLes secrets présents seront importés.' : '\nLes secrets présents resteront exclus.')
     : '';
   if (!confirm(
-    `Import valide : ${counts.rss} RSS, ${counts.pastebin} Pastebin, ${counts.indexers} indexeurs, ${counts.stremio} manifestes et ${counts.catalogs} catalogues.${secretWarning}\n\nUne sauvegarde SQLite sera créée avant application. Continuer ?`
+    `Import valide : ${counts.rss} RSS, ${counts.pastebin} Pastebin, ${counts.webdav || 0} WebDAV, ${counts.indexers} indexeurs, ${counts.stremio} manifestes et ${counts.catalogs} catalogues.${secretWarning}\n\nUne sauvegarde SQLite sera créée avant application. Continuer ?`
   )) return;
   const response = await fetch('/api/config/import', {
     method: 'POST',
@@ -1128,6 +1130,12 @@ function renderCatalogSourceChoices(selected = []) {
   const sources = [
     ...catalogManagerData.rss,
     ...catalogManagerData.pastebins.map(source => ({ ...source, kind: 'Pastebin' })),
+    ...catalogManagerData.webdav.map(source => ({
+      name: source.name,
+      url: source.source_key,
+      kind: 'Dossier WebDAV',
+      paused: source.paused
+    })),
     ...catalogManagerData.newznab.flatMap(source => (source.catalogs || []).map(catalog => ({
       name: `${source.name} — ${catalog.name}`,
       url: catalog.source_key,
@@ -1146,7 +1154,7 @@ function renderCatalogSourceChoices(selected = []) {
     <label class="catalog-source-choice">
       <input type="checkbox" value="${escHtml(source.url)}" ${selected.includes(source.url) ? 'checked' : ''}>
       <span><strong>${escHtml(source.name || source.url)}</strong><br><small class="text-muted">${source.kind}</small></span>
-    </label>`).join('') : '<span class="text-muted">Ajoutez d’abord une source RSS ou Pastebin.</span>';
+    </label>`).join('') : '<span class="text-muted">Ajoutez d’abord une source.</span>';
 }
 
 function renderCatalogs() {
@@ -1262,6 +1270,147 @@ async function deletePastebin(id) {
   loadCatalogManager();
 }
 window.deletePastebin = deletePastebin;
+
+function webdavPayload() {
+  return {
+    source_id: document.getElementById('webdavEditId').value || null,
+    name: document.getElementById('webdavName').value.trim(),
+    url: document.getElementById('webdavUrl').value.trim(),
+    username: document.getElementById('webdavUsername').value,
+    password: document.getElementById('webdavPassword').value,
+    force: document.getElementById('webdavForce').value,
+    max_depth: Number(document.getElementById('webdavMaxDepth').value),
+    max_items: Number(document.getElementById('webdavMaxItems').value) || 5000,
+    extensions: document.getElementById('webdavExtensions').value,
+    sync_interval_minutes: document.getElementById('webdavInterval').value || null,
+    use_proxy: document.getElementById('webdavUseProxy').checked,
+    clear_credentials: document.getElementById('webdavClearCredentials').checked
+  };
+}
+
+function renderWebdavSources() {
+  const container = document.getElementById('webdavList');
+  if (!container) return;
+  if (!catalogManagerData.webdav.length) {
+    container.innerHTML = '<p class="text-muted">Aucune source WebDAV configurée.</p>';
+    return;
+  }
+  container.innerHTML = catalogManagerData.webdav.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} webdav`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'WebDAV')} <span class="source-name-badge">WebDAV</span> ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">
+          classement ${escHtml(source.force || 'auto')}
+          · profondeur ${Number(source.max_depth)}
+          · plafond ${Number(source.max_items).toLocaleString()} fichiers
+          · ${source.extensions.map(value => `.${escHtml(value)}`).join(', ')}
+          ${source.use_proxy ? ' · proxy global' : ' · connexion directe'}
+        </div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editWebdavSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="revealSourceSecret('webdav','${source.id}',this)">Révéler l’URL</button>
+        <button class="btn-sm" onclick="revealSourceSecret('webdav','${source.id}',this,true)">Copier l’URL</button>
+        ${source.has_username ? `<button class="btn-sm" data-secret="username" onclick="revealSourceSecret('webdav','${source.id}',this,true)">Copier l’utilisateur</button>` : ''}
+        ${source.has_password ? `<button class="btn-sm" data-secret="password" onclick="revealSourceSecret('webdav','${source.id}',this,true)">Copier le mot de passe</button>` : ''}
+        <button class="btn-sm" onclick="toggleWebdavSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteWebdavSource('${source.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`).join('');
+}
+
+async function previewWebdavSource() {
+  const output = document.getElementById('webdavPreview');
+  const payload = webdavPayload();
+  if (!payload.url) return;
+  output.textContent = 'Parcours WebDAV en cours…';
+  const response = await fetch('/api/webdav-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${data.directories} dossier(s) parcouru(s) · ${data.items} fichier(s) vidéo trouvé(s)`
+      + (data.sample?.length ? ` · exemples : ${data.sample.join(' · ')}` : '')
+    : (data.error || 'Erreur');
+}
+window.previewWebdavSource = previewWebdavSource;
+
+async function saveWebdavSource() {
+  const id = document.getElementById('webdavEditId').value;
+  const response = await fetch(id ? `/api/webdav-sources/${id}` : '/api/webdav-sources', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(webdavPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetWebdavForm();
+  await loadSourceManager();
+}
+window.saveWebdavSource = saveWebdavSource;
+
+async function editWebdavSource(id) {
+  const source = catalogManagerData.webdav.find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/webdav/${id}`)).json();
+  document.getElementById('webdavEditId').value = id;
+  document.getElementById('webdavName').value = source.name || '';
+  document.getElementById('webdavUrl').value = secrets.url || '';
+  document.getElementById('webdavUsername').value = '';
+  document.getElementById('webdavUsername').placeholder = source.has_username ? 'Laisser vide pour conserver' : '';
+  document.getElementById('webdavPassword').value = '';
+  document.getElementById('webdavPassword').placeholder = source.has_password ? 'Laisser vide pour conserver' : '';
+  document.getElementById('webdavForce').value = source.force || 'auto';
+  document.getElementById('webdavMaxDepth').value = source.max_depth ?? 8;
+  document.getElementById('webdavMaxItems').value = source.max_items || 5000;
+  document.getElementById('webdavExtensions').value = (source.extensions || []).join(',');
+  document.getElementById('webdavInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('webdavUseProxy').checked = Boolean(source.use_proxy);
+  document.getElementById('webdavClearCredentials').checked = false;
+  document.getElementById('webdavSubmit').textContent = 'Enregistrer';
+  document.getElementById('webdavCancel').hidden = false;
+}
+window.editWebdavSource = editWebdavSource;
+
+function resetWebdavForm() {
+  document.getElementById('webdavEditId').value = '';
+  document.getElementById('webdavName').value = '';
+  document.getElementById('webdavUrl').value = '';
+  document.getElementById('webdavUsername').value = '';
+  document.getElementById('webdavUsername').placeholder = '';
+  document.getElementById('webdavPassword').value = '';
+  document.getElementById('webdavPassword').placeholder = '';
+  document.getElementById('webdavForce').value = 'auto';
+  document.getElementById('webdavMaxDepth').value = 8;
+  document.getElementById('webdavMaxItems').value = 5000;
+  document.getElementById('webdavExtensions').value = 'mkv,mp4,avi,mov,m4v,webm,ts,m2ts,iso,strm';
+  document.getElementById('webdavInterval').value = '';
+  document.getElementById('webdavUseProxy').checked = false;
+  document.getElementById('webdavClearCredentials').checked = false;
+  document.getElementById('webdavPreview').textContent = '';
+  document.getElementById('webdavSubmit').textContent = 'Ajouter';
+  document.getElementById('webdavCancel').hidden = true;
+}
+window.resetWebdavForm = resetWebdavForm;
+
+async function toggleWebdavSource(id, paused) {
+  const response = await fetch(`/api/webdav-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.toggleWebdavSource = toggleWebdavSource;
+
+async function deleteWebdavSource(id) {
+  if (!confirm('Supprimer cette source WebDAV ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/webdav-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteWebdavSource = deleteWebdavSource;
 
 function newznabPayload() {
   return {
@@ -1470,8 +1619,10 @@ function renderEditableStremioCatalogs(catalogs = []) {
   if (!container) return;
   container.innerHTML = editableStremioCatalogs.length
     ? editableStremioCatalogs.map((catalog, index) => `<label class="catalog-source-choice">
-        <input type="checkbox" data-stremio-catalog-index="${index}" ${catalog.enabled === false ? '' : 'checked'}>
-        <span><strong>${escHtml(catalog.name || catalog.id)}</strong><br><small class="text-muted">${escHtml(catalog.type)} · ${escHtml(catalog.id)}</small></span>
+        <input type="checkbox" data-stremio-catalog-index="${index}"
+          ${catalog.enabled === false || catalog.supported === false ? '' : 'checked'}
+          ${catalog.supported === false ? 'disabled' : ''}>
+        <span><strong>${escHtml(catalog.name || catalog.id)}</strong><br><small class="text-muted">${escHtml(catalog.type)} · ${escHtml(catalog.id)}${catalog.supported === false ? ' · type non encore pris en charge' : ''}</small></span>
       </label>`).join('')
     : '<span class="text-muted">Prévisualisez un manifeste pour choisir ses catalogues.</span>';
 }

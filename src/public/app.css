@@ -391,6 +391,19 @@ input:checked + .slider::before { transform: translateX(22px); }
 .rss-row { display: flex; gap: 8px; align-items: center; }
 .rss-row .flex-1 { flex: 1; min-width: 0; }
 .select-catalog { width: 150px; flex-shrink: 0; font-size: 13px; }
+.source-project-links {
+  margin: -6px 0 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.source-project-links a,
+.source-group > p a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.source-project-links a:hover,
+.source-group > p a:hover { text-decoration: underline; }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 

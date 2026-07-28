@@ -32,7 +32,7 @@
 
 ---
 
-> A self-hosted Stremio addon that builds catalogs from content found on your own **BitTorrent, Usenet, or other indexers**. The goal is to keep catalog sources aligned with the sources actually used by your streaming addons. RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2, and Stremio manifests can be combined.
+> A self-hosted Stremio addon that builds catalogs from content found on your own **BitTorrent, Usenet, or other indexers**. The goal is to keep catalog sources aligned with the sources actually used by your streaming addons. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, and Stremio manifests can be combined.
 
 ---
 
@@ -41,7 +41,8 @@
 | | |
 |---|---|
 | **Managed catalogs** | The 9 historical catalogs are migrated into the manager with their existing content preserved; create any number of custom catalogs |
-| **Mixed sources** | A catalog may combine RSS, Pastebin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, and catalogs imported from Stremio manifests |
+| **Mixed sources** | A catalog may combine RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, and catalogs imported from Stremio manifests |
+| **WebDAV folders** | Authenticated recursive scan with configurable extensions, depth, and cap; filenames feed catalogs and [Davio](https://github.com/arvida42/davio) can handle playback in Stremio |
 | **Custom filters** | Included or excluded years, year ranges, included/excluded genres and keywords, and source selection |
 | **Two separate pauses** | Freeze new catalog content independently from catalog visibility in the Stremio manifest |
 | **Nested Pastebins** | Direct pages, JSON pointers, and categorized master indexes with bounded recursion and deduplication |
@@ -167,6 +168,13 @@ immediately; there is no second delayed push to Stremio.
 Pastebin sources support direct content, JSON pointers, and categorized master
 indexes. Stremio manifest sources discover remote catalogs and make them
 selectable in the catalog manager.
+
+A WebDAV source points to a root folder. The addon scans subfolders with
+`PROPFIND`, keeps configured video extensions, then applies the same title
+cleanup and TMDB matching used for RSS. It does not play files: install
+[Davio](https://github.com/arvida42/davio) separately in Stremio to resolve the
+same WebDAV. Local WebDAV sources bypass the global proxy by default, with an
+opt-in switch per source.
 
 Source cards mask sensitive URLs and keys; revealing or copying them requires
 an explicit action. Configuration exports follow the same rule: secrets are

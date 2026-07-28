@@ -32,7 +32,7 @@
 
 ---
 
-> Ein selbst gehostetes Stremio-Addon, das Kataloge aus Inhalten Ihrer eigenen **BitTorrent-, Usenet- oder sonstigen Indexer** erstellt. Die Katalogquellen sollen den Quellen entsprechen, die Ihre Streaming-Addons tatsächlich verwenden. RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2 und Stremio-Manifeste lassen sich kombinieren.
+> Ein selbst gehostetes Stremio-Addon, das Kataloge aus Inhalten Ihrer eigenen **BitTorrent-, Usenet- oder sonstigen Indexer** erstellt. Die Katalogquellen sollen den Quellen entsprechen, die Ihre Streaming-Addons tatsächlich verwenden. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2 und Stremio-Manifeste lassen sich kombinieren.
 
 ---
 
@@ -41,7 +41,8 @@
 | | |
 |---|---|
 | **Verwaltete Kataloge** | Die 9 bisherigen Kataloge werden mit ihren vorhandenen Inhalten in die Verwaltung übernommen; beliebig viele eigene Kataloge können ergänzt werden |
-| **Gemischte Quellen** | Ein Katalog kann RSS, Pastebin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2 und aus Stremio-Manifesten importierte Quellen kombinieren |
+| **Gemischte Quellen** | Ein Katalog kann RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2 und aus Stremio-Manifesten importierte Quellen kombinieren |
+| **WebDAV-Ordner** | Authentifizierter rekursiver Scan mit konfigurierbaren Erweiterungen, Tiefe und Obergrenze; Dateinamen speisen Kataloge und [Davio](https://github.com/arvida42/davio) kann die Wiedergabe in Stremio übernehmen |
 | **Eigene Filter** | Ein- oder ausgeschlossene Jahre, Jahresbereiche, Genres, Schlüsselwörter und Quellenauswahl |
 | **Zwei getrennte Pausen** | Neue Kataloginhalte unabhängig von der Sichtbarkeit im Stremio-Manifest einfrieren |
 | **Verschachtelte Pastebins** | Direkte Seiten, JSON-Verweise und kategorisierte Hauptindizes mit begrenzter Rekursion und Deduplizierung |
@@ -166,6 +167,13 @@ sofort; es gibt keinen zweiten verzögerten Versand an Stremio.
 Pastebin-Quellen unterstützen direkte Inhalte, JSON-Verweise und kategorisierte
 Hauptindizes. Stremio-Manifeste erkennen externe Kataloge und machen sie in der
 Katalogverwaltung auswählbar.
+
+Eine WebDAV-Quelle zeigt auf einen Stammordner. Das Addon durchsucht Unterordner
+mit `PROPFIND`, behält konfigurierte Videoerweiterungen und verwendet danach
+dieselbe Titelbereinigung und TMDB-Zuordnung wie bei RSS. Es spielt keine
+Dateien ab: Installieren Sie [Davio](https://github.com/arvida42/davio)
+separat in Stremio, um dasselbe WebDAV aufzulösen. Lokale WebDAV-Quellen umgehen
+den globalen Proxy standardmäßig; er kann pro Quelle aktiviert werden.
 
 Quellkarten verbergen sensible URLs und Schlüssel. Anzeigen oder Kopieren
 erfordert eine ausdrückliche Aktion. Konfigurationsexporte verhalten sich

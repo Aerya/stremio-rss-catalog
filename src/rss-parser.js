@@ -4,6 +4,7 @@ const { SocksProxyAgent } = require('socks-proxy-agent');
 const PastebinParser = require('./pastebin-parser');
 const StremioManifestParser = require('./stremio-manifest-parser');
 const NewznabParser = require('./newznab-parser');
+const WebDavParser = require('./webdav-parser');
 
 class RSSParser {
   constructor(config, db) {
@@ -13,6 +14,11 @@ class RSSParser {
     this.pastebinParser = new PastebinParser(db, () => this.getAxiosConfig());
     this.stremioManifestParser = new StremioManifestParser(db, () => this.getAxiosConfig());
     this.newznabParser = new NewznabParser(
+      db,
+      () => this.getAxiosConfig(),
+      (items, force, sourceUrl) => this._parseItems(items, force, sourceUrl)
+    );
+    this.webdavParser = new WebDavParser(
       db,
       () => this.getAxiosConfig(),
       (items, force, sourceUrl) => this._parseItems(items, force, sourceUrl)
@@ -379,8 +385,9 @@ class RSSParser {
     const pastebinItems = await this.pastebinParser.parseAll(parserOptions);
     const stremioItems = await this.stremioManifestParser.parseAll(parserOptions);
     const newznabItems = await this.newznabParser.parseAll(parserOptions);
+    const webdavItems = await this.webdavParser.parseAll(parserOptions);
     return {
-      films: [...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems, ...newznabItems],
+      films: [...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems, ...newznabItems, ...webdavItems],
       pendingCursorKeys: this.newznabParser.lastPendingCursorKeys || []
     };
   }

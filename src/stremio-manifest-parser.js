@@ -43,7 +43,8 @@ class StremioManifestParser {
       .map(catalog => ({
         id: String(catalog.id),
         type: String(catalog.type),
-        name: String(catalog.name || catalog.id)
+        name: String(catalog.name || catalog.id),
+        supported: ['movie', 'series'].includes(String(catalog.type).toLowerCase())
       }));
     return {
       name: String(manifest.name || 'Addon Stremio'),
@@ -188,7 +189,7 @@ class StremioManifestParser {
       let fetched = 0;
       let errors = 0;
       for (const catalog of source.catalogs || []) {
-        if (catalog.enabled === false) continue;
+        if (catalog.enabled === false || catalog.supported === false || !['movie', 'series'].includes(catalog.type)) continue;
         try {
           const catalogItems = await this.fetchCatalog(source, catalog);
           fetched += catalogItems.length;

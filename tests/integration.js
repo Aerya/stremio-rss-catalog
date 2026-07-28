@@ -19,8 +19,44 @@ async function main() {
   let baseUrl;
   let catalogRequestKeptSecret = false;
   let newznabKeyReceived = false;
+  let webdavAuthReceived = false;
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    if (req.method === 'PROPFIND' && (req.url === '/dav/' || req.url === '/dav/Films/')) {
+      webdavAuthReceived = req.headers.authorization === `Basic ${Buffer.from('dav-user:dav-pass').toString('base64')}`;
+      res.statusCode = 207;
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      const children = req.url === '/dav/'
+        ? `<d:response>
+            <d:href>/dav/Films/</d:href>
+            <d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop>
+              <d:displayname>Films</d:displayname><d:resourcetype><d:collection/></d:resourcetype>
+            </d:prop></d:propstat>
+          </d:response>`
+        : `<d:response>
+            <d:href>/dav/Films/WebDAV.Movie.2026.FRENCH.1080p.mkv</d:href>
+            <d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop>
+              <d:displayname>WebDAV.Movie.2026.FRENCH.1080p.mkv</d:displayname>
+              <d:resourcetype/><d:getlastmodified>Tue, 28 Jul 2026 10:00:00 GMT</d:getlastmodified>
+            </d:prop></d:propstat>
+          </d:response>
+          <d:response>
+            <d:href>/dav/Films/ignore.txt</d:href>
+            <d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop>
+              <d:displayname>ignore.txt</d:displayname><d:resourcetype/>
+            </d:prop></d:propstat>
+          </d:response>`;
+      return res.end(`<?xml version="1.0" encoding="utf-8"?>
+        <d:multistatus xmlns:d="DAV:">
+          <d:response>
+            <d:href>${req.url}</d:href>
+            <d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop>
+              <d:displayname>Racine</d:displayname><d:resourcetype><d:collection/></d:resourcetype>
+            </d:prop></d:propstat>
+          </d:response>
+          ${children}
+        </d:multistatus>`);
+    }
     if (req.url === '/pointer') {
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify({ pasteMasterIndexUrl: `${baseUrl}/master` }));
@@ -148,6 +184,29 @@ async function main() {
     const knownTmdbMatch = await matcher.matchBatch(tmdbEnriched);
     assert.equal(knownTmdbMatch.alreadyInDb, 1);
 
+    const webdavSource = {
+      id: 'webdav-test',
+      name: 'WebDAV de test',
+      url: `${baseUrl}/dav/`,
+      username: 'dav-user',
+      password: 'dav-pass',
+      force: 'films',
+      maxDepth: 4,
+      maxItems: 100,
+      extensions: ['mkv'],
+      useProxy: false
+    };
+    const webdavInspection = await rssParser.webdavParser.inspect(webdavSource);
+    assert.equal(webdavInspection.directories, 2);
+    assert.equal(webdavInspection.items, 1);
+    assert.deepEqual(webdavInspection.sample, ['WebDAV.Movie.2026.FRENCH.1080p.mkv']);
+    assert.ok(webdavAuthReceived);
+    db.setConfig('webdav_sources', JSON.stringify([webdavSource]));
+    const webdavItems = await rssParser.webdavParser.parseAll({ forceAll: true });
+    assert.equal(webdavItems.length, 1);
+    assert.equal(webdavItems[0].source_url, 'webdav:webdav-test');
+    assert.equal(webdavItems[0].catalog_type, 'films');
+
     const newznabSource = {
       id: 'newznab-test',
       name: 'API de test',
@@ -226,6 +285,7 @@ async function main() {
     assert.equal(sourceNames['jackett:newznab-second:series'], 'Jackett secondaire — Séries');
     assert.equal(sourceNames['stremio-manifest:remote-test:movie:remote_movies'], 'Source distante de test — Sélection distante');
     assert.equal(sourceNames['stremio-manifest:remote-second:movie:remote_movies'], 'Manifeste secondaire — Sélection distante');
+    assert.equal(sourceNames['webdav:webdav-test'], 'WebDAV de test');
     const apiMedia = db.getMediaList({ search: 'API Film One' }).items[0];
     assert.ok(apiMedia.source_urls.includes('newznab:newznab-test:movie'));
 
@@ -331,6 +391,7 @@ async function main() {
     console.log('✓ Suppression durable sans suppression des médias');
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
     console.log('✓ API Newznab/Torznab paginée avec types Prowlarr et Jackett');
+    console.log('✓ Parcours WebDAV récursif, authentifié et filtré par extension');
     console.log('✓ Curseur Newznab incrémental, états de collecte et test à blanc exact');
     console.log('✓ Historique versionné du manifeste');
     console.log('✓ Analyse, sauvegarde, réparation groupée et historique de maintenance');
