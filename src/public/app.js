@@ -99,7 +99,8 @@ async function loadOverview() {
       { key: 'emissions',     label: t('stat_emissions'),     badge: 'emissions',     items: d.recentByCat?.emissions     || [] },
       { key: 'animés',        label: t('stat_animes'),        badge: 'animés',        items: d.recentByCat?.animes        || [] },
       { key: 'concerts',      label: t('stat_concerts'),      badge: 'concerts',      items: d.recentByCat?.concerts      || [] },
-      { key: 'spectacles',    label: t('stat_spectacles'),    badge: 'spectacles',    items: d.recentByCat?.spectacles    || [] }
+      { key: 'spectacles',    label: t('stat_spectacles'),    badge: 'spectacles',    items: d.recentByCat?.spectacles    || [] },
+      { key: 'youtube',       label: 'YouTube',               badge: 'youtube',       items: d.recentByCat?.youtube       || [] }
     ].filter(c => c.items.length > 0);
 
     if (cats.length === 0) {
@@ -110,7 +111,7 @@ async function loadOverview() {
     const renderRow = (m) => {
       const title = escHtml(m.title || m.name || m.imdb_id || '—');
       const year  = m.year ? `<span class="ov-row-year">${m.year}</span>` : '';
-      const imdb  = m.imdb_id
+      const imdb  = /^tt\d+$/i.test(m.imdb_id || '')
         ? `<a class="ov-row-imdb" href="https://www.imdb.com/title/${escHtml(m.imdb_id)}" target="_blank">${escHtml(m.imdb_id)}</a>`
         : '';
       return `<li class="ov-row">
@@ -145,6 +146,7 @@ async function loadStats() {
     document.getElementById('statAnimes').textContent     = (d.animes || 0).toLocaleString();
     document.getElementById('statConcerts').textContent   = (d.concerts || 0).toLocaleString();
     document.getElementById('statSpectacles').textContent = (d.spectacles || 0).toLocaleString();
+    document.getElementById('statYoutube').textContent     = (d.youtube || 0).toLocaleString();
     document.getElementById('statTotal').textContent      = d.total.toLocaleString();
   } catch (e) { console.error('loadStats', e); }
 }
@@ -339,12 +341,14 @@ async function loadLibraryCounts() {
       'emissions': d.emissions || 0,
       'animés': d.animes || 0,
       'concerts': d.concerts || 0,
-      'spectacles': d.spectacles || 0
+      'spectacles': d.spectacles || 0,
+      'youtube': d.youtube || 0
     };
     const ids = {
       '': 'tabCountAll', 'films': 'tabCountFilms', 'documentaires': 'tabCountDocs',
       'series': 'tabCountSeries', 'emissions': 'tabCountEmissions', 'animés': 'tabCountAnimes',
-      'concerts': 'tabCountConcerts', 'spectacles': 'tabCountSpectacles'
+      'concerts': 'tabCountConcerts', 'spectacles': 'tabCountSpectacles',
+      'youtube': 'tabCountYoutube'
     };
     for (const [cat, id] of Object.entries(ids)) {
       const el = document.getElementById(id);
@@ -608,7 +612,8 @@ function openDrawer(imdbId, media) {
     { v: 'emissions',     l: 'Émissions' },
     { v: 'animés',        l: 'Animés' },
     { v: 'concerts',      l: 'Concerts' },
-    { v: 'spectacles',    l: 'Spectacles' }
+    { v: 'spectacles',    l: 'Spectacles' },
+    { v: 'youtube',       l: 'YouTube' }
   ];
   const catOptions = cats.map(c =>
     `<option value="${c.v}"${media.catalog_type === c.v ? ' selected' : ''}>${c.l}</option>`
@@ -751,6 +756,7 @@ async function loadSources() {
             s.animes_count        ? `<span class="src-cat badge-animés">Animés ${s.animes_count}</span>` : '',
             s.concerts_count      ? `<span class="src-cat badge-concerts">Concerts ${s.concerts_count}</span>` : '',
             s.spectacles_count    ? `<span class="src-cat badge-spectacles">Spectacles ${s.spectacles_count}</span>` : '',
+            s.youtube_count       ? `<span class="src-cat badge-youtube">YouTube ${s.youtube_count}</span>` : '',
           ].filter(Boolean).join(' ');
 
           const errCell = hasError
@@ -785,13 +791,17 @@ async function loadSources() {
 }
 window.loadSources = loadSources;
 
-async function createCatalogForSource(encodedUrl, encodedName) {
+async function createCatalogForSource(encodedUrl, encodedName, mediaType = null) {
   await loadCatalogManager();
   navigate('catalogs');
   resetCatalogForm();
   const url = decodeURIComponent(encodedUrl);
   const name = decodeURIComponent(encodedName);
   document.getElementById('catalogName').value = name ? `${name} — Films` : 'Nouveau catalogue';
+  if (mediaType) {
+    document.getElementById('catalogMediaType').value = mediaType;
+    document.getElementById('catalogName').value = name || 'Nouveau catalogue';
+  }
   const checkbox = [...document.querySelectorAll('#catalogSourceChoices input')]
     .find(input => input.value === url);
   if (checkbox) checkbox.checked = true;
@@ -802,7 +812,7 @@ window.createCatalogForSource = createCatalogForSource;
 // ═══════════════════════════ CATALOGUES ═══════════════════════════════
 
 let catalogManagerData = {
-  catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [], webdav: [], wacustom: []
+  catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [], webdav: [], wacustom: [], guides: []
 };
 
 function csvValues(id) {
@@ -826,29 +836,32 @@ function catalogPayload() {
       keywords_include: csvValues('catalogKeywordsInclude'),
       keywords_exclude: csvValues('catalogKeywordsExclude'),
       genres_include: selectedValues('catalogGenresInclude'),
-      genres_exclude: selectedValues('catalogGenresExclude')
+      genres_exclude: selectedValues('catalogGenresExclude'),
+      guide_id: document.getElementById('catalogGuide').value || null
     }
   };
 }
 
 async function loadCatalogManager() {
   try {
-    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes, waCustomRes] = await Promise.all([
+    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes, waCustomRes, guideRes] = await Promise.all([
       fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/rss-sources'),
       fetch('/api/stremio-sources'), fetch('/api/newznab-sources'), fetch('/api/webdav-sources'),
-      fetch('/api/wacustom-sources')
+      fetch('/api/wacustom-sources'), fetch('/api/mdblist-guides')
     ]);
-    const [catalogs, pastebins, rss, stremio, newznab, webdav, wacustom] = await Promise.all([
+    const [catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, guides] = await Promise.all([
       catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json(), newznabRes.json(),
-      webdavRes.json(), waCustomRes.json()
+      webdavRes.json(), waCustomRes.json(), guideRes.json()
     ]);
-    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav, wacustom };
+    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, guides };
     renderRssSources();
     renderPastebins();
     renderNewznabSources();
     renderStremioSources();
     renderWebdavSources();
     renderWaCustomSources();
+    renderMDBListGuides();
+    renderCatalogGuideChoices();
     renderCatalogSourceChoices();
     renderCatalogs();
     updateSourceGroupCounts();
@@ -1169,6 +1182,147 @@ function renderCatalogSourceChoices(selected = []) {
     </label>`).join('') : '<span class="text-muted">Ajoutez d’abord une source.</span>';
 }
 
+function renderCatalogGuideChoices(selected = null) {
+  const select = document.getElementById('catalogGuide');
+  if (!select) return;
+  const current = selected === null ? select.value : selected;
+  select.innerHTML = '<option value="">Aucun guide — filtres locaux uniquement</option>'
+    + catalogManagerData.guides.map(guide => `
+      <option value="${escHtml(guide.id)}" ${guide.id === current ? 'selected' : ''}>
+        ${escHtml(guide.name)}${guide.paused ? ' — en pause' : ''}
+      </option>`).join('');
+}
+
+function renderMDBListGuides() {
+  const container = document.getElementById('mdblistGuideList');
+  if (!container) return;
+  if (!catalogManagerData.guides.length) {
+    container.innerHTML = '<p class="text-muted">Aucun guide MDBList configuré.</p>';
+    return;
+  }
+  container.innerHTML = catalogManagerData.guides.map(guide => `
+    <div class="manager-row source-entry">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(guide.name)} ${guide.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(guide.url))}</div>
+        <div class="manager-row-meta">
+          ${Number(guide.stats?.total || 0).toLocaleString()} éléments
+          · ${Number(guide.stats?.movies || 0).toLocaleString()} films
+          · ${Number(guide.stats?.shows || 0).toLocaleString()} séries
+          · plafond ${Number(guide.max_items || 5000).toLocaleString()}
+        </div>
+        ${sourceRuntimeHtml(guide)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="syncMDBListGuide('${guide.id}')">Synchroniser</button>
+        <button class="btn-sm" onclick="editMDBListGuide('${guide.id}')">Modifier</button>
+        ${sourceSecretActions('guide', guide.id, guide.has_api_key)}
+        <button class="btn-sm" onclick="toggleMDBListGuide('${guide.id}', ${!guide.paused})">${guide.paused ? 'Reprendre' : 'Mettre en pause'}</button>
+        <button class="btn-danger btn-sm" onclick="deleteMDBListGuide('${guide.id}')">Supprimer</button>
+      </div>
+    </div>`).join('');
+}
+
+function mdblistPayload() {
+  return {
+    source_id: document.getElementById('mdblistEditId').value || null,
+    name: document.getElementById('mdblistName').value.trim(),
+    url: document.getElementById('mdblistUrl').value.trim(),
+    api_key: document.getElementById('mdblistApiKey').value,
+    max_items: Number(document.getElementById('mdblistMaxItems').value) || 5000,
+    sync_interval_minutes: document.getElementById('mdblistInterval').value || null
+  };
+}
+
+async function previewMDBListGuide() {
+  const output = document.getElementById('mdblistPreview');
+  output.textContent = 'Test MDBList en cours…';
+  const response = await fetch('/api/mdblist-guides/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(mdblistPayload())
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${data.items} premiers éléments lus · ${data.movies} films · ${data.shows} séries`
+    : (data.error || 'Erreur');
+}
+window.previewMDBListGuide = previewMDBListGuide;
+
+async function saveMDBListGuide() {
+  const id = document.getElementById('mdblistEditId').value;
+  const output = document.getElementById('mdblistPreview');
+  output.textContent = id ? 'Enregistrement…' : 'Ajout et première synchronisation…';
+  const response = await fetch(id ? `/api/mdblist-guides/${id}` : '/api/mdblist-guides', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(mdblistPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    output.textContent = data.error || 'Erreur';
+    return;
+  }
+  resetMDBListForm();
+  await loadCatalogManager();
+}
+window.saveMDBListGuide = saveMDBListGuide;
+
+async function editMDBListGuide(id) {
+  const guide = catalogManagerData.guides.find(item => item.id === id);
+  if (!guide) return;
+  const secrets = await (await fetch(`/api/source-secrets/guide/${id}`)).json();
+  document.getElementById('mdblistEditId').value = id;
+  document.getElementById('mdblistName').value = guide.name || '';
+  document.getElementById('mdblistUrl').value = secrets.url || '';
+  document.getElementById('mdblistApiKey').value = '';
+  document.getElementById('mdblistApiKey').placeholder = 'Clé enregistrée — laisser vide pour conserver';
+  document.getElementById('mdblistMaxItems').value = guide.max_items || 5000;
+  document.getElementById('mdblistInterval').value = guide.sync_interval_minutes || '';
+  document.getElementById('mdblistSubmit').textContent = 'Enregistrer';
+  document.getElementById('mdblistCancel').hidden = false;
+}
+window.editMDBListGuide = editMDBListGuide;
+
+function resetMDBListForm() {
+  document.getElementById('mdblistEditId').value = '';
+  document.getElementById('mdblistName').value = '';
+  document.getElementById('mdblistUrl').value = '';
+  document.getElementById('mdblistApiKey').value = '';
+  document.getElementById('mdblistApiKey').placeholder = '';
+  document.getElementById('mdblistMaxItems').value = 5000;
+  document.getElementById('mdblistInterval').value = '';
+  document.getElementById('mdblistPreview').textContent = '';
+  document.getElementById('mdblistSubmit').textContent = 'Ajouter et synchroniser';
+  document.getElementById('mdblistCancel').hidden = true;
+}
+window.resetMDBListForm = resetMDBListForm;
+
+async function syncMDBListGuide(id) {
+  const response = await fetch(`/api/mdblist-guides/${id}/sync`, { method: 'POST' });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Synchronisation impossible');
+  await loadCatalogManager();
+}
+window.syncMDBListGuide = syncMDBListGuide;
+
+async function toggleMDBListGuide(id, paused) {
+  const response = await fetch(`/api/mdblist-guides/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadCatalogManager();
+}
+window.toggleMDBListGuide = toggleMDBListGuide;
+
+async function deleteMDBListGuide(id) {
+  if (!confirm('Supprimer ce guide ? Les catalogues qui l’utilisent deviendront vides tant qu’un autre guide ne leur sera pas affecté.')) return;
+  const response = await fetch(`/api/mdblist-guides/${id}`, { method: 'DELETE' });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadCatalogManager();
+}
+window.deleteMDBListGuide = deleteMDBListGuide;
+
 function renderCatalogs() {
   const container = document.getElementById('catalogList');
   if (!catalogManagerData.catalogs.length) {
@@ -1179,10 +1333,17 @@ function renderCatalogs() {
     const years = catalog.filters?.years?.length
       ? `${catalog.filters.year_mode === 'exclude' ? 'hors ' : ''}${catalog.filters.years.join(', ')}`
       : t('catalogs_all_years');
+    const typeLabel = {
+      movie: t('stat_films'),
+      series: t('stat_series'),
+      anime: 'Anime',
+      YouTube: 'YouTube'
+    }[catalog.type] || catalog.type;
+    const guide = catalogManagerData.guides.find(item => item.id === catalog.filters?.guide_id);
     return `<div class="manager-row">
       <div class="manager-row-main">
         <div class="manager-row-title">${catalog.enabled ? '●' : '○'} ${escHtml(catalog.name)}</div>
-        <div class="manager-row-meta">${catalog.type === 'movie' ? t('stat_films') : t('stat_series')} · ${escHtml(years)} · ${catalog.source_urls.length ? `${catalog.source_urls.length} ${t('catalogs_source_count')}` : t('catalogs_all_sources')}</div>
+        <div class="manager-row-meta">${escHtml(typeLabel)} · ${escHtml(years)} · ${catalog.source_urls.length ? `${catalog.source_urls.length} ${t('catalogs_source_count')}` : t('catalogs_all_sources')}${guide ? ` · guide ${escHtml(guide.name)}` : ''}</div>
         <div class="manager-row-meta">
           ${catalog.updates_enabled ? '↻ Mises à jour actives' : `⏸ Contenu gelé${catalog.frozen_at ? ` depuis le ${new Date(catalog.frozen_at).toLocaleString()}` : ''}`}
           · ${catalog.enabled ? 'Visible dans le manifeste Stremio' : 'Masqué du manifeste Stremio'}
@@ -1739,6 +1900,9 @@ function renderStremioSources() {
         ${sourceRuntimeHtml(source)}
       </div>
       <div class="manager-row-actions">
+        ${(source.catalogs || []).filter(catalog => catalog.enabled !== false && catalog.supported !== false).map(catalog =>
+          `<button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(catalog.source_key).replace(/'/g, '%27')}','${encodeURIComponent(`${source.name} — ${catalog.name}`).replace(/'/g, '%27')}','${catalog.type === 'YouTube' ? 'YouTube' : catalog.type === 'movie' ? 'movie' : 'series'}')">${t('sources_catalog_action')} ${escHtml(catalog.name)}</button>`
+        ).join('')}
         <button class="btn-sm" onclick="editStremioSource('${source.id}')">Modifier</button>
         ${sourceSecretActions('stremio', source.id)}
         <button class="btn-sm" onclick="toggleStremioSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
@@ -1927,6 +2091,7 @@ function editCatalog(id) {
   document.getElementById('catalogYearMax').value = catalog.filters?.year_max || '';
   document.getElementById('catalogKeywordsInclude').value = (catalog.filters?.keywords_include || []).join(', ');
   document.getElementById('catalogKeywordsExclude').value = (catalog.filters?.keywords_exclude || []).join(', ');
+  renderCatalogGuideChoices(catalog.filters?.guide_id || '');
   for (const [id, values] of [
     ['catalogGenresInclude', catalog.filters?.genres_include || []],
     ['catalogGenresExclude', catalog.filters?.genres_exclude || []]
@@ -1971,6 +2136,7 @@ function resetCatalogForm() {
   ['catalogName','catalogYears','catalogYearMin','catalogYearMax','catalogKeywordsInclude','catalogKeywordsExclude']
     .forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('catalogMediaType').value = 'movie';
+  document.getElementById('catalogGuide').value = '';
   document.getElementById('catalogYearMode').value = 'include';
   for (const id of ['catalogGenresInclude', 'catalogGenresExclude']) {
     [...document.getElementById(id).options].forEach(option => { option.selected = false; });

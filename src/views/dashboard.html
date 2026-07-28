@@ -112,6 +112,10 @@
           <div class="stat-label" data-i18n="stat_spectacles">Spectacles</div>
           <div class="stat-value" id="statSpectacles">—</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-label">YouTube</div>
+          <div class="stat-value" id="statYoutube">—</div>
+        </div>
         <div class="stat-card accent">
           <div class="stat-label" data-i18n="stat_indexed">Total indexés</div>
           <div class="stat-value" id="statTotal">—</div>
@@ -228,6 +232,10 @@
           <span data-i18n="stat_spectacles">Spectacles</span>
           <span class="tab-count" id="tabCountSpectacles"></span>
         </button>
+        <button class="tab-btn" data-catalog="youtube">
+          <span>YouTube</span>
+          <span class="tab-count" id="tabCountYoutube"></span>
+        </button>
       </div>
 
       <div id="libraryGrid" class="media-grid"></div>
@@ -256,7 +264,7 @@
       </div>
 
       <details class="card source-group" data-source-group="rss" open>
-        <summary><span data-i18n="sources_rss_title">Sources RSS</span> <span class="source-group-count" id="rssGroupCount"></span></summary>
+        <summary><span data-i18n="sources_rss_title">RSS</span> <span class="source-group-count" id="rssGroupCount"></span></summary>
         <input id="rssSourceEditId" type="hidden">
         <div class="rss-row" style="margin-top:14px">
           <input id="rssSourceName" type="text" placeholder="Nom de la source" data-i18n-placeholder="sources_name_placeholder" class="rss-name-input">
@@ -276,7 +284,7 @@
       </details>
 
       <details class="card source-group" data-source-group="pastebin">
-        <summary><span data-i18n="sources_pastebin_title">Sources Pastebin</span> <span class="source-group-count" id="pastebinGroupCount"></span></summary>
+        <summary><span data-i18n="sources_pastebin_title">Pastebin</span> <span class="source-group-count" id="pastebinGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_pastebin_desc">
           URL directe, pointeur JSON ou index maître catégorisé.
         </p>
@@ -305,7 +313,7 @@
       </details>
 
       <details class="card source-group" data-source-group="webdav">
-        <summary><span>Sources WebDAV</span> <span class="source-group-count" id="webdavGroupCount"></span></summary>
+        <summary><span>WebDAV</span> <span class="source-group-count" id="webdavGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px">
           Parcourt récursivement un dossier WebDAV et identifie les films ou séries à partir des noms de fichiers.
           La lecture reste assurée dans Stremio par un addon dédié comme
@@ -376,7 +384,7 @@
       </details>
 
       <details class="card source-group" data-source-group="indexer">
-        <summary><span data-i18n="sources_newznab_title">API d’indexeurs</span> <span class="source-group-count" id="indexerGroupCount"></span></summary>
+        <summary><span data-i18n="sources_newznab_title">API d’indexeurs type Prowlarr, Newznab direct…</span> <span class="source-group-count" id="indexerGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_newznab_desc">
           Sources Newznab, Prowlarr, Jackett/Torznab et NZBHydra2 paginées.
         </p>
@@ -449,7 +457,7 @@
       </details>
 
       <details class="card source-group" data-source-group="wacustom">
-        <summary><span>Instances WaCustom</span> <span class="source-group-count" id="wacustomGroupCount"></span></summary>
+        <summary><span>Instances WaStream/WaCustom</span> <span class="source-group-count" id="wacustomGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px">
           Indexe les contenus WASource d’une instance WaCustom via son API administrateur paginée.
           Les liens de lecture ne sont pas copiés : seuls les identifiants, titres, types et années
@@ -559,6 +567,45 @@
         <button class="btn-sm" onclick="loadCatalogManager()">↺ Actualiser</button>
       </div>
 
+      <details class="card" style="margin-bottom:20px" open>
+        <summary>Guides MDBList</summary>
+        <p class="text-muted" style="margin:8px 0 14px">
+          Une liste sert de guide d’ordre et de sélection. Elle n’importe aucun média :
+          seuls les contenus déjà indexés par Stremio RSS Catalog peuvent apparaître.
+          <a href="https://mdblist.com/" target="_blank" rel="noopener noreferrer">MDBList ↗</a>
+        </p>
+        <input id="mdblistEditId" type="hidden">
+        <div class="config-grid">
+          <div class="field">
+            <label>Nom du guide</label>
+            <input id="mdblistName" type="text" placeholder="Tendances cinéma France">
+          </div>
+          <div class="field">
+            <label>URL de la liste ou identifiant MDBList</label>
+            <input id="mdblistUrl" type="url" placeholder="https://mdblist.com/lists/utilisateur/ma-liste">
+          </div>
+          <div class="field">
+            <label>Clé API MDBList</label>
+            <input id="mdblistApiKey" type="password" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label>Maximum d’éléments</label>
+            <input id="mdblistMaxItems" type="number" min="1" max="50000" value="5000">
+          </div>
+          <div class="field">
+            <label>Fréquence de mise à jour (min)</label>
+            <input id="mdblistInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="btn-sm" onclick="previewMDBListGuide()">Tester</button>
+          <button type="button" class="btn-primary" id="mdblistSubmit" onclick="saveMDBListGuide()">Ajouter et synchroniser</button>
+          <button type="button" class="btn-sm" id="mdblistCancel" onclick="resetMDBListForm()" hidden>Annuler</button>
+          <span id="mdblistPreview" class="text-muted"></span>
+        </div>
+        <div id="mdblistGuideList" style="margin-top:14px"></div>
+      </details>
+
       <div class="card" style="margin-bottom:20px">
         <h3 id="catalogFormTitle" data-i18n="catalogs_create">Créer un catalogue</h3>
         <input id="catalogEditId" type="hidden">
@@ -572,7 +619,16 @@
             <select id="catalogMediaType">
               <option value="movie">Films</option>
               <option value="series">Séries</option>
+              <option value="anime">Anime (type Stremio natif)</option>
+              <option value="YouTube">YouTube</option>
             </select>
+          </div>
+          <div class="field">
+            <label>Guide de sélection et d’ordre</label>
+            <select id="catalogGuide">
+              <option value="">Aucun guide — filtres locaux uniquement</option>
+            </select>
+            <small>Le catalogue sera l’intersection entre ce guide et les médias déjà indexés.</small>
           </div>
           <div class="field">
             <label data-i18n="catalogs_year_filter">Filtre année</label>

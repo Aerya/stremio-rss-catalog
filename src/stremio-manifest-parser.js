@@ -44,7 +44,7 @@ class StremioManifestParser {
         id: String(catalog.id),
         type: String(catalog.type),
         name: String(catalog.name || catalog.id),
-        supported: ['movie', 'series'].includes(String(catalog.type).toLowerCase())
+        supported: ['movie', 'series', 'anime', 'youtube'].includes(String(catalog.type).toLowerCase())
       }));
     return {
       name: String(manifest.name || 'Addon Stremio'),
@@ -63,7 +63,8 @@ class StremioManifestParser {
       'animés': 'Animés importés',
       concerts: 'Concerts importés',
       spectacles: 'Spectacles importés',
-      emissions: 'Émissions importées'
+      emissions: 'Émissions importées',
+      youtube: 'YouTube importé'
     };
     const catalogs = inspection.catalogs.map(catalog => {
       const category = this.guessCatalogType(catalog);
@@ -100,6 +101,7 @@ class StremioManifestParser {
 
   guessCatalogType(catalog) {
     const text = `${catalog.id} ${catalog.name}`.toLowerCase();
+    if (String(catalog.type).toLowerCase() === 'youtube' || /youtube|playlist|channel/.test(text)) return 'youtube';
     if (/document|docu/.test(text)) return 'documentaires';
     if (/anime|anim[eé]|cartoon/.test(text)) return 'animés';
     if (/concert|music/.test(text)) return 'concerts';
@@ -111,12 +113,29 @@ class StremioManifestParser {
   metaToItem(meta, source, catalog) {
     if (!meta?.id || !meta?.name) return null;
     const rawId = String(meta.id);
-    const imdb = rawId.match(/tt\d{5,12}/i)?.[0] || null;
-    const tmdb = rawId.match(/(?:tmdb[:_-]?)(\d+)/i)?.[1] || null;
+    const imdb = String(meta.imdb_id || '').match(/tt\d{5,12}/i)?.[0]
+      || rawId.match(/tt\d{5,12}/i)?.[0]
+      || null;
+    const tmdb = /^\d+$/.test(String(meta.tmdb_id || ''))
+      ? String(meta.tmdb_id)
+      : (rawId.match(/(?:tmdb[:_-]?)(\d+)/i)?.[1] || null);
+    const canonicalId = imdb || rawId;
     const identity = crypto.createHash('sha256')
       .update(`${source.id}|${catalog.type}|${catalog.id}|${rawId}`)
       .digest('hex').slice(0, 32);
-    const type = meta.type === 'series' || catalog.type === 'series' ? 'series' : 'movie';
+    const type = ['movie', 'series'].includes(meta.type)
+      ? meta.type
+      : (String(catalog.type).toLowerCase() === 'youtube' ? 'YouTube' : catalog.type);
+    const externalIds = [...new Set([
+      rawId,
+      meta.kitsu_id ? `kitsu:${meta.kitsu_id}` : null,
+      meta.mal_id ? `mal:${meta.mal_id}` : null,
+      meta.anilist_id ? `anilist:${meta.anilist_id}` : null,
+      meta.anidb_id ? `anidb:${meta.anidb_id}` : null
+    ].filter(Boolean))];
+    const genres = Array.isArray(meta.genres)
+      ? meta.genres
+      : (Array.isArray(meta.genre_ids) ? meta.genre_ids.map(Number).filter(Number.isInteger) : []);
     return {
       release_name: meta.name,
       indexer_rlz_id: `stremio:${identity}`,
@@ -127,19 +146,20 @@ class StremioManifestParser {
       tmdb_id: tmdb,
       source_url: this.sourceKey(source.id, catalog),
       source_force: this.guessCatalogType(catalog),
-      direct_meta: imdb ? {
-        imdb_id: imdb,
+      direct_meta: {
+        imdb_id: canonicalId,
         tmdb_id: tmdb,
+        external_ids: externalIds,
         name: meta.name,
         year: String(meta.releaseInfo || meta.year || '').match(/\b(19|20)\d{2}\b/)?.[0] || null,
         poster: meta.poster || null,
         background: meta.background || null,
         description: meta.description || null,
-        genres: Array.isArray(meta.genre_ids) ? meta.genre_ids.map(Number).filter(Number.isInteger) : [],
+        genres,
         vote_average: Number(meta.imdbRating || meta.vote_average) || null,
         original_language: null,
         origin_country: []
-      } : null
+      }
     };
   }
 
@@ -169,7 +189,7 @@ class StremioManifestParser {
         if (item) { items.push(item); added++; }
         if (items.length >= limit) break;
       }
-      if (added === 0 || metas.length < 100 || data?.hasMore === false) break;
+      if (added === 0 || data?.hasMore === false) break;
       skip += metas.length;
     }
     return items;
@@ -189,7 +209,11 @@ class StremioManifestParser {
       let fetched = 0;
       let errors = 0;
       for (const catalog of source.catalogs || []) {
-        if (catalog.enabled === false || catalog.supported === false || !['movie', 'series'].includes(catalog.type)) continue;
+        if (
+          catalog.enabled === false
+          || catalog.supported === false
+          || !['movie', 'series', 'anime', 'youtube'].includes(String(catalog.type).toLowerCase())
+        ) continue;
         try {
           const catalogItems = await this.fetchCatalog(source, catalog);
           fetched += catalogItems.length;

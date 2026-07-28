@@ -133,7 +133,7 @@ class DatabaseManager {
       CREATE TABLE IF NOT EXISTS custom_catalogs (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        type TEXT NOT NULL CHECK(type IN ('movie', 'series')),
+        type TEXT NOT NULL,
         enabled INTEGER NOT NULL DEFAULT 1,
         updates_enabled INTEGER NOT NULL DEFAULT 1,
         frozen_at INTEGER,
@@ -141,6 +141,29 @@ class DatabaseManager {
         filters TEXT NOT NULL DEFAULT '{}',
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS media_identities (
+        namespace TEXT NOT NULL,
+        external_id TEXT NOT NULL,
+        media_imdb_id TEXT NOT NULL REFERENCES media(imdb_id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY(namespace, external_id)
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS guide_items (
+        guide_id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        media_type TEXT NOT NULL,
+        imdb_id TEXT,
+        tmdb_id TEXT,
+        title TEXT,
+        year TEXT,
+        PRIMARY KEY(guide_id, position)
       )
     `);
 
@@ -195,6 +218,12 @@ class DatabaseManager {
         ON source_sync_state(last_success_at);
       CREATE INDEX IF NOT EXISTS idx_manifest_history_revision
         ON manifest_history(revision DESC);
+      CREATE INDEX IF NOT EXISTS idx_media_identities_media
+        ON media_identities(media_imdb_id);
+      CREATE INDEX IF NOT EXISTS idx_guide_items_imdb
+        ON guide_items(guide_id, imdb_id);
+      CREATE INDEX IF NOT EXISTS idx_guide_items_tmdb
+        ON guide_items(guide_id, tmdb_id);
     `);
 
     // Migration depuis l'ancien schéma catalog_items si nécessaire
@@ -209,6 +238,7 @@ class DatabaseManager {
     // Migration v3 : ajout colonnes concerts_added / spectacles_added dans sync_history
     this._migrateV3SyncHistory();
     this._migrateManagedCatalogPauses();
+    this._migrateCatalogMediaTypes();
 
     this.initDefaultConfig();
     this.seedManagedCatalogs();
@@ -236,6 +266,39 @@ class DatabaseManager {
       this.db.prepare("ALTER TABLE custom_catalogs ADD COLUMN frozen_at INTEGER").run();
       console.log('[DB] Migration catalogues : date de gel ajoutée');
     }
+  }
+
+  _migrateCatalogMediaTypes() {
+    const schema = this.db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'custom_catalogs'"
+    ).get()?.sql || '';
+    if (!/CHECK\s*\(\s*type\s+IN/i.test(schema)) return;
+    const migrate = this.db.transaction(() => {
+      this.db.exec('ALTER TABLE custom_catalogs RENAME TO custom_catalogs_legacy_types');
+      this.db.exec(`
+        CREATE TABLE custom_catalogs (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          updates_enabled INTEGER NOT NULL DEFAULT 1,
+          frozen_at INTEGER,
+          source_urls TEXT NOT NULL DEFAULT '[]',
+          filters TEXT NOT NULL DEFAULT '{}',
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+      this.db.exec(`
+        INSERT INTO custom_catalogs
+          (id, name, type, enabled, updates_enabled, frozen_at, source_urls, filters, created_at, updated_at)
+        SELECT id, name, type, enabled, updates_enabled, frozen_at, source_urls, filters, created_at, updated_at
+        FROM custom_catalogs_legacy_types
+      `);
+      this.db.exec('DROP TABLE custom_catalogs_legacy_types');
+    });
+    migrate();
+    console.log('[DB] Migration catalogues : types Stremio étendus');
   }
 
   _migrateFromV1() {
@@ -287,6 +350,7 @@ class DatabaseManager {
       stremio_manifest_sources: '[]',
       newznab_sources: '[]',
       wacustom_sources: '[]',
+      mdblist_guides: '[]',
       manifest_revision: '0',
       tmdb_api_key: '',
       tvdb_api_key: '',
@@ -474,9 +538,65 @@ class DatabaseManager {
     return this.db.prepare('DELETE FROM custom_catalogs WHERE id = ?').run(id).changes > 0;
   }
 
+  replaceGuideItems(guideId, items) {
+    const remove = this.db.prepare('DELETE FROM guide_items WHERE guide_id = ?');
+    const insert = this.db.prepare(`
+      INSERT INTO guide_items
+        (guide_id, position, media_type, imdb_id, tmdb_id, title, year)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const replace = this.db.transaction(() => {
+      remove.run(guideId);
+      items.forEach((item, index) => {
+        insert.run(
+          guideId,
+          Number.isInteger(item.position) ? item.position : index,
+          item.media_type || 'unknown',
+          item.imdb_id || null,
+          item.tmdb_id === null || item.tmdb_id === undefined ? null : String(item.tmdb_id),
+          item.title || null,
+          item.year === null || item.year === undefined ? null : String(item.year)
+        );
+      });
+    });
+    replace();
+    return this.getGuideItemStats(guideId);
+  }
+
+  deleteGuideItems(guideId) {
+    return this.db.prepare('DELETE FROM guide_items WHERE guide_id = ?').run(guideId).changes;
+  }
+
+  getGuideItemStats(guideId) {
+    return this.db.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN media_type = 'movie' THEN 1 ELSE 0 END) AS movies,
+        SUM(CASE WHEN media_type IN ('show', 'series') THEN 1 ELSE 0 END) AS shows
+      FROM guide_items
+      WHERE guide_id = ?
+    `).get(guideId);
+  }
+
+  listGuideItems(guideId, limit = 20) {
+    return this.db.prepare(`
+      SELECT * FROM guide_items
+      WHERE guide_id = ?
+      ORDER BY position ASC
+      LIMIT ?
+    `).all(guideId, Math.min(Math.max(Number(limit) || 20, 1), 1000));
+  }
+
   _customCatalogConditions(catalog, search = null) {
-    const conditions = ['m.type = ?'];
-    const params = [catalog.type];
+    const animeCatalog = String(catalog.type).toLowerCase() === 'anime';
+    const conditions = [animeCatalog
+      ? `(m.catalog_type = 'animés' OR EXISTS (
+          SELECT 1 FROM media_identities anime_identity
+          WHERE anime_identity.media_imdb_id = m.imdb_id
+            AND anime_identity.namespace IN ('kitsu', 'mal', 'anilist', 'anidb')
+        ))`
+      : 'm.type = ?'];
+    const params = animeCatalog ? [] : [catalog.type];
     const filters = catalog.filters || {};
     const frozenAt = catalog.updates_enabled === false && Number(catalog.frozen_at)
       ? Number(catalog.frozen_at)
@@ -496,6 +616,23 @@ class DatabaseManager {
       )`);
       params.push(...catalog.source_urls);
       if (frozenAt) params.push(frozenAt);
+    }
+
+    if (filters.guide_id) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM guide_items gi
+        WHERE gi.guide_id = ?
+          AND (
+            gi.imdb_id = m.imdb_id
+            OR (gi.tmdb_id IS NOT NULL AND CAST(gi.tmdb_id AS TEXT) = CAST(m.tmdb_id AS TEXT))
+            OR EXISTS (
+              SELECT 1 FROM media_identities mi
+              WHERE mi.media_imdb_id = m.imdb_id
+                AND mi.external_id = gi.imdb_id
+            )
+          )
+      )`);
+      params.push(String(filters.guide_id));
     }
 
     const years = Array.isArray(filters.years)
@@ -557,11 +694,28 @@ class DatabaseManager {
 
   getCustomCatalogMedia(catalog, skip = 0, limit = 101, search = null) {
     const { conditions, params } = this._customCatalogConditions(catalog, search);
+    const guideId = catalog.filters?.guide_id ? String(catalog.filters.guide_id) : null;
+    const guideOrder = guideId
+      ? `COALESCE((
+          SELECT MIN(gi.position) FROM guide_items gi
+          WHERE gi.guide_id = ?
+            AND (
+              gi.imdb_id = m.imdb_id
+              OR (gi.tmdb_id IS NOT NULL AND CAST(gi.tmdb_id AS TEXT) = CAST(m.tmdb_id AS TEXT))
+              OR EXISTS (
+                SELECT 1 FROM media_identities mi
+                WHERE mi.media_imdb_id = m.imdb_id
+                  AND mi.external_id = gi.imdb_id
+              )
+            )
+        ), 2147483647) ASC,`
+      : '';
+    if (guideId) params.push(guideId);
     params.push(Number(limit), Number(skip));
     const rows = this.db.prepare(`
       SELECT m.* FROM media m
       WHERE ${conditions.join(' AND ')}
-      ORDER BY m.first_seen_at DESC
+      ORDER BY ${guideOrder} m.first_seen_at DESC
       LIMIT ? OFFSET ?
     `).all(...params);
     return rows.map(row => ({ ...row, genres: row.genres ? JSON.parse(row.genres) : [] }));
@@ -610,6 +764,44 @@ class DatabaseManager {
     const row = this.db.prepare('SELECT * FROM media WHERE imdb_id = ?').get(imdbId);
     if (row && row.genres) row.genres = JSON.parse(row.genres);
     return row;
+  }
+
+  linkMediaIdentity(mediaId, externalId, namespace = null) {
+    if (!mediaId || !externalId) return false;
+    const value = String(externalId);
+    const inferredNamespace = namespace || value.match(/^([^:]+):/)?.[1]
+      || (/^tt\d+$/i.test(value) ? 'imdb' : 'stremio');
+    this.db.prepare(`
+      INSERT INTO media_identities (namespace, external_id, media_imdb_id, created_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(namespace, external_id) DO UPDATE SET
+        media_imdb_id = excluded.media_imdb_id
+    `).run(String(inferredNamespace).toLowerCase(), value, mediaId, Date.now());
+    return true;
+  }
+
+  getMediaByExternalId(externalId, namespace = null) {
+    if (!externalId) return null;
+    const value = String(externalId);
+    const inferredNamespace = namespace || value.match(/^([^:]+):/)?.[1]
+      || (/^tt\d+$/i.test(value) ? 'imdb' : 'stremio');
+    const row = this.db.prepare(`
+      SELECT m.* FROM media_identities i
+      JOIN media m ON m.imdb_id = i.media_imdb_id
+      WHERE i.namespace = ? AND i.external_id = ?
+      LIMIT 1
+    `).get(String(inferredNamespace).toLowerCase(), value);
+    if (row?.genres) row.genres = JSON.parse(row.genres);
+    return row || null;
+  }
+
+  getMediaIdentities(mediaId) {
+    return this.db.prepare(`
+      SELECT namespace, external_id
+      FROM media_identities
+      WHERE media_imdb_id = ?
+      ORDER BY namespace, external_id
+    `).all(mediaId);
   }
 
   getMediaByTmdbId(tmdbId, type = null) {
@@ -1168,7 +1360,8 @@ class DatabaseManager {
         SUM(CASE WHEN m.catalog_type = 'emissions'     THEN 1 ELSE 0 END) AS emissions_count,
         SUM(CASE WHEN m.catalog_type = 'animés'        THEN 1 ELSE 0 END) AS animes_count,
         SUM(CASE WHEN m.catalog_type = 'concerts'      THEN 1 ELSE 0 END) AS concerts_count,
-        SUM(CASE WHEN m.catalog_type = 'spectacles'    THEN 1 ELSE 0 END) AS spectacles_count
+        SUM(CASE WHEN m.catalog_type = 'spectacles'    THEN 1 ELSE 0 END) AS spectacles_count,
+        SUM(CASE WHEN m.catalog_type = 'youtube'       THEN 1 ELSE 0 END) AS youtube_count
       FROM releases r
       LEFT JOIN media m ON r.media_imdb_id = m.imdb_id
       WHERE r.source_url IS NOT NULL AND r.source_url != ''

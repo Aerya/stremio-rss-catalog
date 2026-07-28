@@ -389,7 +389,20 @@ input:checked + .slider::before { transform: translateX(22px); }
 .config-section h4 { font-size: 13px; font-weight: 600; color: var(--text-muted); }
 
 .rss-row { display: flex; gap: 8px; align-items: center; }
-.rss-row .flex-1 { flex: 1; min-width: 0; }
+.rss-row > input,
+.rss-row > select { width: auto; }
+.rss-row .flex-1 {
+  flex: 1 1 320px;
+  min-width: 220px;
+  width: auto;
+}
+.rss-row > button { flex: 0 0 auto; }
+.rss-row .select-catalog,
+#pastebinForce { width: 220px; flex: 0 0 220px; }
+#rssSourceInterval,
+#pastebinInterval { width: 170px; flex: 0 0 170px; }
+#pastebinMaxDepth { width: 110px; flex: 0 0 110px; }
+#pastebinMaxPages { width: 140px; flex: 0 0 140px; }
 .select-catalog { width: 150px; flex-shrink: 0; font-size: 13px; }
 .source-project-links {
   margin: -6px 0 14px;
@@ -664,6 +677,7 @@ input:checked + .slider::before { transform: translateX(22px); }
 .badge-animés        { background: rgba(168,85,247,.2);  color: #c084fc; }
 .badge-concerts      { background: rgba(251,113,133,.2); color: #fb7185; }
 .badge-spectacles    { background: rgba(20,184,166,.2);  color: #2dd4bf; }
+.badge-youtube       { background: rgba(239,68,68,.2);   color: #f87171; }
 
 /* ─── Pager ───────────────────────────────────────────────────────── */
 .pager { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; }

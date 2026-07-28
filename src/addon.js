@@ -27,7 +27,7 @@ class StremioAddon {
       logo: 'https://raw.githubusercontent.com/Aerya/stremio-rss-catalog/main/src/public/logo.png',
       resources: ['catalog'],
       types: ['movie', 'series'],
-      idPrefixes: ['tt'],
+      idPrefixes: ['tt', 'kitsu', 'mal', 'anilist', 'anidb', 'yt_id:'],
       catalogs: [
         {
           type: 'movie',
@@ -96,7 +96,8 @@ class StremioAddon {
   }
 
   getManifest() {
-    const customCatalogs = this.db.listCustomCatalogs(false).map(catalog => ({
+    const managedCatalogs = this.db.listCustomCatalogs(false);
+    const customCatalogs = managedCatalogs.map(catalog => ({
       type: catalog.type,
       id: catalog.id,
       name: `Stremio RSS Catalog - ${catalog.name}`,
@@ -105,6 +106,7 @@ class StremioAddon {
     return {
       ...this.manifest,
       version: `1.1.${Math.max(0, Number(this.db.getConfig('manifest_revision')) || 0)}`,
+      types: [...new Set([...this.manifest.types, ...managedCatalogs.map(catalog => catalog.type)])],
       catalogs: customCatalogs
     };
   }
@@ -171,7 +173,7 @@ class StremioAddon {
     const rpdbEnabled = this.db.getConfig('rpdb_enabled') === 'true';
     let rpdbKey = this.db.getConfig('rpdb_api_key');
 
-    if (rpdbEnabled && rpdbKey && item.imdb_id) {
+    if (rpdbEnabled && rpdbKey && /^tt\d+$/i.test(item.imdb_id || '')) {
       rpdbKey = rpdbKey.trim();
       poster = `https://api.ratingposterdb.com/${rpdbKey}/imdb/poster-default/${item.imdb_id}.jpg?fallback=true`;
     }
@@ -196,7 +198,9 @@ class StremioAddon {
         10764: 'Reality', 10765: 'Sci-Fi & Fantasy', 10766: 'Soap',
         10767: 'Talk', 10768: 'War & Politics'
       };
-      meta.genres = item.genres.map(id => genreMap[id] || 'Unknown').filter(g => g !== 'Unknown');
+      meta.genres = item.genres
+        .map(id => typeof id === 'string' && !/^\d+$/.test(id) ? id : (genreMap[id] || 'Unknown'))
+        .filter(g => g !== 'Unknown');
     }
 
     if (!item.description && item.release_name) {

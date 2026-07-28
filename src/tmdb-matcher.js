@@ -39,6 +39,17 @@ class TMDBMatcher {
     this.omdb    = new OMDbService(db);
   }
 
+  linkDirectIdentities(item, mediaId) {
+    if (!mediaId) return;
+    const identities = [
+      mediaId,
+      ...(Array.isArray(item.direct_meta?.external_ids) ? item.direct_meta.external_ids : [])
+    ];
+    for (const externalId of new Set(identities.filter(Boolean))) {
+      this.db.linkMediaIdentity(mediaId, externalId);
+    }
+  }
+
   getApiKey() {
     return this.db.getConfig('tmdb_api_key');
   }
@@ -402,7 +413,7 @@ class TMDBMatcher {
         // On appelle OMDb uniquement si la clé est configurée et que le média
         // n'est pas déjà dans une catégorie spécifique (animés).
         let omdbResult = null;
-        if (this.omdb.isConfigured() && catalogType !== 'animés') {
+        if (this.omdb.isConfigured() && catalogType !== 'animés' && /^tt\d+$/i.test(match.imdb_id)) {
           try {
             omdbResult = await this.omdb.fetch(match.imdb_id);
           } catch (err) {
@@ -490,21 +501,27 @@ class TMDBMatcher {
         }
 
         // Vérifier si ce média (imdb_id) est déjà en base
-        const existingMedia = this.db.getMediaByImdbId(match.imdb_id);
+        const externalIds = Array.isArray(item.direct_meta?.external_ids)
+          ? item.direct_meta.external_ids
+          : [];
+        const existingMedia = this.db.getMediaByImdbId(match.imdb_id)
+          || externalIds.map(externalId => this.db.getMediaByExternalId(externalId)).find(Boolean);
 
         if (existingMedia) {
+          const mediaId = existingMedia.imdb_id;
           // Média déjà connu : on ajoute juste la nouvelle release
           this.db.addRelease({
-            media_imdb_id: match.imdb_id,
+            media_imdb_id: mediaId,
             release_name: item.release_name,
             indexer_rlz_id: item.indexer_rlz_id,
             source_url: item.source_url || null,
             quality: item.quality || null,
             hash: item.hash || null
           });
+          this.linkDirectIdentities(item, mediaId);
           matched++;
           alreadyInDb++;
-          console.log(`[TMDB] ↩ Nouvelle release pour média existant : ${match.name} (${match.imdb_id})`);
+          console.log(`[TMDB] ↩ Nouvelle release pour média existant : ${match.name} (${mediaId})`);
         } else {
           // Nouveau média
           const mediaData = {
@@ -532,6 +549,7 @@ class TMDBMatcher {
               quality: item.quality || null,
               hash: item.hash || null
             });
+            this.linkDirectIdentities(item, match.imdb_id);
             matched++;
             results.push(mediaData);
             console.log(`[TMDB] ✓ ${item.cleanName} → ${match.name} (${match.imdb_id})`);

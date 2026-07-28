@@ -22,6 +22,7 @@ async function main() {
   let newznabKeyReceived = false;
   let webdavAuthReceived = false;
   let waCustomCookieReceived = false;
+  let mdblistKeyReceived = false;
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     if (req.method === 'PROPFIND' && (req.url === '/dav/' || req.url === '/dav/Films/')) {
@@ -82,6 +83,66 @@ async function main() {
           releaseInfo: '2026', poster: 'https://images.invalid/poster.jpg'
         }],
         hasMore: false
+      }));
+    }
+    if (req.url.startsWith('/exotic/manifest.json')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        id: 'test.exotic', version: '1.0.0', name: 'Source non IMDb',
+        idPrefixes: ['kitsu:', 'yt_id:'],
+        catalogs: [
+          { type: 'anime', id: 'anime_list', name: 'Liste anime' },
+          { type: 'YouTube', id: 'youtube_list', name: 'Playlist vidéo' }
+        ]
+      }));
+    }
+    if (req.url.startsWith('/exotic/catalog/anime/anime_list.json')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        metas: [{
+          id: 'kitsu:42', kitsu_id: 42, type: 'series', name: 'Anime sans IMDb',
+          releaseInfo: '2026', genres: ['Animation', 'Adventure'],
+          poster: 'https://images.invalid/anime.jpg'
+        }],
+        hasMore: false
+      }));
+    }
+    if (req.url.startsWith('/exotic/catalog/YouTube/youtube_list.json')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        metas: [{
+          id: 'yt_id:abcdefghijk', type: 'YouTube', name: 'Vidéo de test',
+          releaseInfo: '2026', genres: ['Technology'],
+          poster: 'https://images.invalid/youtube.jpg'
+        }],
+        hasMore: false
+      }));
+    }
+    if (req.url.startsWith('/mdblist/items')) {
+      const requestUrl = new URL(req.url, baseUrl);
+      mdblistKeyReceived = requestUrl.searchParams.get('apikey') === 'mdblist-test-key';
+      res.setHeader('Content-Type', 'application/json');
+      if (!requestUrl.searchParams.get('cursor')) {
+        res.setHeader('X-Has-More', 'true');
+        return res.end(JSON.stringify({
+          movies: [{
+            rank: 2, title: 'Film Test', imdb_id: 'tt0000123',
+            ids: { imdb: 'tt0000123', tmdb: 123 }, mediatype: 'movie', release_year: 2026
+          }],
+          shows: [{
+            rank: 1, title: 'Série Test', imdb_id: 'tt0000456',
+            ids: { imdb: 'tt0000456', tmdb: 456 }, mediatype: 'show', release_year: 2025
+          }],
+          pagination: { next_cursor: 'page-2' }
+        }));
+      }
+      return res.end(JSON.stringify({
+        movies: [{
+          rank: 3, title: 'Titre absent', imdb_id: 'tt9999999',
+          ids: { imdb: 'tt9999999', tmdb: 9999999 }, mediatype: 'movie', release_year: 2026
+        }],
+        shows: [],
+        pagination: {}
       }));
     }
     if (req.url.startsWith('/newznab/api')) {
@@ -201,6 +262,17 @@ async function main() {
     assert.equal(db.getMediaByImdbId('tt0000456').type, 'series');
 
     const rssParser = new RSSParser({}, db);
+    rssParser.mdblistGuideParser.itemsUrl = () => `${baseUrl}/mdblist/items`;
+    const mdblistResult = await rssParser.mdblistGuideParser.fetchItems({
+      id: 'mdblist-parser-test',
+      url: 'https://mdblist.com/lists/demo/list',
+      apiKey: 'mdblist-test-key',
+      maxItems: 100
+    });
+    assert.equal(mdblistKeyReceived, true);
+    assert.deepEqual(mdblistResult.items.map(item => item.imdb_id), [
+      'tt0000456', 'tt0000123', 'tt9999999'
+    ]);
     assert.equal(rssParser.safeUrl('https://example.test/rss?passkey=secret'), 'https://example.test/rss?…');
     const tmdbEnriched = rssParser.newznabParser.enrichParsedItems(
       [{ guid: 'tmdb-release', 'newznab:attr': { $: { name: 'tmdbid', value: '123' } } }],
@@ -328,6 +400,31 @@ async function main() {
     assert.equal(remoteMatch.matched, 1);
     assert.equal(db.getMediaByImdbId('tt0000789').name, 'Film distant');
 
+    const exoticInspection = await stremioParser.inspect(`${baseUrl}/exotic/manifest.json`);
+    assert.deepEqual(
+      exoticInspection.catalogs.map(catalog => [catalog.type, catalog.supported]),
+      [['anime', true], ['YouTube', true]]
+    );
+    const exoticSource = {
+      id: 'exotic-test',
+      name: 'Source non IMDb',
+      url: `${baseUrl}/exotic/manifest.json`,
+      catalogs: exoticInspection.catalogs,
+      maxItemsPerCatalog: 100
+    };
+    const animeItems = await stremioParser.fetchCatalog(exoticSource, exoticInspection.catalogs[0]);
+    const youtubeItems = await stremioParser.fetchCatalog(exoticSource, exoticInspection.catalogs[1]);
+    assert.equal(animeItems[0].direct_meta.imdb_id, 'kitsu:42');
+    assert.equal(animeItems[0].catalog_type, 'animés');
+    assert.equal(animeItems[0].type, 'series');
+    assert.equal(youtubeItems[0].direct_meta.imdb_id, 'yt_id:abcdefghijk');
+    assert.equal(youtubeItems[0].catalog_type, 'youtube');
+    assert.equal(youtubeItems[0].type, 'YouTube');
+    const exoticMatch = await matcher.matchBatch([...animeItems, ...youtubeItems]);
+    assert.equal(exoticMatch.matched, 2);
+    assert.equal(db.getMediaByExternalId('kitsu:42').name, 'Anime sans IMDb');
+    assert.equal(db.getMediaByExternalId('yt_id:abcdefghijk').name, 'Vidéo de test');
+
     db.setConfig('newznab_sources', JSON.stringify([
       newznabSource,
       { ...newznabSource, id: 'newznab-second', name: 'Jackett secondaire', kind: 'jackett', url: `${baseUrl}/newznab-2/api` }
@@ -378,13 +475,58 @@ async function main() {
       filters: { year_mode: 'include', years: ['2026'] }
     });
     assert.deepEqual(db.getCustomCatalogMedia(apiCatalog).map(item => item.imdb_id), ['tt0000901']);
+    const youtubeCatalog = db.saveCustomCatalog({
+      id: 'custom_youtube',
+      name: 'Mes vidéos',
+      type: 'YouTube',
+      source_urls: ['stremio-manifest:exotic-test:YouTube:youtube_list'],
+      filters: {}
+    });
+    assert.deepEqual(
+      db.getCustomCatalogMedia(youtubeCatalog).map(item => item.imdb_id),
+      ['yt_id:abcdefghijk']
+    );
+    const animeCatalog = db.saveCustomCatalog({
+      id: 'custom_anime_native',
+      name: 'Anime natif',
+      type: 'anime',
+      source_urls: ['stremio-manifest:exotic-test:anime:anime_list'],
+      filters: {}
+    });
+    assert.deepEqual(
+      db.getCustomCatalogMedia(animeCatalog).map(item => item.imdb_id),
+      ['kitsu:42']
+    );
+    db.replaceGuideItems('guide-test', [
+      { media_type: 'movie', imdb_id: 'tt0000789', tmdb_id: '789', title: 'Film distant', position: 0 },
+      { media_type: 'movie', imdb_id: 'tt0000123', tmdb_id: '123', title: 'Film Test', position: 1 },
+      { media_type: 'movie', imdb_id: 'tt9999999', tmdb_id: '9999999', title: 'Absent', position: 2 }
+    ]);
+    const guidedCatalog = db.saveCustomCatalog({
+      id: 'custom_guided',
+      name: 'Guide local uniquement',
+      type: 'movie',
+      source_urls: [],
+      filters: { guide_id: 'guide-test' }
+    });
+    assert.equal(db.getGuideItemStats('guide-test').total, 3);
+    assert.deepEqual(
+      db.getCustomCatalogMedia(guidedCatalog).map(item => item.imdb_id),
+      ['tt0000789', 'tt0000123']
+    );
+    assert.equal(db.countCustomCatalogMedia(guidedCatalog), 2);
 
     const addon = new StremioAddon(db);
     db.setConfig('manifest_revision', '1');
     const manifest = addon.getManifest();
-    assert.equal(manifest.catalogs.length, 12);
+    assert.equal(manifest.catalogs.length, 15);
     assert.ok(manifest.catalogs.some(item => item.id === 'useflowfr_films'));
     assert.ok(manifest.catalogs.some(item => item.id === 'custom_films_2026'));
+    assert.ok(manifest.catalogs.some(item => item.id === 'custom_youtube' && item.type === 'YouTube'));
+    assert.ok(manifest.types.includes('YouTube'));
+    assert.ok(manifest.types.includes('anime'));
+    assert.ok(manifest.idPrefixes.includes('kitsu'));
+    assert.ok(manifest.idPrefixes.includes('yt_id:'));
     const historical = await addon.handleCatalog({ type: 'movie', id: 'useflowfr_films', extra: {} });
     assert.deepEqual(
       new Set(historical.metas.map(item => item.id)),
@@ -415,7 +557,7 @@ async function main() {
     });
     assert.equal(db.listManifestHistory(1)[0].event, 'catalog_deleted');
     const maintenanceAnalysis = db.getMaintenanceAnalysis();
-    assert.equal(maintenanceAnalysis.media_count, 8);
+    assert.equal(maintenanceAnalysis.media_count, 10);
     const backupPath = await db.createMaintenanceBackup('integration-test');
     assert.ok(fs.existsSync(backupPath));
     const maintenanceId = db.startMaintenanceHistory('integration_test', maintenanceAnalysis);
@@ -451,6 +593,8 @@ async function main() {
     console.log('✓ Reprise des catalogues historiques et de leurs contenus');
     console.log('✓ Suppression durable sans suppression des médias');
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
+    console.log('✓ Identifiants Kitsu/YouTubio natifs et catalogue YouTube sans conversion en film');
+    console.log('✓ Guide MDBList limité aux médias locaux et ordre de liste conservé');
     console.log('✓ API Newznab/Torznab paginée avec types Prowlarr et Jackett');
     console.log('✓ Parcours WebDAV récursif, authentifié et filtré par extension');
     console.log('✓ Import WaCustom paginé avec reprise du parcours et identifiants IMDb directs');

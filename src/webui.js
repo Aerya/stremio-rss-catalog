@@ -9,6 +9,7 @@ const { sendDiscordNotification } = require('./services/discordService');
 const { sendAppriseNotification } = require('./services/appriseService');
 const { getStrings }              = require('./services/notifStrings');
 const crypto = require('crypto');
+const SUPPORTED_CATALOG_TYPES = ['movie', 'series', 'anime', 'YouTube'];
 
 const MAINTENANCE_MIGRATIONS = [
   {
@@ -216,6 +217,7 @@ class WebUI {
       delete config.newznab_sources;
       delete config.webdav_sources;
       delete config.wacustom_sources;
+      delete config.mdblist_guides;
       res.json(config);
     });
 
@@ -254,7 +256,7 @@ class WebUI {
         'rss_films_name', 'rss_films_url', 'rss_films_force',
         'rss_films_paused', 'rss_films_sync_interval', 'rss_additional_urls',
         'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources', 'webdav_sources',
-        'wacustom_sources'
+        'wacustom_sources', 'mdblist_guides'
       ]);
       const config = Object.fromEntries(Object.entries(this.db.getAllConfig())
         .filter(([key]) => !excludedConfigKeys.has(key))
@@ -282,7 +284,8 @@ class WebUI {
           stremio: this.rssParser.stremioManifestParser.getSources().map(redactUrl),
           indexers: this.rssParser.newznabParser.getSources().map(redactUrl),
           webdav: this.rssParser.webdavParser.getSources().map(redactUrl),
-          wacustom: this.rssParser.waCustomParser.getSources().map(redactUrl)
+          wacustom: this.rssParser.waCustomParser.getSources().map(redactUrl),
+          guides: this.rssParser.mdblistGuideParser.getSources().map(redactUrl)
         },
         catalogs: this.db.listCustomCatalogs().map(catalog => ({
           ...catalog,
@@ -314,6 +317,7 @@ class WebUI {
             indexers: payload.sources.indexers?.length || 0,
             webdav: payload.sources.webdav?.length || 0,
             wacustom: payload.sources.wacustom?.length || 0,
+            guides: payload.sources.guides?.length || 0,
             catalogs: payload.catalogs.length
           }
         });
@@ -370,9 +374,12 @@ class WebUI {
       this.db.setConfig('wacustom_sources', JSON.stringify(mergeSources(
         this.rssParser.waCustomParser.getSources(), payload.sources.wacustom, ['url', 'adminPassword']
       )));
+      this.db.setConfig('mdblist_guides', JSON.stringify(mergeSources(
+        this.rssParser.mdblistGuideParser.getSources(), payload.sources.guides, ['url', 'apiKey']
+      )));
       this.db.clearSourceSyncStates();
       for (const catalog of payload.catalogs) {
-        if (catalog?.id && catalog?.name && ['movie', 'series'].includes(catalog.type)) {
+        if (catalog?.id && catalog?.name && SUPPORTED_CATALOG_TYPES.includes(catalog.type)) {
           this.db.saveCustomCatalog(catalog);
         }
       }
@@ -394,6 +401,7 @@ class WebUI {
       if (kind === 'indexer') source = this.rssParser.newznabParser.getSources().find(item => item.id === id);
       if (kind === 'webdav') source = this.rssParser.webdavParser.getSources().find(item => item.id === id);
       if (kind === 'wacustom') source = this.rssParser.waCustomParser.getSources().find(item => item.id === id);
+      if (kind === 'guide') source = this.rssParser.mdblistGuideParser.getSources().find(item => item.id === id);
       if (!source) return res.status(404).json({ error: 'Source introuvable' });
       res.setHeader('Cache-Control', 'no-store');
       res.json({
@@ -403,7 +411,8 @@ class WebUI {
           username: source.username || null,
           password: source.password || null
         } : {}),
-        ...(kind === 'wacustom' ? { admin_password: source.adminPassword || null } : {})
+        ...(kind === 'wacustom' ? { admin_password: source.adminPassword || null } : {}),
+        ...(kind === 'guide' ? { api_key: source.apiKey || null } : {})
       });
     });
 
@@ -1151,6 +1160,128 @@ class WebUI {
       res.json({ success: true });
     });
 
+    // ─── Guides MDBList ───────────────────────────────────────────────────
+    const mdblistParser = this.rssParser.mdblistGuideParser;
+    const mdblistForApi = source => ({
+      id: source.id,
+      name: source.name,
+      url: source.url,
+      paused: Boolean(source.paused),
+      has_api_key: Boolean(source.apiKey),
+      max_items: Number(source.maxItems) || 5000,
+      sync_interval_minutes: source.syncIntervalMinutes || null,
+      stats: this.db.getGuideItemStats(source.id),
+      sample: this.db.listGuideItems(source.id, 5),
+      runtime: this.getSourceRuntime(mdblistParser.sourceKey(source.id), source.syncIntervalMinutes)
+    });
+
+    const mdblistPayload = (body, existing = null) => ({
+      ...(existing || {}),
+      ...(body.name !== undefined ? { name: String(body.name).trim() || existing?.name || 'Guide MDBList' } : {}),
+      ...(body.url !== undefined ? { url: String(body.url).trim() } : {}),
+      ...(body.api_key ? { apiKey: String(body.api_key).trim() } : {}),
+      ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
+      ...(body.max_items !== undefined ? {
+        maxItems: Math.min(Math.max(Number(body.max_items) || 5000, 1), 50000)
+      } : {}),
+      ...(body.sync_interval_minutes !== undefined ? {
+        syncIntervalMinutes: this.normalizeSourceInterval(body.sync_interval_minutes)
+      } : {})
+    });
+
+    this.app.get('/api/mdblist-guides', this.authMiddleware.bind(this), (req, res) => {
+      res.json(mdblistParser.getSources().map(mdblistForApi));
+    });
+
+    this.app.post('/api/mdblist-guides/preview', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const existing = req.body.source_id
+          ? mdblistParser.getSources().find(source => source.id === req.body.source_id)
+          : null;
+        const source = mdblistPayload(req.body, existing);
+        if (!source.url) return res.status(400).json({ error: 'Adresse de liste requise' });
+        if (!source.apiKey) return res.status(400).json({ error: 'Clé API MDBList requise' });
+        res.json(await mdblistParser.inspect(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/mdblist-guides', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const source = {
+          ...mdblistPayload(req.body),
+          id: crypto.randomUUID(),
+          name: String(req.body.name || '').trim() || 'Guide MDBList',
+          paused: Boolean(req.body.paused),
+          maxItems: Math.min(Math.max(Number(req.body.max_items) || 5000, 1), 50000),
+          syncIntervalMinutes: this.normalizeSourceInterval(req.body.sync_interval_minutes)
+        };
+        if (!source.url || !source.apiKey) {
+          return res.status(400).json({ error: 'Adresse de liste et clé API requises' });
+        }
+        mdblistParser.parseListReference(source.url);
+        const sources = mdblistParser.getSources();
+        sources.push(source);
+        this.db.setConfig('mdblist_guides', JSON.stringify(sources));
+        try {
+          await mdblistParser.syncSource(source);
+        } catch (error) {
+          this.db.setConfig('mdblist_guides', JSON.stringify(sources.filter(item => item.id !== source.id)));
+          this.db.deleteSourceSyncState(mdblistParser.sourceKey(source.id));
+          throw error;
+        }
+        this.stremioAddon.clearCache();
+        res.status(201).json(mdblistForApi(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.put('/api/mdblist-guides/:id', this.authMiddleware.bind(this), async (req, res) => {
+      const sources = mdblistParser.getSources();
+      const index = sources.findIndex(source => source.id === req.params.id);
+      if (index < 0) return res.status(404).json({ error: 'Guide introuvable' });
+      try {
+        const current = sources[index];
+        const next = mdblistPayload(req.body, current);
+        if (!next.url || !next.apiKey) return res.status(400).json({ error: 'Adresse et clé API requises' });
+        mdblistParser.parseListReference(next.url);
+        const connectionChanged = next.url !== current.url || next.apiKey !== current.apiKey;
+        if (connectionChanged) await mdblistParser.inspect(next);
+        sources[index] = next;
+        this.db.setConfig('mdblist_guides', JSON.stringify(sources));
+        if (connectionChanged) this.db.deleteSourceSyncState(mdblistParser.sourceKey(next.id));
+        res.json(mdblistForApi(next));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/mdblist-guides/:id/sync', this.authMiddleware.bind(this), async (req, res) => {
+      const source = mdblistParser.getSources().find(item => item.id === req.params.id);
+      if (!source) return res.status(404).json({ error: 'Guide introuvable' });
+      try {
+        const result = await mdblistParser.syncSource(source);
+        this.stremioAddon.clearCache();
+        this.db.setConfig('last_catalog_refresh', String(Date.now()));
+        res.json({ success: true, ...result, guide: mdblistForApi(source) });
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.delete('/api/mdblist-guides/:id', this.authMiddleware.bind(this), (req, res) => {
+      const sources = mdblistParser.getSources();
+      const next = sources.filter(source => source.id !== req.params.id);
+      if (next.length === sources.length) return res.status(404).json({ error: 'Guide introuvable' });
+      this.db.setConfig('mdblist_guides', JSON.stringify(next));
+      this.db.deleteGuideItems(req.params.id);
+      this.db.deleteSourceSyncState(mdblistParser.sourceKey(req.params.id));
+      this.stremioAddon.clearCache();
+      res.json({ success: true });
+    });
+
     // ─── Catalogues personnalisés ──────────────────────────────────────────
     this.app.get('/api/catalogs', this.authMiddleware.bind(this), (req, res) => {
       res.json(this.db.listCustomCatalogs());
@@ -1159,7 +1290,7 @@ class WebUI {
     this.app.post('/api/catalogs', this.authMiddleware.bind(this), (req, res) => {
       const { name, type, source_urls = [], filters = {}, enabled = true, updates_enabled = true } = req.body;
       if (!String(name || '').trim()) return res.status(400).json({ error: 'Nom requis' });
-      if (!['movie', 'series'].includes(type)) return res.status(400).json({ error: 'Type invalide' });
+      if (!SUPPORTED_CATALOG_TYPES.includes(type)) return res.status(400).json({ error: 'Type invalide' });
       const slug = String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'catalogue';
       const catalog = this.db.saveCustomCatalog({
@@ -1175,7 +1306,7 @@ class WebUI {
       const current = this.db.getCustomCatalog(req.params.id);
       if (!current) return res.status(404).json({ error: 'Catalogue introuvable' });
       const next = { ...current, ...req.body, id: current.id };
-      if (!String(next.name || '').trim() || !['movie', 'series'].includes(next.type)) {
+      if (!String(next.name || '').trim() || !SUPPORTED_CATALOG_TYPES.includes(next.type)) {
         return res.status(400).json({ error: 'Nom ou type invalide' });
       }
       const catalog = this.db.saveCustomCatalog(next);
@@ -1212,7 +1343,7 @@ class WebUI {
         source_urls: req.body.source_urls || [],
         filters: req.body.filters || {}
       };
-      if (!['movie', 'series'].includes(virtual.type)) return res.status(400).json({ error: 'Type invalide' });
+      if (!SUPPORTED_CATALOG_TYPES.includes(virtual.type)) return res.status(400).json({ error: 'Type invalide' });
       const items = this.db.getCustomCatalogMedia(virtual, 0, 21);
       res.json({
         count: this.db.countCustomCatalogMedia(virtual),
@@ -1237,8 +1368,9 @@ class WebUI {
       const animes        = this.db.getMediaCount('animés');
       const concerts      = this.db.getMediaCount('concerts');
       const spectacles    = this.db.getMediaCount('spectacles');
-      const total = films + documentaires + series + emissions + animes + concerts + spectacles;
-      res.json({ films, documentaires, series, emissions, animes, concerts, spectacles, total });
+      const youtube       = this.db.getMediaCount('youtube');
+      const total = films + documentaires + series + emissions + animes + concerts + spectacles + youtube;
+      res.json({ films, documentaires, series, emissions, animes, concerts, spectacles, youtube, total });
     });
 
     // ─── Overview ───────────────────────────────────────────────────────────
@@ -1253,7 +1385,8 @@ class WebUI {
         emissions:     this.db.getRecentCatalogAdditions('emissions', 10),
         animes:        this.db.getRecentCatalogAdditions('animés', 10),
         concerts:      this.db.getRecentCatalogAdditions('concerts', 10),
-        spectacles:    this.db.getRecentCatalogAdditions('spectacles', 10)
+        spectacles:    this.db.getRecentCatalogAdditions('spectacles', 10),
+        youtube:       this.db.getRecentCatalogAdditions('youtube', 10)
       };
       const rpdbEnabled = this.db.getConfig('rpdb_enabled') === 'true';
       const rpdbKey     = this.db.getConfig('rpdb_api_key') || '';
@@ -1981,8 +2114,14 @@ class WebUI {
 
       const allItems = [...rssData.films];
       if (allItems.length === 0) {
+        if (rssData.guides?.updated) {
+          this.stremioAddon.clearCache();
+          this.db.setConfig('last_catalog_refresh', String(Date.now()));
+        }
         this.db.commitPendingSourceCursors(rssData.pendingCursorKeys);
-        this.syncStatus.stage   = forceAll ? 'Aucun élément trouvé' : 'Aucune source arrivée à échéance';
+        this.syncStatus.stage = rssData.guides?.updated
+          ? `${rssData.guides.updated} guide(s) actualisé(s), aucun nouveau contenu à traiter`
+          : (forceAll ? 'Aucun élément trouvé' : 'Aucune source arrivée à échéance');
         this.syncStatus.running = false;
         this.syncStatus.completed = true;
         this.syncStatus.noItems = true;

@@ -6,6 +6,7 @@ const StremioManifestParser = require('./stremio-manifest-parser');
 const NewznabParser = require('./newznab-parser');
 const WebDavParser = require('./webdav-parser');
 const WaCustomParser = require('./wacustom-parser');
+const MDBListGuideParser = require('./mdblist-guide-parser');
 
 class RSSParser {
   constructor(config, db) {
@@ -25,6 +26,7 @@ class RSSParser {
       (items, force, sourceUrl) => this._parseItems(items, force, sourceUrl)
     );
     this.waCustomParser = new WaCustomParser(db, () => this.getAxiosConfig());
+    this.mdblistGuideParser = new MDBListGuideParser(db, () => this.getAxiosConfig());
   }
 
   getAxiosConfig() {
@@ -382,6 +384,7 @@ class RSSParser {
     const defaultIntervalMinutes = Number(options.defaultIntervalMinutes)
       || Number(this.db.getConfig('refresh_interval')) || 180;
     const parserOptions = { ...options, defaultIntervalMinutes };
+    const guides = await this.mdblistGuideParser.syncAll(parserOptions);
     const filmsItems = await this.parseFilmsRSS(parserOptions);
     const additionalItems = await this.parseAdditionalRSS(parserOptions);
     const pastebinItems = await this.pastebinParser.parseAll(parserOptions);
@@ -397,7 +400,8 @@ class RSSParser {
       pendingCursorKeys: [
         ...(this.newznabParser.lastPendingCursorKeys || []),
         ...(this.waCustomParser.lastPendingCursorKeys || [])
-      ]
+      ],
+      guides
     };
   }
 }
