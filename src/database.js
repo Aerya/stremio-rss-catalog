@@ -215,6 +215,7 @@ class DatabaseManager {
       rss_additional_urls: '[]',
       pastebin_sources: '[]',
       stremio_manifest_sources: '[]',
+      newznab_sources: '[]',
       manifest_revision: '0',
       tmdb_api_key: '',
       tvdb_api_key: '',
@@ -446,6 +447,14 @@ class DatabaseManager {
 
   getMediaByImdbId(imdbId) {
     const row = this.db.prepare('SELECT * FROM media WHERE imdb_id = ?').get(imdbId);
+    if (row && row.genres) row.genres = JSON.parse(row.genres);
+    return row;
+  }
+
+  getMediaByTmdbId(tmdbId, type = null) {
+    const row = type
+      ? this.db.prepare('SELECT * FROM media WHERE tmdb_id = ? AND type = ? LIMIT 1').get(String(tmdbId), type)
+      : this.db.prepare('SELECT * FROM media WHERE tmdb_id = ? LIMIT 1').get(String(tmdbId));
     if (row && row.genres) row.genres = JSON.parse(row.genres);
     return row;
   }

@@ -8,6 +8,7 @@ const PastebinParser = require('../src/pastebin-parser');
 const TMDBMatcher = require('../src/tmdb-matcher');
 const StremioAddon = require('../src/addon');
 const StremioManifestParser = require('../src/stremio-manifest-parser');
+const RSSParser = require('../src/rss-parser');
 
 const header = 'CAT;TMDB;TITLE;SAISON;GROUPES;CAST;DIRECTOR;NETWORK;YEAR;GENRES;RES;URLS=https://alldebrid.com/f/';
 const movieRow = "film;123;Film Test;;[];[];[];[];2026;[28];['MULTI - 1080p'];['abc']";
@@ -16,6 +17,7 @@ const seriesRow = "serie;456;Série Test;1;[];[];[];[];2025;[18];MULTI - 1080p;1
 async function main() {
   let baseUrl;
   let catalogRequestKeptSecret = false;
+  let newznabKeyReceived = false;
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     if (req.url === '/pointer') {
@@ -42,6 +44,47 @@ async function main() {
         }],
         hasMore: false
       }));
+    }
+    if (req.url.startsWith('/newznab/api')) {
+      const requestUrl = new URL(req.url, baseUrl);
+      newznabKeyReceived = requestUrl.searchParams.get('apikey') === 'newznab-test-key';
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      if (requestUrl.searchParams.get('t') === 'caps') {
+        return res.end(`<?xml version="1.0"?>
+          <caps>
+            <limits max="2" default="2"/>
+            <categories>
+              <category id="2000" name="Movies"/>
+              <category id="5000" name="TV"/>
+            </categories>
+          </caps>`);
+      }
+      const category = requestUrl.searchParams.get('cat');
+      const offset = Number(requestUrl.searchParams.get('offset') || 0);
+      const movieItems = [
+        ['api-film-1', 'API Film One 2026 FRENCH 1080p', '0000901'],
+        ['api-film-2', 'API Film Two 2025 FRENCH 2160p', '0000902'],
+        ['api-film-3', 'API Film Three 2024 FRENCH WEB-DL', '0000903']
+      ];
+      const seriesItems = [['api-series-1', 'API Series S01E01 2026 FRENCH 1080p', '0000910']];
+      const all = category === '5000' ? seriesItems : movieItems;
+      const limit = Number(requestUrl.searchParams.get('limit') || 2);
+      const items = all.slice(offset, offset + limit).map(([guid, title, imdb]) => `
+        <item>
+          <title>${title}</title>
+          <guid isPermaLink="false">${guid}</guid>
+          <link>${baseUrl}/nzb/${guid}</link>
+          <pubDate>Mon, 27 Jul 2026 12:00:00 GMT</pubDate>
+          <newznab:attr name="category" value="${category}"/>
+          <newznab:attr name="imdb" value="${imdb}"/>
+        </item>`).join('');
+      return res.end(`<?xml version="1.0"?>
+        <rss xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/" version="2.0">
+          <channel>
+            <newznab:response offset="${offset}" total="${all.length}"/>
+            ${items}
+          </channel>
+        </rss>`);
     }
 
     if (req.url.startsWith('/3/movie/123')) {
@@ -90,6 +133,46 @@ async function main() {
     assert.equal(db.getMediaByImdbId('tt0000123').year, '2026');
     assert.equal(db.getMediaByImdbId('tt0000456').type, 'series');
 
+    const rssParser = new RSSParser({}, db);
+    assert.equal(rssParser.safeUrl('https://example.test/rss?passkey=secret'), 'https://example.test/rss?…');
+    const tmdbEnriched = rssParser.newznabParser.enrichParsedItems(
+      [{ guid: 'tmdb-release', 'newznab:attr': { $: { name: 'tmdbid', value: '123' } } }],
+      [{
+        indexer_rlz_id: 'tmdb-release', release_name: 'Film Test FRENCH 2026',
+        cleanName: 'Film Test', year: '2026', type: 'movie',
+        catalog_type: 'films', source_url: 'newznab:tmdb-fast-test:movie'
+      }]
+    );
+    assert.equal(tmdbEnriched[0].tmdb_id, '123');
+    const knownTmdbMatch = await matcher.matchBatch(tmdbEnriched);
+    assert.equal(knownTmdbMatch.alreadyInDb, 1);
+
+    const newznabSource = {
+      id: 'newznab-test',
+      name: 'API de test',
+      url: `${baseUrl}/newznab/api`,
+      apiKey: 'newznab-test-key',
+      categories: { movie: '2000', series: '5000' },
+      maxItemsPerCategory: 3,
+      requestDelayMs: 250
+    };
+    const capabilities = await rssParser.newznabParser.inspect(newznabSource);
+    assert.equal(capabilities.serverMax, 2);
+    assert.deepEqual(capabilities.categories.map(category => category.id), ['2000', '5000']);
+    const newznabMovies = await rssParser.newznabParser.fetchCategory(
+      newznabSource, 'movie', '2000', capabilities
+    );
+    assert.equal(newznabMovies.length, 3);
+    assert.ok(newznabMovies.every(item => item.source_url === 'newznab:newznab-test:movie'));
+    assert.deepEqual(
+      newznabMovies.map(item => item.direct_meta.imdb_id),
+      ['tt0000901', 'tt0000902', 'tt0000903']
+    );
+    assert.ok(newznabKeyReceived);
+    const newznabMatch = await matcher.matchBatch(newznabMovies);
+    assert.equal(newznabMatch.matched, 3);
+    assert.ok(db.getMediaByImdbId('tt0000901'));
+
     const stremioParser = new StremioManifestParser(db);
     const remoteUrl = `${baseUrl}/addon/manifest.json?token=secret-test`;
     const inspected = await stremioParser.inspect(remoteUrl);
@@ -133,17 +216,25 @@ async function main() {
       new Set(db.getCustomCatalogMedia(mixedCatalog).map(item => item.imdb_id)),
       new Set(['tt0000123', 'tt0000789'])
     );
+    const apiCatalog = db.saveCustomCatalog({
+      id: 'custom_api_movies',
+      name: 'Films API',
+      type: 'movie',
+      source_urls: ['newznab:newznab-test:movie'],
+      filters: { year_mode: 'include', years: ['2026'] }
+    });
+    assert.deepEqual(db.getCustomCatalogMedia(apiCatalog).map(item => item.imdb_id), ['tt0000901']);
 
     const addon = new StremioAddon(db);
     db.setConfig('manifest_revision', '1');
     const manifest = addon.getManifest();
-    assert.equal(manifest.catalogs.length, 11);
+    assert.equal(manifest.catalogs.length, 12);
     assert.ok(manifest.catalogs.some(item => item.id === 'useflowfr_films'));
     assert.ok(manifest.catalogs.some(item => item.id === 'custom_films_2026'));
     const historical = await addon.handleCatalog({ type: 'movie', id: 'useflowfr_films', extra: {} });
     assert.deepEqual(
       new Set(historical.metas.map(item => item.id)),
-      new Set(['tt0000123', 'tt0000789'])
+      new Set(['tt0000123', 'tt0000789', 'tt0000901', 'tt0000902', 'tt0000903'])
     );
     const response = await addon.handleCatalog({ type: 'movie', id: 'custom_films_2026', extra: {} });
     assert.deepEqual(response.metas.map(item => item.id), ['tt0000123']);
@@ -161,6 +252,7 @@ async function main() {
     console.log('✓ Reprise des catalogues historiques et de leurs contenus');
     console.log('✓ Suppression durable sans suppression des médias');
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
+    console.log('✓ API Newznab paginée avec limite serveur, catégories et clé protégée');
   } finally {
     db.close();
     await new Promise(resolve => server.close(resolve));

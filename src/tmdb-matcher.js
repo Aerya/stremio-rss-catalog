@@ -355,6 +355,27 @@ class TMDBMatcher {
         continue;
       }
 
+      // 1c. Les API Newznab fournissent souvent directement un identifiant TMDB.
+      // Si le média est déjà indexé, aucune requête TMDB supplémentaire n'est nécessaire.
+      if (item.tmdb_id) {
+        const existingByTmdb = this.db.getMediaByTmdbId(item.tmdb_id, item.type);
+        if (existingByTmdb) {
+          this.db.addRelease({
+            media_imdb_id: existingByTmdb.imdb_id,
+            release_name: item.release_name,
+            indexer_rlz_id: item.indexer_rlz_id,
+            source_url: item.source_url || null,
+            quality: item.quality || null,
+            hash: item.hash || null
+          });
+          alreadyInDb++;
+          matched++;
+          console.log(`[TMDB] ↩ ID TMDB déjà connu : ${existingByTmdb.name} (${existingByTmdb.imdb_id})`);
+          if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
+          continue;
+        }
+      }
+
       // 2. Pour les séries : si le show est déjà en base (même titre TMDB), on ajoute juste la release
       if (item.type === 'series') {
         // On ne peut pas faire ça sans connaître le nom TMDB... on le sait uniquement après match.

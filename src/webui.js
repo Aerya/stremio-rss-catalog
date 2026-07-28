@@ -87,6 +87,7 @@ class WebUI {
     this.app.get('/api/config', this.authMiddleware.bind(this), (req, res) => {
       const config = this.db.getAllConfig();
       delete config.stremio_manifest_sources;
+      delete config.newznab_sources;
       res.json(config);
     });
 
@@ -310,6 +311,139 @@ class WebUI {
       res.json({ success: true });
     });
 
+    // ─── Sources API Newznab ───────────────────────────────────────────────
+    const serializeNewznabSource = source => {
+      const parser = this.rssParser.newznabParser;
+      const catalogs = [];
+      if (source.categories?.movie) {
+        catalogs.push({
+          type: 'movie',
+          name: 'Films',
+          category_ids: source.categories.movie,
+          source_key: parser.sourceKey(source.id, 'movie')
+        });
+      }
+      if (source.categories?.series) {
+        catalogs.push({
+          type: 'series',
+          name: 'Séries',
+          category_ids: source.categories.series,
+          source_key: parser.sourceKey(source.id, 'series')
+        });
+      }
+      return {
+        id: source.id,
+        name: source.name,
+        url: source.url,
+        paused: Boolean(source.paused),
+        has_api_key: Boolean(source.apiKey),
+        categories: source.categories || {},
+        max_items_per_category: Number(source.maxItemsPerCategory) || 1000,
+        page_size: Number(source.pageSize) || Number(source.serverMax) || 100,
+        request_delay_ms: Number(source.requestDelayMs) || 750,
+        server_max: Number(source.serverMax) || null,
+        catalogs
+      };
+    };
+    const normalizeCategoryIds = value => String(value || '')
+      .split(',').map(item => item.trim()).filter(Boolean).join(',');
+    const validCategoryIds = value => !value || /^\d+(?:,\d+)*$/.test(value);
+
+    this.app.get('/api/newznab-sources', this.authMiddleware.bind(this), (req, res) => {
+      res.json(this.rssParser.newznabParser.getSources().map(serializeNewznabSource));
+    });
+
+    this.app.post('/api/newznab-sources/preview', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const { url, api_key: apiKey } = req.body;
+        if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        if (!String(apiKey || '').trim()) return res.status(400).json({ error: 'Clé API requise' });
+        const inspection = await this.rssParser.newznabParser.inspect({ url, apiKey: String(apiKey).trim() });
+        res.json({
+          server_max: inspection.serverMax,
+          server_default: inspection.serverDefault,
+          categories: inspection.categories
+        });
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/newznab-sources', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const {
+          name = '', url, api_key: apiKey, movie_categories = '2000',
+          series_categories = '5000', max_items_per_category = 1000,
+          request_delay_ms = 750, paused = false
+        } = req.body;
+        if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        if (!String(apiKey || '').trim()) return res.status(400).json({ error: 'Clé API requise' });
+        const movie = normalizeCategoryIds(movie_categories);
+        const series = normalizeCategoryIds(series_categories);
+        if ((!movie && !series) || !validCategoryIds(movie) || !validCategoryIds(series)) {
+          return res.status(400).json({ error: 'Catégories Newznab invalides' });
+        }
+        const parser = this.rssParser.newznabParser;
+        const sources = parser.getSources();
+        if (sources.some(source => source.url === url)) return res.status(409).json({ error: 'Cette source existe déjà' });
+        const inspection = await parser.inspect({ url, apiKey: String(apiKey).trim() });
+        const source = {
+          id: crypto.randomUUID(),
+          name: String(name).trim() || new URL(url).hostname,
+          url,
+          apiKey: String(apiKey).trim(),
+          paused: Boolean(paused),
+          categories: { movie, series },
+          maxItemsPerCategory: Math.min(Math.max(Number(max_items_per_category) || 1000, 1), 20000),
+          pageSize: inspection.serverMax,
+          requestDelayMs: Math.min(Math.max(Number(request_delay_ms) || 750, 250), 10000),
+          serverMax: inspection.serverMax
+        };
+        sources.push(source);
+        this.db.setConfig('newznab_sources', JSON.stringify(sources));
+        res.status(201).json(serializeNewznabSource(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.put('/api/newznab-sources/:id', this.authMiddleware.bind(this), (req, res) => {
+      const parser = this.rssParser.newznabParser;
+      const sources = parser.getSources();
+      const index = sources.findIndex(source => source.id === req.params.id);
+      if (index < 0) return res.status(404).json({ error: 'Source introuvable' });
+      const current = sources[index];
+      const next = { ...current };
+      if (req.body.name !== undefined) next.name = String(req.body.name).trim() || current.name;
+      if (req.body.paused !== undefined) next.paused = Boolean(req.body.paused);
+      if (String(req.body.api_key || '').trim()) next.apiKey = String(req.body.api_key).trim();
+      if (req.body.movie_categories !== undefined || req.body.series_categories !== undefined) {
+        const movie = normalizeCategoryIds(req.body.movie_categories ?? current.categories?.movie);
+        const series = normalizeCategoryIds(req.body.series_categories ?? current.categories?.series);
+        if ((!movie && !series) || !validCategoryIds(movie) || !validCategoryIds(series)) {
+          return res.status(400).json({ error: 'Catégories Newznab invalides' });
+        }
+        next.categories = { movie, series };
+      }
+      if (req.body.max_items_per_category !== undefined) {
+        next.maxItemsPerCategory = Math.min(Math.max(Number(req.body.max_items_per_category) || 1000, 1), 20000);
+      }
+      if (req.body.request_delay_ms !== undefined) {
+        next.requestDelayMs = Math.min(Math.max(Number(req.body.request_delay_ms) || 750, 250), 10000);
+      }
+      sources[index] = next;
+      this.db.setConfig('newznab_sources', JSON.stringify(sources));
+      res.json(serializeNewznabSource(next));
+    });
+
+    this.app.delete('/api/newznab-sources/:id', this.authMiddleware.bind(this), (req, res) => {
+      const sources = this.rssParser.newznabParser.getSources();
+      const next = sources.filter(source => source.id !== req.params.id);
+      if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
+      this.db.setConfig('newznab_sources', JSON.stringify(next));
+      res.json({ success: true });
+    });
+
     // ─── Catalogues personnalisés ──────────────────────────────────────────
     this.app.get('/api/catalogs', this.authMiddleware.bind(this), (req, res) => {
       res.json(this.db.listCustomCatalogs());
@@ -481,6 +615,14 @@ class WebUI {
           nameMap[this.rssParser.stremioManifestParser.sourceKey(source.id, catalog)] = `${source.name} — ${catalog.name}`;
         });
       });
+      this.rssParser.newznabParser.getSources().forEach(source => {
+        if (source.categories?.movie) {
+          nameMap[this.rssParser.newznabParser.sourceKey(source.id, 'movie')] = `${source.name} — Films`;
+        }
+        if (source.categories?.series) {
+          nameMap[this.rssParser.newznabParser.sourceKey(source.id, 'series')] = `${source.name} — Séries`;
+        }
+      });
 
       // Flux avec releases
       const stats = this.db.getSourceStats();
@@ -505,12 +647,13 @@ class WebUI {
       const tmdbKey = this.db.getConfig('tmdb_api_key');
       const hasPastebin = this.rssParser.pastebinParser.getSources().some(source => !source.paused);
       const hasStremio = this.rssParser.stremioManifestParser.getSources().some(source => !source.paused);
+      const hasNewznab = this.rssParser.newznabParser.getSources().some(source => !source.paused);
       const hasRss = this.getRssSources().some(source => !source.paused);
-      if (!hasRss && !hasPastebin && !hasStremio) {
+      if (!hasRss && !hasPastebin && !hasStremio && !hasNewznab) {
         return res.status(400).json({ error: 'Au moins une source active est requise' });
       }
-      if ((hasRss || hasPastebin) && !tmdbKey) {
-        return res.status(400).json({ error: 'La clé TMDB est requise pour les sources RSS et Pastebin' });
+      if ((hasRss || hasPastebin || hasNewznab) && !tmdbKey) {
+        return res.status(400).json({ error: 'La clé TMDB est requise pour les sources RSS, Pastebin et Newznab' });
       }
 
       const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
@@ -983,16 +1126,16 @@ class WebUI {
     };
 
     try {
-      this.syncStatus.stage = 'Récupération des flux RSS...';
+      this.syncStatus.stage = 'Récupération des sources...';
       const rssData = await this.rssParser.parseAll();
-      console.log('RSS fetched - Films: ' + rssData.films.length);
+      console.log('Sources récupérées - Éléments: ' + rssData.films.length);
 
       const allItems = [...rssData.films];
       if (allItems.length === 0) {
         this.syncStatus.stage   = 'Aucun item trouvé';
         this.syncStatus.running = false;
-        this.syncStatus.error   = 'Aucun item trouvé dans les flux RSS';
-        console.log('No items found in RSS feeds');
+        this.syncStatus.error   = 'Aucun élément trouvé dans les sources';
+        console.log('Aucun élément trouvé dans les sources');
         return;
       }
       syncId = this.db.createSyncHistory(allItems.length);

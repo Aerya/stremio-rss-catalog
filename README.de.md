@@ -40,7 +40,7 @@
 | | |
 |---|---|
 | **Verwaltete Kataloge** | Die 9 bisherigen Kataloge werden mit ihren vorhandenen Inhalten in die Verwaltung übernommen; beliebig viele eigene Kataloge können ergänzt werden |
-| **Gemischte Quellen** | Ein Katalog kann RSS-, Pastebin- und aus generischen Stremio-Manifesten importierte Katalogquellen kombinieren |
+| **Gemischte Quellen** | Ein Katalog kann RSS-, Pastebin-, Newznab-API- und aus generischen Stremio-Manifesten importierte Katalogquellen kombinieren |
 | **Eigene Filter** | Ein- oder ausgeschlossene Jahre, Jahresbereiche, Genres, Schlüsselwörter und Quellenauswahl |
 | **Dynamischer Lebenszyklus** | Kataloge erstellen, bearbeiten, pausieren, fortsetzen oder löschen, ohne indexierte Medien zu entfernen |
 | **Verschachtelte Pastebins** | Direkte Seiten, JSON-Verweise und kategorisierte Hauptindizes mit begrenzter Rekursion und Deduplizierung |

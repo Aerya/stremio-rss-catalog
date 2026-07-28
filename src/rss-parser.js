@@ -3,6 +3,7 @@ const xml2js = require('xml2js');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const PastebinParser = require('./pastebin-parser');
 const StremioManifestParser = require('./stremio-manifest-parser');
+const NewznabParser = require('./newznab-parser');
 
 class RSSParser {
   constructor(config, db) {
@@ -11,6 +12,11 @@ class RSSParser {
     this.axiosConfig = this.getAxiosConfig();
     this.pastebinParser = new PastebinParser(db, () => this.getAxiosConfig());
     this.stremioManifestParser = new StremioManifestParser(db, () => this.getAxiosConfig());
+    this.newznabParser = new NewznabParser(
+      db,
+      () => this.getAxiosConfig(),
+      (items, force, sourceUrl) => this._parseItems(items, force, sourceUrl)
+    );
   }
 
   getAxiosConfig() {
@@ -48,9 +54,18 @@ class RSSParser {
     return config;
   }
 
+  safeUrl(value) {
+    try {
+      const url = new URL(value);
+      return `${url.origin}${url.pathname}${url.search ? '?…' : ''}`;
+    } catch {
+      return '[URL invalide]';
+    }
+  }
+
   async fetchRSS(url) {
     try {
-      console.log(`Fetching RSS: ${url}`);
+      console.log(`Fetching RSS: ${this.safeUrl(url)}`);
       const response = await axios.get(url, this.axiosConfig);
       const parser = new xml2js.Parser({ explicitArray: false });
       const result = await parser.parseStringPromise(response.data);
@@ -65,7 +80,7 @@ class RSSParser {
       }
       return [];
     } catch (error) {
-      console.error(`Error fetching RSS ${url}:`, error.message);
+      console.error(`Error fetching RSS ${this.safeUrl(url)}:`, error.message);
       const httpStatus = error.response?.status || null;
       this.db.recordFeedError(url, error.message, httpStatus);
       return [];
@@ -255,7 +270,7 @@ class RSSParser {
     const effectiveForce = (force && force !== 'auto') ? force : (urlHint || 'auto');
 
     if (urlHint && (force === 'auto' || !force)) {
-      console.log(`[RSS] URL hint "${urlHint}" détecté automatiquement depuis : ${(sourceUrl || '').substring(0, 60)}`);
+      console.log(`[RSS] URL hint "${urlHint}" détecté automatiquement depuis : ${this.safeUrl(sourceUrl)}`);
     }
 
     const parsed = [];
@@ -324,13 +339,13 @@ class RSSParser {
       const force = typeof entry === 'string' ? 'auto' : (entry.force || 'auto');
 
       if (!rssUrl || !rssUrl.trim() || (typeof entry === 'object' && entry.paused === true)) continue;
-      console.log('[RSS] Parsing additional feed:', rssUrl.substring(0, 50) + '... (force: ' + force + ')');
+      console.log('[RSS] Parsing additional feed:', this.safeUrl(rssUrl) + ' (force: ' + force + ')');
 
       try {
         const items = await this.fetchRSS(rssUrl.trim());
         allParsed.push(...this._parseItems(items, force, rssUrl.trim()));
       } catch (err) {
-        console.error('[RSS] Error parsing additional feed:', rssUrl.substring(0, 50), err.message);
+        console.error('[RSS] Error parsing additional feed:', this.safeUrl(rssUrl), err.message);
       }
     }
 
@@ -342,7 +357,8 @@ class RSSParser {
     const additionalItems = await this.parseAdditionalRSS();
     const pastebinItems = await this.pastebinParser.parseAll();
     const stremioItems = await this.stremioManifestParser.parseAll();
-    return { films: [...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems] };
+    const newznabItems = await this.newznabParser.parseAll();
+    return { films: [...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems, ...newznabItems] };
   }
 }
 

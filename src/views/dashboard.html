@@ -273,6 +273,49 @@
       </div>
 
       <div class="card" style="margin-bottom:20px">
+        <h3 data-i18n="sources_newznab_title">API Newznab</h3>
+        <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_newznab_desc">
+          Interroge directement un indexeur Newznab, sans passer par Prowlarr.
+        </p>
+        <div class="config-grid">
+          <div class="field">
+            <label data-i18n="sources_name">Nom</label>
+            <input id="newznabSourceName" type="text" placeholder="Mon indexeur">
+          </div>
+          <div class="field">
+            <label data-i18n="sources_newznab_url">URL de l’API</label>
+            <input id="newznabSourceUrl" type="url" placeholder="https://site.fr/api">
+          </div>
+          <div class="field">
+            <label data-i18n="sources_newznab_key">Clé API</label>
+            <input id="newznabApiKey" type="password" autocomplete="off">
+          </div>
+          <div class="field">
+            <label data-i18n="sources_newznab_movie_categories">Catégories Films</label>
+            <input id="newznabMovieCategories" type="text" value="2000" placeholder="2000">
+          </div>
+          <div class="field">
+            <label data-i18n="sources_newznab_series_categories">Catégories Séries</label>
+            <input id="newznabSeriesCategories" type="text" value="5000" placeholder="5000">
+          </div>
+          <div class="field">
+            <label data-i18n="sources_newznab_max_items">Maximum par catégorie et synchronisation</label>
+            <input id="newznabMaxItems" type="number" min="1" max="20000" value="1000">
+          </div>
+          <div class="field">
+            <label data-i18n="sources_newznab_delay">Délai entre les pages (ms)</label>
+            <input id="newznabRequestDelay" type="number" min="250" max="10000" step="250" value="750">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button type="button" class="btn-sm" onclick="previewNewznabSource()" data-i18n="sources_test">Tester</button>
+          <button type="button" class="btn-primary" onclick="addNewznabSource()" data-i18n="sources_add">Ajouter</button>
+        </div>
+        <div id="newznabSourcePreview" class="text-muted" style="margin-top:10px"></div>
+        <div id="newznabSourceList" style="margin-top:14px"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
         <h3 data-i18n="sources_stremio_title">Manifestes Stremio</h3>
         <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_stremio_desc">
           Importe les catalogues déclarés par un autre addon.

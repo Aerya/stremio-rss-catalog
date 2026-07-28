@@ -40,7 +40,7 @@
 | | |
 |---|---|
 | **Catalogues gérés** | Les 9 catalogues historiques sont repris dans le gestionnaire et conservent leurs contenus ; créez ensuite autant de catalogues personnalisés que nécessaire |
-| **Sources mixtes** | Un catalogue peut utiliser une ou plusieurs sources RSS, Pastebin et/ou des catalogues importés depuis un manifeste Stremio |
+| **Sources mixtes** | Un catalogue peut utiliser une ou plusieurs sources RSS, Pastebin, API Newznab et/ou des catalogues importés depuis un manifeste Stremio |
 | **Filtres personnalisés** | Années incluses ou exclues, plage d'années, genres requis/exclus, mots-clés requis/exclus et sélection des sources |
 | **Cycle de vie dynamique** | Création, modification, pause, reprise et suppression des catalogues sans supprimer les médias indexés |
 | **Pastebins imbriqués** | Pages directes, pointeurs JSON et index maîtres catégorisés avec récursion bornée, déduplication et protection des hôtes découverts |
@@ -179,6 +179,18 @@ Les sources Pastebin acceptent :
 Les manifestes Stremio sont ajoutés avec leur URL `manifest.json`. L'addon découvre les catalogues déclarés et les expose comme sources sélectionnables dans le gestionnaire de catalogues.
 
 > L'ajout, la pause ou la suppression modifie immédiatement le manifeste servi par l'addon et incrémente sa version. Le contenu des catalogues existants est immédiatement dynamique. Selon le cache du client Stremio, l'apparition d'un tout nouveau catalogue peut toutefois nécessiter un redémarrage ou une actualisation du client.
+
+## API Newznab
+
+Une source Newznab se configure depuis **Sources** avec une URL générique telle que
+`https://site.fr/api`, sa clé API et les catégories à importer. Les valeurs usuelles
+sont `2000` pour les films et `5000` pour les séries.
+
+L'addon lit `t=caps`, utilise automatiquement la limite maximale annoncée par le
+serveur pour chaque page, puis pagine avec `offset`. Le plafond d'éléments par
+catégorie et le délai entre deux pages restent configurables. Ces sources suivent
+le même intervalle de synchronisation global que les flux RSS, soit 180 minutes
+par défaut.
 
 ---
 

@@ -40,7 +40,7 @@
 | | |
 |---|---|
 | **Managed catalogs** | The 9 historical catalogs are migrated into the manager with their existing content preserved; create any number of custom catalogs |
-| **Mixed sources** | A catalog may combine RSS, Pastebin, and catalogs imported from generic Stremio manifests |
+| **Mixed sources** | A catalog may combine RSS, Pastebin, Newznab API, and catalogs imported from generic Stremio manifests |
 | **Custom filters** | Included or excluded years, year ranges, included/excluded genres and keywords, and source selection |
 | **Dynamic lifecycle** | Create, edit, pause, resume, or delete catalogs without deleting indexed media |
 | **Nested Pastebins** | Direct pages, JSON pointers, and categorized master indexes with bounded recursion and deduplication |

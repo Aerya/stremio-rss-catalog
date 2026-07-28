@@ -863,6 +863,8 @@ input:checked + .slider::before { transform: translateX(22px); }
 @media (max-width: 900px) {
   .main-content { padding: 16px 20px; }
   .media-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .manager-row { align-items: stretch; flex-direction: column; }
+  .manager-row-actions { width: 100%; }
 }
 @media (max-width: 680px) {
   :root { --sidebar-w: 0px; }

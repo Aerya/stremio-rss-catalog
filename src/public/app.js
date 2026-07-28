@@ -784,7 +784,7 @@ window.createCatalogForSource = createCatalogForSource;
 
 // ═══════════════════════════ CATALOGUES ═══════════════════════════════
 
-let catalogManagerData = { catalogs: [], pastebins: [], rss: [], stremio: [] };
+let catalogManagerData = { catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [] };
 
 function csvValues(id) {
   return (document.getElementById(id)?.value || '').split(',').map(v => v.trim()).filter(Boolean);
@@ -814,15 +814,17 @@ function catalogPayload() {
 
 async function loadCatalogManager() {
   try {
-    const [catalogRes, pasteRes, rssRes, stremioRes] = await Promise.all([
-      fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/rss-sources'), fetch('/api/stremio-sources')
+    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes] = await Promise.all([
+      fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/rss-sources'),
+      fetch('/api/stremio-sources'), fetch('/api/newznab-sources')
     ]);
-    const [catalogs, pastebins, rss, stremio] = await Promise.all([
-      catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json()
+    const [catalogs, pastebins, rss, stremio, newznab] = await Promise.all([
+      catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json(), newznabRes.json()
     ]);
-    catalogManagerData = { catalogs, pastebins, rss, stremio };
+    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab };
     renderRssSources();
     renderPastebins();
+    renderNewznabSources();
     renderStremioSources();
     renderCatalogSourceChoices();
     renderCatalogs();
@@ -915,6 +917,12 @@ function renderCatalogSourceChoices(selected = []) {
   const sources = [
     ...catalogManagerData.rss,
     ...catalogManagerData.pastebins.map(source => ({ ...source, kind: 'Pastebin' })),
+    ...catalogManagerData.newznab.flatMap(source => (source.catalogs || []).map(catalog => ({
+      name: `${source.name} — ${catalog.name}`,
+      url: catalog.source_key,
+      kind: 'API Newznab',
+      paused: source.paused
+    }))),
     ...catalogManagerData.stremio.flatMap(source => (source.catalogs || []).map(catalog => ({
       name: `${source.name} — ${catalog.name}`,
       url: catalog.source_key,
@@ -1001,6 +1009,93 @@ async function deletePastebin(id) {
   loadCatalogManager();
 }
 window.deletePastebin = deletePastebin;
+
+function newznabPayload() {
+  return {
+    name: document.getElementById('newznabSourceName').value.trim(),
+    url: document.getElementById('newznabSourceUrl').value.trim(),
+    api_key: document.getElementById('newznabApiKey').value.trim(),
+    movie_categories: document.getElementById('newznabMovieCategories').value.trim(),
+    series_categories: document.getElementById('newznabSeriesCategories').value.trim(),
+    max_items_per_category: Number(document.getElementById('newznabMaxItems').value) || 1000,
+    request_delay_ms: Number(document.getElementById('newznabRequestDelay').value) || 750
+  };
+}
+
+function renderNewznabSources() {
+  const container = document.getElementById('newznabSourceList');
+  if (!container) return;
+  if (!catalogManagerData.newznab.length) {
+    container.innerHTML = `<p class="text-muted">${t('sources_newznab_none')}</p>`;
+    return;
+  }
+  container.innerHTML = catalogManagerData.newznab.map(source => `
+    <div class="manager-row">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'Newznab')} ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta manager-row-url" title="${escHtml(source.url)}">${escHtml(source.url)}</div>
+        <div class="manager-row-meta">
+          ${t('sources_newznab_categories_short')} :
+          ${(source.catalogs || []).map(catalog => `${escHtml(catalog.name)} ${escHtml(catalog.category_ids)}`).join(' · ')}
+          · ${source.max_items_per_category.toLocaleString()} ${t('sources_newznab_items_per_category')}
+          · ${t('sources_newznab_page_size')} ${source.page_size}
+          · ${source.request_delay_ms} ms
+        </div>
+      </div>
+      <div class="manager-row-actions">
+        ${(source.catalogs || []).map(catalog =>
+          `<button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(catalog.source_key).replace(/'/g, '%27')}','${encodeURIComponent(`${source.name} — ${catalog.name}`).replace(/'/g, '%27')}')">${t('sources_catalog_action')} ${escHtml(catalog.name)}</button>`
+        ).join('')}
+        <button class="btn-sm" onclick="toggleNewznabSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteNewznabSource('${source.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`).join('');
+}
+
+async function previewNewznabSource() {
+  const output = document.getElementById('newznabSourcePreview');
+  const payload = newznabPayload();
+  if (!payload.url || !payload.api_key) return;
+  output.textContent = t('sources_newznab_testing');
+  const response = await fetch('/api/newznab-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${t('sources_newznab_connection_ok')} · ${t('sources_newznab_server_limit')} ${data.server_max} · ${data.categories.length} ${t('sources_newznab_categories_available')}`
+    : (data.error || 'Erreur');
+}
+window.previewNewznabSource = previewNewznabSource;
+
+async function addNewznabSource() {
+  const response = await fetch('/api/newznab-sources', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newznabPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  document.getElementById('newznabSourceName').value = '';
+  document.getElementById('newznabSourceUrl').value = '';
+  document.getElementById('newznabApiKey').value = '';
+  document.getElementById('newznabSourcePreview').textContent = '';
+  await loadSourceManager();
+}
+window.addNewznabSource = addNewznabSource;
+
+async function toggleNewznabSource(id, paused) {
+  const response = await fetch(`/api/newznab-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.toggleNewznabSource = toggleNewznabSource;
+
+async function deleteNewznabSource(id) {
+  if (!confirm(t('sources_newznab_delete_confirm'))) return;
+  await fetch(`/api/newznab-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteNewznabSource = deleteNewznabSource;
 
 function renderStremioSources() {
   const container = document.getElementById('stremioSourceList');

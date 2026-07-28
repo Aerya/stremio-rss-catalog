@@ -2,5 +2,5 @@ node_modules
 npm-debug.log*
 .git
 .github
-work-data
+work-data*
 docker-compose.dev.yml
