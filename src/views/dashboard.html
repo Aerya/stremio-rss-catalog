@@ -154,6 +154,7 @@
         <div class="install-box">
           <code id="installUrl" data-i18n="install_loading">Chargement...</code>
           <button class="btn-sm" onclick="copyInstallUrl()" data-i18n="install_copy">Copier</button>
+          <button class="btn-primary btn-sm" onclick="openInStremio()" data-i18n="install_upgrade">Installer / mettre à niveau</button>
         </div>
       </div>
     </section>
@@ -273,11 +274,20 @@
       </div>
 
       <div class="card" style="margin-bottom:20px">
-        <h3 data-i18n="sources_newznab_title">API Newznab</h3>
+        <h3 data-i18n="sources_newznab_title">API d’indexeurs</h3>
         <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_newznab_desc">
-          Interroge directement un indexeur Newznab, sans passer par Prowlarr.
+          Sources Newznab, Prowlarr, Jackett/Torznab et NZBHydra2 paginées.
         </p>
         <div class="config-grid">
+          <div class="field">
+            <label data-i18n="sources_indexer_type">Type d’indexeur</label>
+            <select id="newznabSourceKind" onchange="updateIndexerHelp()">
+              <option value="newznab">Newznab</option>
+              <option value="prowlarr">Prowlarr (Torznab)</option>
+              <option value="jackett">Jackett (Torznab)</option>
+              <option value="nzbhydra2">NZBHydra2 (Newznab)</option>
+            </select>
+          </div>
           <div class="field">
             <label data-i18n="sources_name">Nom</label>
             <input id="newznabSourceName" type="text" placeholder="Mon indexeur">
@@ -285,6 +295,7 @@
           <div class="field">
             <label data-i18n="sources_newznab_url">URL de l’API</label>
             <input id="newznabSourceUrl" type="url" placeholder="https://site.fr/api">
+            <small id="indexerUrlHelp" data-i18n="sources_indexer_url_help">URL complète de l’endpoint API.</small>
           </div>
           <div class="field">
             <label data-i18n="sources_newznab_key">Clé API</label>
@@ -306,6 +317,10 @@
             <label data-i18n="sources_newznab_delay">Délai entre les pages (ms)</label>
             <input id="newznabRequestDelay" type="number" min="250" max="10000" step="250" value="750">
           </div>
+        </div>
+        <div class="integration-cat-hint" style="margin-top:12px" data-i18n="sources_indexer_collection_help">
+          À chaque synchronisation : interrogation de <code>t=caps</code>, puis pages <code>t=search</code>
+          jusqu’au maximum configuré par catégorie. La taille d’une page respecte la limite annoncée par le serveur.
         </div>
         <div style="display:flex;gap:8px;margin-top:14px">
           <button type="button" class="btn-sm" onclick="previewNewznabSource()" data-i18n="sources_test">Tester</button>
@@ -495,91 +510,11 @@
       <form id="configForm" class="card config-form" onsubmit="saveConfig(event)">
 
         <div class="config-section">
-          <h3 data-i18n="config_rss_films">Flux RSS</h3>
-          <div class="field">
-            <label data-i18n="config_rss_main_label">Flux principal</label>
-            <div class="rss-row" style="margin-bottom:6px">
-              <input type="text" id="rss_films_name" name="rss_films_name"
-                placeholder="Nom du flux (ex: MonTracker)" class="rss-name-input">
-            </div>
-            <div class="rss-row">
-              <input type="url" id="rss_films_url" name="rss_films_url"
-                placeholder="https://domain.tld/rssnew?cats=...&key=..." class="flex-1">
-              <select id="rss_films_force" name="rss_films_force" class="select-catalog">
-                <option value="auto">Tout</option>
-                <option value="films">Films</option>
-                <option value="series">Séries</option>
-                <option value="documentaires">Documentaires</option>
-                <option value="emissions">Émissions TV</option>
-                <option value="animés">Animés</option>
-                <option value="concerts">Concerts</option>
-                <option value="spectacles">Spectacles</option>
-              </select>
-            </div>
-            <small data-i18n="config_rss_films_hint">Incluant votre clé API ou passkey</small>
-          </div>
-          <div class="field">
-            <h4 data-i18n="config_rss_additional_title" style="margin:0 0 4px">Flux additionnels</h4>
-            <small data-i18n="config_rss_additional_hint" style="display:block;margin-bottom:10px">
-              Même fonctionnement que le flux principal.
-            </small>
-            <div id="additionalRssContainer"></div>
-            <button type="button" class="btn-sm btn-success" onclick="addRssField()"
-              data-i18n="config_rss_add_btn">➕ Ajouter un flux</button>
-          </div>
+          <h3 data-i18n="config_processing_title">Traitement des contenus</h3>
           <div class="field">
             <label>Tags requis (parsing)</label>
             <input type="text" id="required_tags" name="required_tags"
               placeholder="FRENCH,MULTi,TRUEFRENCH,VOF,VFF,VFI,VFQ">
-          </div>
-
-          <!-- Intégrations rapides -->
-          <div class="integration-block">
-            <h4 data-i18n="integrations_title">Intégrations rapides</h4>
-            <small data-i18n="integrations_hint" style="display:block;margin-bottom:10px">
-              Entrez l'URL de base et la clé API pour générer automatiquement les flux RSS et les ajouter à la liste.
-            </small>
-            <div class="integration-cat-hint">
-              Catégories Newznab : <strong>Films → 2000</strong> · <strong>TV (Séries, Émissions, Documentaires) → 5000</strong> · <strong>Tout → 2000 &amp; 5000</strong>
-            </div>
-
-            <!-- Prowlarr -->
-            <div class="integration-row">
-              <div class="integration-label">
-                <strong>Prowlarr</strong>
-                <small>Indexeur torrent</small>
-              </div>
-              <div class="integration-inputs">
-                <input type="url" id="prowlarr_url" name="prowlarr_url"
-                  placeholder="http://localhost:9696" data-i18n-placeholder="integrations_url_placeholder">
-                <input type="text" id="prowlarr_apikey" name="prowlarr_apikey"
-                  placeholder="API Key">
-              </div>
-              <div class="integration-actions">
-                <button type="button" class="btn-sm" onclick="addProwlarrFeed('auto')" data-i18n="integrations_add_all">Tout</button>
-                <button type="button" class="btn-sm" onclick="addProwlarrFeed('films')" data-i18n="integrations_add_films">Films</button>
-                <button type="button" class="btn-sm" onclick="addProwlarrFeed('series')" data-i18n="integrations_add_series">Séries</button>
-              </div>
-            </div>
-
-            <!-- NZBHydra2 -->
-            <div class="integration-row" style="margin-top:12px">
-              <div class="integration-label">
-                <strong>NZBHydra2</strong>
-                <small>Indexeur Usenet</small>
-              </div>
-              <div class="integration-inputs">
-                <input type="url" id="nzbhydra2_url" name="nzbhydra2_url"
-                  placeholder="http://localhost:5076" data-i18n-placeholder="integrations_url_placeholder">
-                <input type="text" id="nzbhydra2_apikey" name="nzbhydra2_apikey"
-                  placeholder="API Key">
-              </div>
-              <div class="integration-actions">
-                <button type="button" class="btn-sm" onclick="addNzbHydraFeed('')" data-i18n="integrations_add_all">Tout</button>
-                <button type="button" class="btn-sm" onclick="addNzbHydraFeed('2000')" data-i18n="integrations_add_films">Films</button>
-                <button type="button" class="btn-sm" onclick="addNzbHydraFeed('5000')" data-i18n="integrations_add_series">Séries</button>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -705,6 +640,11 @@
 
         <div class="config-section">
           <h3 data-i18n="config_auto_sync_title">Synchronisation automatique</h3>
+          <div class="integration-cat-hint" style="margin-bottom:14px" data-i18n="config_auto_sync_pipeline">
+            Une synchronisation interroge les sources actives, normalise et enrichit les résultats,
+            les enregistre dans la médiathèque, met à jour les catalogues non gelés, puis rend leur
+            contenu disponible à Stremio via le manifeste déjà installé.
+          </div>
           <div class="toggle-row">
             <label class="toggle-switch">
               <input type="checkbox" id="auto_refresh_enabled" name="auto_refresh_enabled">

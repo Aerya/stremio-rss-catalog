@@ -21,6 +21,7 @@
   <img src="https://img.shields.io/badge/Stremio-addon-purple?style=flat-square" alt="Stremio">
   <img src="https://img.shields.io/badge/RSS-kompatibel-F6A623?style=flat-square&logo=rss&logoColor=white" alt="RSS">
   <img src="https://img.shields.io/badge/Prowlarr-kompatibel-blue?style=flat-square" alt="Prowlarr">
+  <img src="https://img.shields.io/badge/Jackett-Torznab-blue?style=flat-square" alt="Jackett">
   <img src="https://img.shields.io/badge/NZBHydra2-kompatibel-blue?style=flat-square" alt="NZBHydra2">
   <img src="https://img.shields.io/badge/TMDB%20%2B%20TVDB%20%2B%20OMDb-matched-green?style=flat-square" alt="TMDB+TVDB+OMDb">
   <img src="https://img.shields.io/badge/MyAnimeList-integriert-2E51A2?style=flat-square" alt="MAL">
@@ -31,7 +32,7 @@
 
 ---
 
-> Ein selbst gehostetes Stremio-Addon, das Ihre RSS-Feeds, Prowlarr und NZBHydra2 aggregiert, **9 Inhaltskategorien** automatisch erkennt (Filme, Dokumentarfilme, Serien, TV-Sendungen, Anime, Konzerte, Aufführungen), sie auf TMDB/TVDB/OMDb (und MAL + AniList für Anime) abgleicht und als Kataloge in Stremio bereitstellt.
+> Ein selbst gehostetes Stremio-Addon, das Kataloge aus Inhalten Ihrer eigenen **BitTorrent-, Usenet- oder sonstigen Indexer** erstellt. Die Katalogquellen sollen den Quellen entsprechen, die Ihre Streaming-Addons tatsächlich verwenden. RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2 und Stremio-Manifeste lassen sich kombinieren.
 
 ---
 
@@ -40,9 +41,9 @@
 | | |
 |---|---|
 | **Verwaltete Kataloge** | Die 9 bisherigen Kataloge werden mit ihren vorhandenen Inhalten in die Verwaltung übernommen; beliebig viele eigene Kataloge können ergänzt werden |
-| **Gemischte Quellen** | Ein Katalog kann RSS-, Pastebin-, Newznab-API- und aus generischen Stremio-Manifesten importierte Katalogquellen kombinieren |
+| **Gemischte Quellen** | Ein Katalog kann RSS, Pastebin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2 und aus Stremio-Manifesten importierte Quellen kombinieren |
 | **Eigene Filter** | Ein- oder ausgeschlossene Jahre, Jahresbereiche, Genres, Schlüsselwörter und Quellenauswahl |
-| **Dynamischer Lebenszyklus** | Kataloge erstellen, bearbeiten, pausieren, fortsetzen oder löschen, ohne indexierte Medien zu entfernen |
+| **Zwei getrennte Pausen** | Neue Kataloginhalte unabhängig von der Sichtbarkeit im Stremio-Manifest einfrieren |
 | **Verschachtelte Pastebins** | Direkte Seiten, JSON-Verweise und kategorisierte Hauptindizes mit begrenzter Rekursion und Deduplizierung |
 | **Stremio-Manifeste** | Generische Erkennung externer Kataloge und Import ihrer Inhalte |
 | **Auto-Erkennung** | Kategorie aus Release-Name, Feed-URL-Schlüsselwörtern oder TMDB/OMDb-Genres ermittelt |
@@ -69,13 +70,13 @@
 | **Discord-Benachrichtigungen** 🆕 NEW | Erweiterte Benachrichtigungen mit Poster-Galerie bei jeder Sync |
 | **Apprise-Benachrichtigungen** 🆕 NEW | Multi-Service-Benachrichtigungen via Apprise-Server (optional) |
 | **Benachrichtigungssprache** 🆕 NEW | Discord/Apprise-Sprache unabhängig von der WebUI konfigurierbar (FR/EN/DE) |
-| **Auto-Sync** | Konfigurierbare Planung — Auslösung nur beim Start und per Timer, nie beim Konfigurationsspeichern |
+| **Erklärte Auto-Sync** | Aktive Quellen → Normalisierung und Abgleich → Mediathek → nicht eingefrorene Kataloge → an Stremio bereitgestellte Inhalte |
 | **Moderne WebUI** | Sidebar, Hell-/Dunkel-Theme, mehrsprachig FR/EN/DE |
 | **Mediathek** 🆕 NEW | Neugestaltung: Poster-/Listenansicht, Sortierung, Jahresfilter (Schnellauswahl + freie Eingabe/Bereich), Releases inline, RPDB-Poster, persistente Paginierung |
 | **Übersicht** | Neueste Hinzufügungen in ausklappbaren Kategorie-Akkordeons (Titel + Jahr + IMDB-Link) |
 | **Wartungs-Suite** | 8 Reklassifizierungsaktionen (Anime, Dokus, falsche Dokus, falsche Sendungen, Konzerte, falsche Konzerte, Aufführungen, Feed-Konfiguration) |
 | **Quellen** | Feed-Statistiken mit benutzerdefinierter Benennung |
-| **Integrationen** | Prowlarr + NZBHydra2 per Klick aus der WebUI einrichten |
+| **Indexer-APIs** | Mehrere umbenennbare Newznab-, Prowlarr-, Jackett/Torznab- und NZBHydra2-Quellen mit konfigurierbarer Pagination, Obergrenze und Verzögerung |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + integrierter Verbindungstest |
 | **SQLite** | Persistente Daten, inkrementelle Inhalte, optimierte Indizes |
 | **Tag-Filterung** | Konfigurierbare erforderliche Tags über die WebUI (FRENCH, MULTi, 1080p…) |
@@ -131,37 +132,31 @@ Dann die WebUI unter `http://localhost:7973` öffnen, RSS-Feed(s) + TMDB-API-Sch
 
 ---
 
-## Kompatible RSS-Quellen
+## Inhaltsquellen
 
-Das Tool akzeptiert jeden Standard-RSS-Feed. Zusätzlich zu den nativen Feeds Ihrer Tracker ist es mit **Prowlarr** und **NZBHydra2** kompatibel:
+Alle Quellen werden unter **Quellen** konfiguriert. Standard-RSS-Feeds bleiben
+unterstützt; Newznab, Prowlarr, Jackett und NZBHydra2 sind eigenständige
+paginierte API-Quellen statt bloßer RSS-Verknüpfungen.
 
-### Prowlarr (BitTorrent)
+Für Prowlarr verwenden Sie die Torznab-/Newznab-URL eines Indexers, zum Beispiel
+`http://prowlarr:9696/1/api`. Für Jackett verwenden Sie den aus der Oberfläche
+kopierten Torznab-Endpunkt, zum Beispiel
+`http://jackett:9117/api/v2.0/indexers/mein-indexer/results/torznab/api`.
+Getrennte Indexer können umbenannt und in der Mediathek als Herkunft erkannt werden.
 
-Die Schnellintegrations-Schaltflächen generieren **aggregierte** Feeds (alle Ihre Indexer):
+Bei jeder Synchronisierung wird `t=caps` gelesen. Danach werden `t=search`-Seiten
+mit `offset` bis zur konfigurierten Obergrenze **pro Kategorie und
+Synchronisierung** geladen. Standardmäßig sind das 1.000 Ergebnisse pro
+Kategorie, vom Server begrenzte Seitengrößen und 750 ms Pause zwischen Seiten.
 
-| Schaltfläche | Generierte URL |
-|---|---|
-| Alle | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss` |
-| Filme | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=2000` |
-| Serien | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=5000` |
+Pastebin-Quellen unterstützen direkte Inhalte, JSON-Verweise und kategorisierte
+Hauptindizes. Stremio-Manifeste erkennen externe Kataloge und machen sie in der
+Katalogverwaltung auswählbar.
 
-Um einen **bestimmten Indexer** anzusprechen, fügen Sie seine URL direkt in der RSS-Feed-Liste hinzu:
-```
-http://prowlarr:9696/{id}/api?apikey=XXXX&t=rss
-```
-*(ersetzen Sie `{id}` durch die numerische Indexer-ID in Prowlarr)*
-
-### NZBHydra2 (Usenet)
-
-Die Schaltflächen generieren **aggregierte** Feeds (alle Ihre Quellen):
-
-| Schaltfläche | Generierte URL |
-|---|---|
-| Alle | `/api?t=rss&apikey=XXXX` |
-| Filme | `/api?t=rss&apikey=XXXX&cat=2000` |
-| Serien | `/api?t=rss&apikey=XXXX&cat=5000` |
-
-> Jede Schaltfläche fügt eine **neue Zeile** zur RSS-Feed-Liste hinzu — Sie können mehrere klicken, um Filme und Serien als separate Feeds zu haben. Die gespeicherte Basis-URL dient nur der Schnellintegration und ist selbst kein RSS-Feed.
+> Die URL `manifest.json` bleibt unverändert. Inhalte bekannter Kataloge sind
+> dynamisch, Stremio speichert das Manifest jedoch im Benutzerprofil. Nach
+> Erstellen, Löschen, Umbenennen oder Sichtbarkeitsänderungen verwenden Sie
+> **Installieren / aktualisieren**, ohne das Addon zu deinstallieren.
 
 ---
 

@@ -23,7 +23,7 @@ class StremioAddon {
       id: 'community.useflowfr.catalog',
       version: '1.0.0',
       name: 'Stremio RSS Catalog',
-      description: 'Catalogues Films, Documentaires et Séries depuis vos flux RSS',
+      description: 'Catalogues Stremio depuis vos sources BitTorrent, Usenet et autres',
       logo: 'https://raw.githubusercontent.com/Aerya/stremio-rss-catalog/main/src/public/logo.png',
       resources: ['catalog'],
       types: ['movie', 'series'],

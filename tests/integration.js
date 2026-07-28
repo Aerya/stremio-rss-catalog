@@ -200,7 +200,7 @@ async function main() {
 
     db.setConfig('newznab_sources', JSON.stringify([
       newznabSource,
-      { ...newznabSource, id: 'newznab-second', name: 'API secondaire', url: `${baseUrl}/newznab-2/api` }
+      { ...newznabSource, id: 'newznab-second', name: 'Jackett secondaire', kind: 'jackett', url: `${baseUrl}/newznab-2/api` }
     ]));
     db.setConfig('stremio_manifest_sources', JSON.stringify([
       remoteSource,
@@ -211,7 +211,7 @@ async function main() {
     webuiForNames.rssParser = rssParser;
     const sourceNames = webuiForNames.getSourceNameMap();
     assert.equal(sourceNames['newznab:newznab-test:movie'], 'API de test — Films');
-    assert.equal(sourceNames['newznab:newznab-second:series'], 'API secondaire — Séries');
+    assert.equal(sourceNames['jackett:newznab-second:series'], 'Jackett secondaire — Séries');
     assert.equal(sourceNames['stremio-manifest:remote-test:movie:remote_movies'], 'Source distante de test — Sélection distante');
     assert.equal(sourceNames['stremio-manifest:remote-second:movie:remote_movies'], 'Manifeste secondaire — Sélection distante');
     const apiMedia = db.getMediaList({ search: 'API Film One' }).items[0];
@@ -259,6 +259,15 @@ async function main() {
     const response = await addon.handleCatalog({ type: 'movie', id: 'custom_films_2026', extra: {} });
     assert.deepEqual(response.metas.map(item => item.id), ['tt0000123']);
 
+    const frozenCatalog = db.saveCustomCatalog({
+      ...mixedCatalog,
+      updates_enabled: false,
+      frozen_at: Date.now() - 1000
+    });
+    assert.equal(frozenCatalog.updates_enabled, false);
+    assert.equal(db.getCustomCatalogMedia(frozenCatalog).length, 0);
+    assert.ok(addon.getManifest().catalogs.some(item => item.id === 'custom_mixed'));
+
     db.saveCustomCatalog({ ...catalog, enabled: false });
     assert.ok(!addon.getManifest().catalogs.some(item => item.id === 'custom_films_2026'));
     assert.ok(db.deleteCustomCatalog('useflowfr_films'));
@@ -268,11 +277,11 @@ async function main() {
     console.log('✓ Pastebin direct, pointeur JSON et index catégorisé');
     console.log('✓ Import TMDB direct films/séries');
     console.log('✓ Filtres source, année et genre');
-    console.log('✓ Manifeste dynamique et mise en pause');
+    console.log('✓ Pauses indépendantes des mises à jour et de l’exposition Stremio');
     console.log('✓ Reprise des catalogues historiques et de leurs contenus');
     console.log('✓ Suppression durable sans suppression des médias');
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
-    console.log('✓ API Newznab paginée avec limite serveur, catégories et clé protégée');
+    console.log('✓ API Newznab/Torznab paginée avec types Prowlarr et Jackett');
   } finally {
     db.close();
     await new Promise(resolve => server.close(resolve));

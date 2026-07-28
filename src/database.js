@@ -134,6 +134,8 @@ class DatabaseManager {
         name TEXT NOT NULL,
         type TEXT NOT NULL CHECK(type IN ('movie', 'series')),
         enabled INTEGER NOT NULL DEFAULT 1,
+        updates_enabled INTEGER NOT NULL DEFAULT 1,
+        frozen_at INTEGER,
         source_urls TEXT NOT NULL DEFAULT '[]',
         filters TEXT NOT NULL DEFAULT '{}',
         created_at INTEGER NOT NULL,
@@ -152,6 +154,7 @@ class DatabaseManager {
 
     // Migration v3 : ajout colonnes concerts_added / spectacles_added dans sync_history
     this._migrateV3SyncHistory();
+    this._migrateManagedCatalogPauses();
 
     this.initDefaultConfig();
     this.seedManagedCatalogs();
@@ -166,6 +169,18 @@ class DatabaseManager {
     if (!cols.includes('spectacles_added')) {
       this.db.prepare("ALTER TABLE sync_history ADD COLUMN spectacles_added INTEGER DEFAULT 0").run();
       console.log('[DB] Migration v3 : colonne spectacles_added ajoutée à sync_history');
+    }
+  }
+
+  _migrateManagedCatalogPauses() {
+    const cols = this.db.prepare("PRAGMA table_info(custom_catalogs)").all().map(c => c.name);
+    if (!cols.includes('updates_enabled')) {
+      this.db.prepare("ALTER TABLE custom_catalogs ADD COLUMN updates_enabled INTEGER NOT NULL DEFAULT 1").run();
+      console.log('[DB] Migration catalogues : contrôle des mises à jour ajouté');
+    }
+    if (!cols.includes('frozen_at')) {
+      this.db.prepare("ALTER TABLE custom_catalogs ADD COLUMN frozen_at INTEGER").run();
+      console.log('[DB] Migration catalogues : date de gel ajoutée');
     }
   }
 
@@ -297,6 +312,7 @@ class DatabaseManager {
     return rows.map(row => ({
       ...row,
       enabled: Boolean(row.enabled),
+      updates_enabled: Boolean(row.updates_enabled),
       source_urls: JSON.parse(row.source_urls || '[]'),
       filters: JSON.parse(row.filters || '{}')
     }));
@@ -308,6 +324,7 @@ class DatabaseManager {
     return {
       ...row,
       enabled: Boolean(row.enabled),
+      updates_enabled: Boolean(row.updates_enabled),
       source_urls: JSON.parse(row.source_urls || '[]'),
       filters: JSON.parse(row.filters || '{}')
     };
@@ -316,17 +333,22 @@ class DatabaseManager {
   saveCustomCatalog(catalog) {
     const now = Date.now();
     this.db.prepare(`
-      INSERT INTO custom_catalogs (id, name, type, enabled, source_urls, filters, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO custom_catalogs
+        (id, name, type, enabled, updates_enabled, frozen_at, source_urls, filters, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         type = excluded.type,
         enabled = excluded.enabled,
+        updates_enabled = excluded.updates_enabled,
+        frozen_at = excluded.frozen_at,
         source_urls = excluded.source_urls,
         filters = excluded.filters,
         updated_at = excluded.updated_at
     `).run(
       catalog.id, catalog.name, catalog.type, catalog.enabled === false ? 0 : 1,
+      catalog.updates_enabled === false ? 0 : 1,
+      catalog.updates_enabled === false ? (Number(catalog.frozen_at) || now) : null,
       JSON.stringify(catalog.source_urls || []), JSON.stringify(catalog.filters || {}),
       catalog.created_at || now, now
     );
@@ -341,14 +363,24 @@ class DatabaseManager {
     const conditions = ['m.type = ?'];
     const params = [catalog.type];
     const filters = catalog.filters || {};
+    const frozenAt = catalog.updates_enabled === false && Number(catalog.frozen_at)
+      ? Number(catalog.frozen_at)
+      : null;
+
+    if (frozenAt) {
+      conditions.push('m.first_seen_at <= ?');
+      params.push(frozenAt);
+    }
 
     if (catalog.source_urls?.length) {
       conditions.push(`EXISTS (
         SELECT 1 FROM releases r
         WHERE r.media_imdb_id = m.imdb_id
           AND r.source_url IN (${catalog.source_urls.map(() => '?').join(',')})
+          ${frozenAt ? 'AND r.added_at <= ?' : ''}
       )`);
       params.push(...catalog.source_urls);
+      if (frozenAt) params.push(frozenAt);
     }
 
     const years = Array.isArray(filters.years)

@@ -18,7 +18,9 @@ class NewznabParser {
   }
 
   sourceKey(sourceId, mediaType) {
-    return `newznab:${sourceId}:${mediaType}`;
+    const source = this.getSources().find(item => item.id === sourceId);
+    const kind = ['newznab', 'prowlarr', 'jackett', 'nzbhydra2'].includes(source?.kind) ? source.kind : 'newznab';
+    return `${kind}:${sourceId}:${mediaType}`;
   }
 
   buildUrl(source, params) {
@@ -48,7 +50,11 @@ class NewznabParser {
       return result;
     } catch (error) {
       const status = error.response?.status;
-      throw new Error(status ? `API Newznab indisponible (HTTP ${status})` : error.message);
+      const label = source.kind === 'jackett' ? 'Jackett'
+        : source.kind === 'prowlarr' ? 'Prowlarr'
+          : source.kind === 'nzbhydra2' ? 'NZBHydra2'
+            : 'Newznab';
+      throw new Error(status ? `API ${label} indisponible (HTTP ${status})` : error.message);
     }
   }
 
@@ -191,7 +197,7 @@ class NewznabParser {
       } catch (error) {
         const sourceKey = this.sourceKey(source.id, 'all');
         this.db.recordFeedError(sourceKey, error.message, null);
-        console.error(`[Newznab] Échec de la source ${source.id}: ${error.message}`);
+        console.error(`[Indexeur] Échec de la source ${source.id}: ${error.message}`);
       }
     }
     return allItems;

@@ -334,6 +334,7 @@ class WebUI {
       return {
         id: source.id,
         name: source.name,
+        kind: ['newznab', 'prowlarr', 'jackett', 'nzbhydra2'].includes(source.kind) ? source.kind : 'newznab',
         url: source.url,
         paused: Boolean(source.paused),
         has_api_key: Boolean(source.apiKey),
@@ -355,10 +356,11 @@ class WebUI {
 
     this.app.post('/api/newznab-sources/preview', this.authMiddleware.bind(this), async (req, res) => {
       try {
-        const { url, api_key: apiKey } = req.body;
+        const { url, api_key: apiKey, kind = 'newznab' } = req.body;
         if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        if (!['newznab', 'prowlarr', 'jackett', 'nzbhydra2'].includes(kind)) return res.status(400).json({ error: 'Type d’indexeur invalide' });
         if (!String(apiKey || '').trim()) return res.status(400).json({ error: 'Clé API requise' });
-        const inspection = await this.rssParser.newznabParser.inspect({ url, apiKey: String(apiKey).trim() });
+        const inspection = await this.rssParser.newznabParser.inspect({ url, apiKey: String(apiKey).trim(), kind });
         res.json({
           server_max: inspection.serverMax,
           server_default: inspection.serverDefault,
@@ -372,11 +374,12 @@ class WebUI {
     this.app.post('/api/newznab-sources', this.authMiddleware.bind(this), async (req, res) => {
       try {
         const {
-          name = '', url, api_key: apiKey, movie_categories = '2000',
+          name = '', kind = 'newznab', url, api_key: apiKey, movie_categories = '2000',
           series_categories = '5000', max_items_per_category = 1000,
           request_delay_ms = 750, paused = false
         } = req.body;
         if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        if (!['newznab', 'prowlarr', 'jackett', 'nzbhydra2'].includes(kind)) return res.status(400).json({ error: 'Type d’indexeur invalide' });
         if (!String(apiKey || '').trim()) return res.status(400).json({ error: 'Clé API requise' });
         const movie = normalizeCategoryIds(movie_categories);
         const series = normalizeCategoryIds(series_categories);
@@ -386,10 +389,11 @@ class WebUI {
         const parser = this.rssParser.newznabParser;
         const sources = parser.getSources();
         if (sources.some(source => source.url === url)) return res.status(409).json({ error: 'Cette source existe déjà' });
-        const inspection = await parser.inspect({ url, apiKey: String(apiKey).trim() });
+        const inspection = await parser.inspect({ url, apiKey: String(apiKey).trim(), kind });
         const source = {
           id: crypto.randomUUID(),
           name: String(name).trim() || new URL(url).hostname,
+          kind,
           url,
           apiKey: String(apiKey).trim(),
           paused: Boolean(paused),
@@ -415,6 +419,7 @@ class WebUI {
       const current = sources[index];
       const next = { ...current };
       if (req.body.name !== undefined) next.name = String(req.body.name).trim() || current.name;
+      if (req.body.kind !== undefined && ['newznab', 'prowlarr', 'jackett', 'nzbhydra2'].includes(req.body.kind)) next.kind = req.body.kind;
       if (req.body.paused !== undefined) next.paused = Boolean(req.body.paused);
       if (String(req.body.api_key || '').trim()) next.apiKey = String(req.body.api_key).trim();
       if (req.body.movie_categories !== undefined || req.body.series_categories !== undefined) {
@@ -450,14 +455,14 @@ class WebUI {
     });
 
     this.app.post('/api/catalogs', this.authMiddleware.bind(this), (req, res) => {
-      const { name, type, source_urls = [], filters = {}, enabled = true } = req.body;
+      const { name, type, source_urls = [], filters = {}, enabled = true, updates_enabled = true } = req.body;
       if (!String(name || '').trim()) return res.status(400).json({ error: 'Nom requis' });
       if (!['movie', 'series'].includes(type)) return res.status(400).json({ error: 'Type invalide' });
       const slug = String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'catalogue';
       const catalog = this.db.saveCustomCatalog({
         id: `custom_${slug}_${crypto.randomUUID().slice(0, 8)}`,
-        name: String(name).trim(), type, source_urls, filters, enabled
+        name: String(name).trim(), type, source_urls, filters, enabled, updates_enabled
       });
       this.bumpManifestRevision();
       this.stremioAddon.clearCache();

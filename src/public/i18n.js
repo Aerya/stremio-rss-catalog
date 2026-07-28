@@ -18,7 +18,7 @@ const translations = {
     logout: "Déconnexion",
 
     // Description
-    description_text: 'Stremio RSS Catalog est un addon de création de catalogues Stremio à partir de flux RSS. Il ne permet pas de lire du contenu, il faut pour cela utiliser des addons de stream tels que <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> ou <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> avec <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Tutoriels sur <a href="https://upandclear.org" target="_blank">mon blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> mises à disposition par la communauté StremioFR et auto-hébergement simplifié avec le projet <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a>.',
+    description_text: 'Stremio RSS Catalog crée des catalogues Stremio à partir des contenus trouvés sur vos propres sources BitTorrent, Usenet ou autres : RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2 et manifestes Stremio. L’objectif est d’aligner les contenus affichés sur les indexeurs utilisés par vos addons de stream. Il ne lit pas les contenus lui-même.<br>Tutoriels sur <a href="https://upandclear.org" target="_blank">mon blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> mises à disposition par la communauté StremioFR et auto-hébergement simplifié avec le projet <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a>.',
 
     // Stats
     stat_films: "Films",
@@ -92,6 +92,8 @@ const translations = {
     config_proxy_username: "Utilisateur (optionnel)",
     config_proxy_password: "Mot de passe (optionnel)",
     config_auto_sync_title: "Synchronisation automatique",
+    config_auto_sync_pipeline: "Une synchronisation interroge les sources actives, normalise et enrichit les résultats, les enregistre dans la médiathèque, met à jour les catalogues non gelés, puis rend leur contenu disponible à Stremio via le manifeste déjà installé.",
+    config_processing_title: "Traitement des contenus",
     config_auto_sync_enable: "Activer",
     config_refresh_interval: "Intervalle de rafraîchissement (minutes)",
     config_refresh_hint: "Minimum : 15 minutes | Maximum : 1440 minutes (24h) | Par défaut : 180 minutes (3h)",
@@ -138,7 +140,8 @@ const translations = {
 
     // Install
     install_title: "Installation dans Stremio",
-    install_desc: "Une fois la 1ère synchronisation terminée OU à chaque modification apportée sur la WebUI, (ré)installer l'addon dans Stremio avec cette URL :",
+    install_desc: "L’URL reste toujours la même. Les contenus et les gels des catalogues déjà connus sont immédiats. Après ajout, suppression, renommage ou changement de visibilité, cliquez sur « Installer / mettre à niveau » pour actualiser le manifeste enregistré par Stremio — sans supprimer l’addon.",
+    install_upgrade: "Installer / mettre à niveau",
     install_loading: "Chargement...",
     install_copy: "Copier",
     install_copied: "URL copiée !",
@@ -181,8 +184,11 @@ const translations = {
     sources_rss_title: "Sources RSS",
     sources_pastebin_title: "Sources Pastebin",
     sources_pastebin_desc: "URL directe, pointeur JSON ou index maître catégorisé.",
-    sources_newznab_title: "API Newznab",
-    sources_newznab_desc: "Interroge directement un indexeur Newznab, sans passer par Prowlarr.",
+    sources_newznab_title: "API d’indexeurs",
+    sources_newznab_desc: "Sources Newznab, Prowlarr, Jackett/Torznab et NZBHydra2 paginées et renommables.",
+    sources_indexer_type: "Type d’indexeur",
+    sources_indexer_url_help: "URL complète de l’endpoint API.",
+    sources_indexer_collection_help: "À chaque synchronisation : lecture des capacités, puis récupération paginée jusqu’au maximum configuré par catégorie. La taille de page respecte la limite annoncée par le serveur.",
     sources_name: "Nom",
     sources_newznab_url: "URL de l’API",
     sources_newznab_key: "Clé API",
@@ -289,7 +295,7 @@ const translations = {
     logout: "Logout",
 
     // Description
-    description_text: 'Stremio RSS Catalog is a Stremio catalog creation addon from RSS feeds. It does not play content; for that, use streaming addons such as <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> or <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> with <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Tutorials on <a href="https://upandclear.org" target="_blank">my blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> shared by the StremioFR community and easy self-hosting with the <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a> project.',
+    description_text: 'Stremio RSS Catalog builds Stremio catalogs from content found on your own BitTorrent, Usenet, or other sources: RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2, and Stremio manifests. Its goal is to align displayed content with the indexers used by your streaming addons. It does not play content itself.<br>Tutorials on <a href="https://upandclear.org" target="_blank">my blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> shared by the StremioFR community and easy self-hosting with the <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a> project.',
 
     // Stats
     stat_films: "Movies",
@@ -363,6 +369,8 @@ const translations = {
     config_proxy_username: "Username (optional)",
     config_proxy_password: "Password (optional)",
     config_auto_sync_title: "Automatic synchronization",
+    config_auto_sync_pipeline: "A synchronization queries active sources, normalizes and enriches results, stores them in the media library, updates unfrozen catalogs, then makes their content available to Stremio through the already installed manifest.",
+    config_processing_title: "Content processing",
     config_auto_sync_enable: "Enable",
     config_refresh_interval: "Refresh interval (minutes)",
     config_refresh_hint: "Minimum: 15 minutes | Maximum: 1440 minutes (24h) | Default: 180 minutes (3h)",
@@ -409,7 +417,8 @@ const translations = {
 
     // Install
     install_title: "Install in Stremio",
-    install_desc: "Once the first synchronization is complete OR after any WebUI change, (re)install the addon in Stremio with this URL:",
+    install_desc: "The URL always stays the same. Content and freezes for already known catalogs update immediately. After adding, deleting, renaming, or changing visibility, click “Install / upgrade” to refresh the manifest stored by Stremio — without removing the addon.",
+    install_upgrade: "Install / upgrade",
     install_loading: "Loading...",
     install_copy: "Copy",
     install_copied: "URL copied!",
@@ -452,8 +461,11 @@ const translations = {
     sources_rss_title: "RSS sources",
     sources_pastebin_title: "Pastebin sources",
     sources_pastebin_desc: "Direct URL, JSON pointer, or categorized master index.",
-    sources_newznab_title: "Newznab APIs",
-    sources_newznab_desc: "Queries a Newznab indexer directly, without going through Prowlarr.",
+    sources_newznab_title: "Indexer APIs",
+    sources_newznab_desc: "Paginated, renameable Newznab, Prowlarr, Jackett/Torznab, and NZBHydra2 sources.",
+    sources_indexer_type: "Indexer type",
+    sources_indexer_url_help: "Full API endpoint URL.",
+    sources_indexer_collection_help: "On every synchronization: read capabilities, then fetch pages up to the configured maximum per category. Page size follows the server-advertised limit.",
     sources_name: "Name",
     sources_newznab_url: "API URL",
     sources_newznab_key: "API key",
@@ -560,7 +572,7 @@ const translations = {
     logout: "Abmelden",
 
     // Description
-    description_text: 'Stremio RSS Catalog ist ein Stremio-Addon zur Erstellung von Katalogen aus RSS-Feeds. Es spielt keine Inhalte ab; dafür verwenden Sie Streaming-Addons wie <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank">StreamFusion (BitTorrent)</a>, <a href="https://baguettio.org" target="_blank">Baguettio</a> oder <a href="https://github.com/Sanket9225/UsenetStreamer" target="_blank">Usenet-Streamer</a> mit <a href="https://github.com/nzbdav-dev/nzbdav" target="_blank">NZBdav (Usenet)</a>.<br>Anleitungen auf <a href="https://upandclear.org" target="_blank">meinem Blog</a>, <a href="https://stremiofr.me/" target="_blank">Instanzen</a> von der StremioFR-Community bereitgestellt und einfaches Self-Hosting mit dem <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a>-Projekt.',
+    description_text: 'Stremio RSS Catalog erstellt Stremio-Kataloge aus Inhalten Ihrer eigenen BitTorrent-, Usenet- oder sonstigen Quellen: RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2 und Stremio-Manifeste. Ziel ist, die angezeigten Inhalte an die von Ihren Streaming-Addons verwendeten Indexer anzugleichen. Das Addon spielt selbst keine Inhalte ab.<br>Anleitungen auf <a href="https://upandclear.org" target="_blank">meinem Blog</a>, <a href="https://stremiofr.me/" target="_blank">Instanzen</a> von der StremioFR-Community bereitgestellt und einfaches Self-Hosting mit dem <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a>-Projekt.',
 
     // Stats
     stat_films: "Filme",
@@ -634,6 +646,8 @@ const translations = {
     config_proxy_username: "Benutzername (optional)",
     config_proxy_password: "Passwort (optional)",
     config_auto_sync_title: "Automatische Synchronisierung",
+    config_auto_sync_pipeline: "Eine Synchronisierung fragt aktive Quellen ab, normalisiert und ergänzt Ergebnisse, speichert sie in der Mediathek, aktualisiert nicht eingefrorene Kataloge und stellt deren Inhalte anschließend über das bereits installierte Manifest für Stremio bereit.",
+    config_processing_title: "Inhaltsverarbeitung",
     config_auto_sync_enable: "Aktivieren",
     config_refresh_interval: "Aktualisierungsintervall (Minuten)",
     config_refresh_hint: "Minimum: 15 Minuten | Maximum: 1440 Minuten (24h) | Standard: 180 Minuten (3h)",
@@ -680,7 +694,8 @@ const translations = {
 
     // Install
     install_title: "In Stremio installieren",
-    install_desc: "Sobald die erste Synchronisierung abgeschlossen ist ODER nach jeder WebUI-Änderung, das Addon in Stremio mit dieser URL (neu) installieren:",
+    install_desc: "Die URL bleibt immer gleich. Inhalte und Sperren bereits bekannter Kataloge werden sofort aktualisiert. Nach Hinzufügen, Löschen, Umbenennen oder Sichtbarkeitsänderungen klicken Sie auf „Installieren / aktualisieren“, um das in Stremio gespeicherte Manifest ohne Entfernen des Addons zu erneuern.",
+    install_upgrade: "Installieren / aktualisieren",
     install_loading: "Laden...",
     install_copy: "Kopieren",
     install_copied: "URL kopiert!",
@@ -723,8 +738,11 @@ const translations = {
     sources_rss_title: "RSS-Quellen",
     sources_pastebin_title: "Pastebin-Quellen",
     sources_pastebin_desc: "Direkte URL, JSON-Verweis oder kategorisierter Hauptindex.",
-    sources_newznab_title: "Newznab-APIs",
-    sources_newznab_desc: "Fragt einen Newznab-Indexer direkt ab, ohne Prowlarr zu verwenden.",
+    sources_newznab_title: "Indexer-APIs",
+    sources_newznab_desc: "Paginierte und umbenennbare Newznab-, Prowlarr-, Jackett/Torznab- und NZBHydra2-Quellen.",
+    sources_indexer_type: "Indexer-Typ",
+    sources_indexer_url_help: "Vollständige URL des API-Endpunkts.",
+    sources_indexer_collection_help: "Bei jeder Synchronisierung werden die Fähigkeiten gelesen und anschließend Seiten bis zum konfigurierten Maximum pro Kategorie geladen. Die Seitengröße folgt dem Serverlimit.",
     sources_name: "Name",
     sources_newznab_url: "API-URL",
     sources_newznab_key: "API-Schlüssel",

@@ -21,6 +21,7 @@
   <img src="https://img.shields.io/badge/Stremio-addon-purple?style=flat-square" alt="Stremio">
   <img src="https://img.shields.io/badge/RSS-compatible-F6A623?style=flat-square&logo=rss&logoColor=white" alt="RSS">
   <img src="https://img.shields.io/badge/Prowlarr-compatible-blue?style=flat-square" alt="Prowlarr">
+  <img src="https://img.shields.io/badge/Jackett-Torznab-blue?style=flat-square" alt="Jackett">
   <img src="https://img.shields.io/badge/NZBHydra2-compatible-blue?style=flat-square" alt="NZBHydra2">
   <img src="https://img.shields.io/badge/TMDB%20%2B%20TVDB%20%2B%20OMDb-matched-green?style=flat-square" alt="TMDB+TVDB+OMDb">
   <img src="https://img.shields.io/badge/MyAnimeList-int%C3%A9gr%C3%A9-2E51A2?style=flat-square" alt="MAL">
@@ -31,7 +32,7 @@
 
 ---
 
-> Addon Stremio auto-hébergé qui agrège vos flux RSS, Prowlarr et NZBHydra2, identifie automatiquement **9 catégories de contenu** (Films, Documentaires, Séries, Émissions TV, Animés, Concerts, Spectacles), les matche sur TMDB/TVDB/OMDb (et MAL + AniList pour les animés) et les expose comme catalogues dans Stremio.
+> Addon Stremio auto-hébergé qui crée des catalogues à partir des contenus trouvés sur vos propres indexeurs **BitTorrent, Usenet ou autres**. L’objectif est que les sources de vos catalogues correspondent aux sources réellement utilisées par vos addons de stream. RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2 et manifestes Stremio peuvent être combinés.
 
 ---
 
@@ -40,9 +41,9 @@
 | | |
 |---|---|
 | **Catalogues gérés** | Les 9 catalogues historiques sont repris dans le gestionnaire et conservent leurs contenus ; créez ensuite autant de catalogues personnalisés que nécessaire |
-| **Sources mixtes** | Un catalogue peut utiliser une ou plusieurs sources RSS, Pastebin, API Newznab et/ou des catalogues importés depuis un manifeste Stremio |
+| **Sources mixtes** | Un catalogue peut combiner RSS, Pastebin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2 et catalogues importés depuis des manifestes Stremio |
 | **Filtres personnalisés** | Années incluses ou exclues, plage d'années, genres requis/exclus, mots-clés requis/exclus et sélection des sources |
-| **Cycle de vie dynamique** | Création, modification, pause, reprise et suppression des catalogues sans supprimer les médias indexés |
+| **Deux pauses distinctes** | Gel des nouveaux contenus indépendamment de la visibilité du catalogue dans le manifeste Stremio |
 | **Pastebins imbriqués** | Pages directes, pointeurs JSON et index maîtres catégorisés avec récursion bornée, déduplication et protection des hôtes découverts |
 | **Manifestes Stremio** | Découverte générique des catalogues d'un autre addon et import de leurs contenus |
 | **Détection automatique** | Catégorie identifiée depuis le nom de release, l'URL du flux ou les genres TMDB/OMDb |
@@ -69,13 +70,13 @@
 | **Notifs Discord** 🆕 NEW | Notifications enrichies avec galerie d'affiches à chaque sync |
 | **Notifs Apprise** 🆕 NEW | Notifications multi-services via serveur Apprise (optionnel) |
 | **Langue des notifs** 🆕 NEW | Langue Discord/Apprise configurable indépendamment de la WebUI (FR/EN/DE) |
-| **Sync auto** | Planification configurable — déclenchement uniquement au démarrage et sur minuterie |
+| **Sync auto explicite** | Sources actives → normalisation et matching → médiathèque → catalogues non gelés → contenu servi à Stremio |
 | **WebUI moderne** | Sidebar, thème sombre/clair, multilingue FR/EN/DE |
 | **Médiathèque** 🆕 NEW | Refonte : vue affiches/liste, tri, filtre année (raccourcis + saisie libre/plage), releases inline, affiches RPDB, pagination persistante |
 | **Vue d'ensemble** | Derniers ajouts en tiroirs dépliables par catégorie (titre + année + lien IMDB) |
 | **Suite de maintenance** | 8 actions de reclassification en base (animés, documentaires, faux docs, fausses émissions, concerts, faux concerts, spectacles, config flux) |
 | **Sources** | Stats par flux RSS avec nommage personnalisé |
-| **Intégrations** | Prowlarr + NZBHydra2 en un clic depuis la WebUI |
+| **API d’indexeurs** | Sources multiples et renommables Newznab, Prowlarr, Jackett/Torznab et NZBHydra2, avec pagination, plafond et délai configurables |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + test de connexion intégré |
 | **SQLite** | Données persistantes, contenu incrémental, index optimisés |
 | **Filtrage par tags** | Tags requis configurables depuis la WebUI (FRENCH, MULTi, 1080p…) |
@@ -127,7 +128,7 @@ services:
 
 Puis ouvrir la WebUI sur `http://localhost:7973` :
 
-1. Ajouter les sources dans **Sources** : RSS, Pastebin ou manifeste Stremio.
+1. Ajouter les sources dans **Sources** : RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2 ou manifeste Stremio.
 2. Ouvrir **Catalogues** pour gérer les catalogues historiques ou en créer de nouveaux avec des sources uniques ou mixtes.
 3. Configurer la clé TMDB si des sources RSS ou Pastebin sont utilisées.
 4. Lancer une première synchronisation, puis installer l'addon dans Stremio avec l'URL fournie.
@@ -136,37 +137,28 @@ Puis ouvrir la WebUI sur `http://localhost:7973` :
 
 ---
 
-## Sources RSS compatibles
+## Sources de contenu
 
-L'outil accepte tout flux RSS standard. En plus des flux natifs de vos trackers, il est compatible avec **Prowlarr** et **NZBHydra2** :
+Toutes les sources se configurent au même endroit, dans **Sources**. Les flux RSS
+standards restent acceptés, mais Prowlarr, Jackett, Newznab et NZBHydra2 sont
+désormais de vraies sources d’API paginées plutôt que de simples raccourcis RSS.
 
-### Prowlarr (BitTorrent)
+Pour Prowlarr, utilisez l’URL Torznab/Newznab d’un indexeur, par exemple
+`http://prowlarr:9696/1/api`. Pour Jackett, utilisez l’endpoint Torznab copié
+depuis l’interface, par exemple
+`http://jackett:9117/api/v2.0/indexers/mon-indexeur/results/torznab/api`.
+Ajouter chaque indexeur séparément permet de le renommer et d’identifier son
+origine dans la médiathèque.
 
-Les boutons de l'intégration rapide génèrent des flux **agrégés** (tous vos indexeurs) :
+À chaque synchronisation, l’addon :
 
-| Bouton | URL générée |
-|---|---|
-| Tout | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss` |
-| Films | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=2000` |
-| Séries | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=5000` |
+1. interroge `t=caps` pour connaître les capacités et la taille maximale d’une page ;
+2. appelle `t=search` par pages avec `offset` ;
+3. s’arrête au plafond configuré **par catégorie et par synchronisation** ;
+4. attend le délai configuré entre les pages pour ménager l’indexeur.
 
-Pour cibler un **indexeur précis**, ajoutez son URL directement dans la liste des flux RSS :
-```
-http://prowlarr:9696/{id}/api?apikey=XXXX&t=rss
-```
-*(remplacez `{id}` par l'identifiant numérique de l'indexeur dans Prowlarr)*
-
-### NZBHydra2 (Usenet)
-
-Les boutons génèrent des flux **agrégés** (toutes vos sources) :
-
-| Bouton | URL générée |
-|---|---|
-| Tout | `/api?t=rss&apikey=XXXX` |
-| Films | `/api?t=rss&apikey=XXXX&cat=2000` |
-| Séries | `/api?t=rss&apikey=XXXX&cat=5000` |
-
-> Chaque bouton ajoute une **nouvelle ligne** dans la liste des flux RSS — vous pouvez cliquer sur plusieurs pour avoir Films et Séries en flux séparés. L'URL de base sauvegardée sert uniquement à l'intégration rapide, elle n'est pas un flux RSS en elle-même.
+Par défaut, le plafond est de 1 000 résultats par catégorie, avec des pages
+limitées par le serveur et 750 ms entre deux pages.
 
 ## Sources Pastebin et manifestes Stremio
 
@@ -178,19 +170,11 @@ Les sources Pastebin acceptent :
 
 Les manifestes Stremio sont ajoutés avec leur URL `manifest.json`. L'addon découvre les catalogues déclarés et les expose comme sources sélectionnables dans le gestionnaire de catalogues.
 
-> L'ajout, la pause ou la suppression modifie immédiatement le manifeste servi par l'addon et incrémente sa version. Le contenu des catalogues existants est immédiatement dynamique. Selon le cache du client Stremio, l'apparition d'un tout nouveau catalogue peut toutefois nécessiter un redémarrage ou une actualisation du client.
-
-## API Newznab
-
-Une source Newznab se configure depuis **Sources** avec une URL générique telle que
-`https://site.fr/api`, sa clé API et les catégories à importer. Les valeurs usuelles
-sont `2000` pour les films et `5000` pour les séries.
-
-L'addon lit `t=caps`, utilise automatiquement la limite maximale annoncée par le
-serveur pour chaque page, puis pagine avec `offset`. Le plafond d'éléments par
-catégorie et le délai entre deux pages restent configurables. Ces sources suivent
-le même intervalle de synchronisation global que les flux RSS, soit 180 minutes
-par défaut.
+> L’URL `manifest.json` ne change jamais. Les contenus des catalogues déjà connus
+> sont dynamiques. En revanche, Stremio conserve le manifeste dans le profil :
+> après création, suppression, renommage ou changement de visibilité, utilisez
+> **Installer / mettre à niveau** pour actualiser ce manifeste sans désinstaller
+> l’addon.
 
 ---
 

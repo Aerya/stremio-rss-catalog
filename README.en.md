@@ -21,6 +21,7 @@
   <img src="https://img.shields.io/badge/Stremio-addon-purple?style=flat-square" alt="Stremio">
   <img src="https://img.shields.io/badge/RSS-compatible-F6A623?style=flat-square&logo=rss&logoColor=white" alt="RSS">
   <img src="https://img.shields.io/badge/Prowlarr-compatible-blue?style=flat-square" alt="Prowlarr">
+  <img src="https://img.shields.io/badge/Jackett-Torznab-blue?style=flat-square" alt="Jackett">
   <img src="https://img.shields.io/badge/NZBHydra2-compatible-blue?style=flat-square" alt="NZBHydra2">
   <img src="https://img.shields.io/badge/TMDB%20%2B%20TVDB%20%2B%20OMDb-matched-green?style=flat-square" alt="TMDB+TVDB+OMDb">
   <img src="https://img.shields.io/badge/MyAnimeList-integrated-2E51A2?style=flat-square" alt="MAL">
@@ -31,7 +32,7 @@
 
 ---
 
-> A self-hosted Stremio addon that aggregates your RSS feeds, Prowlarr and NZBHydra2, automatically identifies **9 content categories** (Movies, Documentaries, Series, TV Shows, Anime, Concerts, Live Shows), matches them on TMDB/TVDB/OMDb (and MAL + AniList for anime), and exposes them as catalogs in Stremio.
+> A self-hosted Stremio addon that builds catalogs from content found on your own **BitTorrent, Usenet, or other indexers**. The goal is to keep catalog sources aligned with the sources actually used by your streaming addons. RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2, and Stremio manifests can be combined.
 
 ---
 
@@ -40,9 +41,9 @@
 | | |
 |---|---|
 | **Managed catalogs** | The 9 historical catalogs are migrated into the manager with their existing content preserved; create any number of custom catalogs |
-| **Mixed sources** | A catalog may combine RSS, Pastebin, Newznab API, and catalogs imported from generic Stremio manifests |
+| **Mixed sources** | A catalog may combine RSS, Pastebin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, and catalogs imported from Stremio manifests |
 | **Custom filters** | Included or excluded years, year ranges, included/excluded genres and keywords, and source selection |
-| **Dynamic lifecycle** | Create, edit, pause, resume, or delete catalogs without deleting indexed media |
+| **Two separate pauses** | Freeze new catalog content independently from catalog visibility in the Stremio manifest |
 | **Nested Pastebins** | Direct pages, JSON pointers, and categorized master indexes with bounded recursion and deduplication |
 | **Stremio manifests** | Generic remote catalog discovery and content import |
 | **Auto detection** | Category identified from release name, feed URL keywords, or TMDB/OMDb genres |
@@ -69,13 +70,13 @@
 | **Discord notifs** 🆕 NEW | Enhanced notifications with poster gallery on each sync |
 | **Apprise notifs** 🆕 NEW | Multi-service notifications via Apprise server (optional) |
 | **Notification language** 🆕 NEW | Discord/Apprise language configurable independently from the WebUI (FR/EN/DE) |
-| **Auto sync** | Configurable scheduling — triggers only at startup and on timer, never on config save |
+| **Explicit auto sync** | Active sources → normalization and matching → media library → unfrozen catalogs → content served to Stremio |
 | **Modern WebUI** | Sidebar, dark/light theme, multilingual FR/EN/DE |
 | **Media Library** 🆕 NEW | Redesign: poster/list view, sort, year filter (shortcuts + free input/range), inline releases, RPDB posters, persistent pagination |
 | **Overview** | Latest additions in collapsible per-category accordions (title + year + IMDB link) |
 | **Maintenance suite** | 8 reclassification actions (anime, docs, false docs, false shows, concerts, false concerts, live shows, feed config) |
 | **Sources** | Per-feed stats with custom naming |
-| **Integrations** | Prowlarr + NZBHydra2 one-click setup from WebUI |
+| **Indexer APIs** | Multiple renameable Newznab, Prowlarr, Jackett/Torznab, and NZBHydra2 sources with configurable pagination, cap, and delay |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
 | **SQLite** | Persistent data, incremental content, optimized indexes |
 | **Tag filtering** | Configurable required tags from the WebUI (FRENCH, MULTi, 1080p…) |
@@ -131,37 +132,32 @@ Then open the WebUI at `http://localhost:7973`, add RSS, Pastebin, or Stremio-ma
 
 ---
 
-## Compatible RSS Sources
+## Content sources
 
-The tool accepts any standard RSS feed. In addition to your trackers' native feeds, it is compatible with **Prowlarr** and **NZBHydra2**:
+All sources are configured under **Sources**. Standard RSS feeds remain supported,
+while Newznab, Prowlarr, Jackett, and NZBHydra2 are first-class paginated API
+sources rather than RSS shortcuts.
 
-### Prowlarr (BitTorrent)
+For Prowlarr, use an indexer's Torznab/Newznab URL, for example
+`http://prowlarr:9696/1/api`. For Jackett, use the Torznab endpoint copied from
+its UI, for example
+`http://jackett:9117/api/v2.0/indexers/my-indexer/results/torznab/api`.
+Adding indexers separately lets you rename them and see their origin in the
+media library.
 
-The quick integration buttons generate **aggregated** feeds (all your indexers):
+Every synchronization reads `t=caps`, then fetches `t=search` pages with
+`offset` until the configured cap **per category and synchronization** is
+reached. The default is 1,000 results per category, server-limited page sizes,
+and a 750 ms delay between pages.
 
-| Button | Generated URL |
-|---|---|
-| All | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss` |
-| Movies | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=2000` |
-| Series | `/api/v1/indexer/all/newznab?apikey=XXXX&t=rss&cat=5000` |
+Pastebin sources support direct content, JSON pointers, and categorized master
+indexes. Stremio manifest sources discover remote catalogs and make them
+selectable in the catalog manager.
 
-To target a **specific indexer**, add its URL directly in the RSS feeds list:
-```
-http://prowlarr:9696/{id}/api?apikey=XXXX&t=rss
-```
-*(replace `{id}` with the numeric indexer ID in Prowlarr)*
-
-### NZBHydra2 (Usenet)
-
-The buttons generate **aggregated** feeds (all your sources):
-
-| Button | Generated URL |
-|---|---|
-| All | `/api?t=rss&apikey=XXXX` |
-| Movies | `/api?t=rss&apikey=XXXX&cat=2000` |
-| Series | `/api?t=rss&apikey=XXXX&cat=5000` |
-
-> Each button adds a **new row** to the RSS feeds list — you can click several to have Movies and Series as separate feeds. The saved base URL is only used by the quick integration, it is not an RSS feed by itself.
+> The `manifest.json` URL never changes. Existing catalog content is dynamic,
+> but Stremio stores the manifest in the user profile. After creating, deleting,
+> renaming, or changing catalog visibility, use **Install / upgrade** to refresh
+> it without uninstalling the addon.
 
 ---
 

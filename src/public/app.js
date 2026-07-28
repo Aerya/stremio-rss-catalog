@@ -167,6 +167,11 @@ window.copyInstallUrl = function () {
   }
 };
 
+window.openInStremio = function () {
+  const url = document.getElementById('installUrl').textContent;
+  window.location.href = url.replace(/^https?:\/\//i, 'stremio://');
+};
+
 // ═══════════════════════════ LIBRARY ═══════════════════════════════════
 
 let libPage = 1;
@@ -932,7 +937,7 @@ function renderCatalogSourceChoices(selected = []) {
     ...catalogManagerData.newznab.flatMap(source => (source.catalogs || []).map(catalog => ({
       name: `${source.name} — ${catalog.name}`,
       url: catalog.source_key,
-      kind: 'API Newznab',
+      kind: `API ${indexerKindLabel(source.kind)}`,
       paused: source.paused
     }))),
     ...catalogManagerData.stremio.flatMap(source => (source.catalogs || []).map(catalog => ({
@@ -962,12 +967,17 @@ function renderCatalogs() {
       : t('catalogs_all_years');
     return `<div class="manager-row">
       <div class="manager-row-main">
-        <div class="manager-row-title">${catalog.enabled ? '●' : '⏸'} ${escHtml(catalog.name)}</div>
+        <div class="manager-row-title">${catalog.enabled ? '●' : '○'} ${escHtml(catalog.name)}</div>
         <div class="manager-row-meta">${catalog.type === 'movie' ? t('stat_films') : t('stat_series')} · ${escHtml(years)} · ${catalog.source_urls.length ? `${catalog.source_urls.length} ${t('catalogs_source_count')}` : t('catalogs_all_sources')}</div>
+        <div class="manager-row-meta">
+          ${catalog.updates_enabled ? '↻ Mises à jour actives' : `⏸ Contenu gelé${catalog.frozen_at ? ` depuis le ${new Date(catalog.frozen_at).toLocaleString()}` : ''}`}
+          · ${catalog.enabled ? 'Visible dans le manifeste Stremio' : 'Masqué du manifeste Stremio'}
+        </div>
       </div>
       <div class="manager-row-actions">
         <button class="btn-sm" onclick="editCatalog('${catalog.id}')">${t('catalogs_edit')}</button>
-        <button class="btn-sm" onclick="toggleCatalog('${catalog.id}', ${!catalog.enabled})">${catalog.enabled ? t('sources_pause') : t('sources_resume')}</button>
+        <button class="btn-sm" onclick="toggleCatalogUpdates('${catalog.id}', ${!catalog.updates_enabled})">${catalog.updates_enabled ? 'Geler les mises à jour' : 'Reprendre les mises à jour'}</button>
+        <button class="btn-sm" onclick="toggleCatalogExposure('${catalog.id}', ${!catalog.enabled})">${catalog.enabled ? 'Masquer de Stremio' : 'Afficher dans Stremio'}</button>
         <button class="btn-danger btn-sm" onclick="deleteCatalog('${catalog.id}')">${t('sources_delete')}</button>
       </div>
     </div>`;
@@ -1025,6 +1035,7 @@ window.deletePastebin = deletePastebin;
 function newznabPayload() {
   return {
     name: document.getElementById('newznabSourceName').value.trim(),
+    kind: document.getElementById('newznabSourceKind').value,
     url: document.getElementById('newznabSourceUrl').value.trim(),
     api_key: document.getElementById('newznabApiKey').value.trim(),
     movie_categories: document.getElementById('newznabMovieCategories').value.trim(),
@@ -1033,6 +1044,30 @@ function newznabPayload() {
     request_delay_ms: Number(document.getElementById('newznabRequestDelay').value) || 750
   };
 }
+
+function indexerKindLabel(kind) {
+  return {
+    newznab: 'Newznab',
+    prowlarr: 'Prowlarr',
+    jackett: 'Jackett',
+    nzbhydra2: 'NZBHydra2'
+  }[kind] || 'Newznab';
+}
+
+function updateIndexerHelp() {
+  const kind = document.getElementById('newznabSourceKind')?.value || 'newznab';
+  const input = document.getElementById('newznabSourceUrl');
+  const help = document.getElementById('indexerUrlHelp');
+  const examples = {
+    newznab: ['https://site.fr/api', 'URL complète de l’API Newznab.'],
+    prowlarr: ['http://prowlarr:9696/1/api', 'Copiez l’URL Torznab/Newznab d’un indexeur Prowlarr. Une source par indexeur est recommandée.'],
+    jackett: ['http://jackett:9117/api/v2.0/indexers/mon-indexeur/results/torznab/api', 'URL Torznab d’un indexeur Jackett. L’endpoint « all » est accepté, mais chaque indexeur séparé donne un meilleur suivi.'],
+    nzbhydra2: ['http://nzbhydra2:5076/api', 'URL de l’API Newznab de NZBHydra2.']
+  };
+  if (input) input.placeholder = examples[kind][0];
+  if (help) help.textContent = examples[kind][1];
+}
+window.updateIndexerHelp = updateIndexerHelp;
 
 function renderNewznabSources() {
   const container = document.getElementById('newznabSourceList');
@@ -1044,14 +1079,14 @@ function renderNewznabSources() {
   container.innerHTML = catalogManagerData.newznab.map(source => `
     <div class="manager-row">
       <div class="manager-row-main">
-        <div class="manager-row-title">${escHtml(source.name || 'Newznab')} ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-title">${escHtml(source.name || 'Indexeur')} <span class="source-name-badge">${indexerKindLabel(source.kind)}</span> ${source.paused ? '⏸' : '●'}</div>
         <div class="manager-row-meta manager-row-url" title="${escHtml(source.url)}">${escHtml(source.url)}</div>
         <div class="manager-row-meta">
           ${t('sources_newznab_categories_short')} :
           ${(source.catalogs || []).map(catalog => `${escHtml(catalog.name)} ${escHtml(catalog.category_ids)}`).join(' · ')}
-          · ${source.max_items_per_category.toLocaleString()} ${t('sources_newznab_items_per_category')}
-          · ${t('sources_newznab_page_size')} ${source.page_size}
-          · ${source.request_delay_ms} ms
+          · plafond ${source.max_items_per_category.toLocaleString()} éléments/catégorie/synchronisation
+          · pages de ${source.page_size} (limite serveur)
+          · délai ${source.request_delay_ms} ms
         </div>
       </div>
       <div class="manager-row-actions">
@@ -1087,9 +1122,11 @@ async function addNewznabSource() {
   const data = await response.json();
   if (!response.ok) return alert(data.error || 'Erreur');
   document.getElementById('newznabSourceName').value = '';
+  document.getElementById('newznabSourceKind').value = 'newznab';
   document.getElementById('newznabSourceUrl').value = '';
   document.getElementById('newznabApiKey').value = '';
   document.getElementById('newznabSourcePreview').textContent = '';
+  updateIndexerHelp();
   await loadSourceManager();
 }
 window.addNewznabSource = addNewznabSource;
@@ -1256,14 +1293,23 @@ function editCatalog(id) {
 }
 window.editCatalog = editCatalog;
 
-async function toggleCatalog(id, enabled) {
+async function updateCatalogState(id, payload) {
   const response = await fetch(`/api/catalogs/${id}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled })
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
   });
   if (!response.ok) alert((await response.json()).error || 'Erreur');
   loadCatalogManager();
 }
-window.toggleCatalog = toggleCatalog;
+
+async function toggleCatalogUpdates(id, updates_enabled) {
+  await updateCatalogState(id, { updates_enabled });
+}
+window.toggleCatalogUpdates = toggleCatalogUpdates;
+
+async function toggleCatalogExposure(id, enabled) {
+  await updateCatalogState(id, { enabled });
+}
+window.toggleCatalogExposure = toggleCatalogExposure;
 
 async function deleteCatalog(id) {
   if (!confirm('Supprimer ce catalogue ?')) return;
@@ -1949,10 +1995,9 @@ async function loadConfig() {
     const r = await fetch('/api/config');
     const cfg = await r.json();
 
-    ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
+    ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
      'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
      'proxy_password', 'refresh_interval', 'discord_webhook_url',
-     'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey',
      'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
       const el = document.getElementById(k);
       if (el) el.value = cfg[k] || '';
@@ -1965,17 +2010,6 @@ async function loadConfig() {
       if (el) el.checked = cfg[k] === 'true';
     });
 
-    const container = document.getElementById('additionalRssContainer');
-    container.innerHTML = '';
-    rssFieldCounter = 0;
-    try {
-      const urls = JSON.parse(cfg.rss_additional_urls || '[]');
-      urls.forEach(item => {
-        if (typeof item === 'object') addRssField(item.url, item.force, item.name);
-        else addRssField(item, 'auto', '');
-      });
-    } catch (e) { console.error('parse rss_additional_urls', e); }
-
   } catch (e) { console.error('loadConfig', e); }
 }
 
@@ -1985,10 +2019,9 @@ async function saveConfig(e) {
   msg.textContent = '';
 
   const cfg = {};
-  ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
+  ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
    'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
    'proxy_password', 'refresh_interval', 'discord_webhook_url',
-   'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey',
    'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
     const el = document.getElementById(k);
     if (el) cfg[k] = el.value;
@@ -2000,15 +2033,6 @@ async function saveConfig(e) {
     const el = document.getElementById(k);
     if (el) cfg[k] = el.checked ? 'true' : 'false';
   });
-
-  const urls = [];
-  document.querySelectorAll('.rss-field-block').forEach(block => {
-    const url   = block.querySelector('.additional-rss-url')?.value?.trim();
-    const force = block.querySelector('.additional-rss-force')?.value || 'auto';
-    const name  = block.querySelector('.additional-rss-name')?.value?.trim() || '';
-    if (url) urls.push({ url, force, name });
-  });
-  cfg.rss_additional_urls = JSON.stringify(urls);
 
   try {
     const r = await fetch('/api/config', {
