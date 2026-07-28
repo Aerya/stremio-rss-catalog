@@ -747,123 +747,50 @@
 
       <!-- Maintenance -->
       <div class="card" style="margin-top:24px">
-        <h3 style="margin-bottom:6px">Maintenance</h3>
-        <p class="text-muted" style="font-size:13px;margin-bottom:16px">
-          Actions ponctuelles sur la base de données.
+        <h3 style="margin-bottom:6px" data-i18n="maintenance_title">Migration et réparation</h3>
+        <p class="text-muted" style="font-size:13px;margin-bottom:16px" data-i18n="maintenance_desc">
+          Outils avancés pour corriger les médias déjà indexés. Ils ne sont pas exécutés par cron.
         </p>
 
-        <div class="maintenance-row">
-          <div>
-            <strong>Reclassifier les animés</strong>
-            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
-              Parcourt tous les films &amp; séries déjà indexés et détecte ceux qui sont des animés
-              (genre Animation TMDB + langue japonaise). Met à jour leur catégorie en base.
-              Nécessite une clé TMDB.
-            </p>
-          </div>
-          <button class="btn-sm" onclick="reclassifyAnimes()" id="reclassifyAnimesBtn">▶ Lancer</button>
+        <div class="integration-cat-hint" style="margin-bottom:16px" data-i18n="maintenance_safety">
+          L’analyse est en lecture seule. Une sauvegarde SQLite est créée automatiquement avant toute correction.
+          Les futures migrations de classement sont versionnées et exécutées une seule fois.
         </div>
-        <div id="reclassifyAnimesResult" style="margin-top:12px;font-size:13px;display:none"></div>
 
-        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
-
-        <div class="maintenance-row">
-          <div>
-            <strong>Reclassifier les documentaires</strong>
-            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
-              Parcourt tous les médias déjà indexés et détecte ceux qui sont des documentaires
-              (genre 99 TMDB déjà stocké en base). Aucun appel API nécessaire.
-            </p>
-          </div>
-          <button class="btn-sm" onclick="reclassifyDocs()" id="reclassifyDocsBtn">▶ Lancer</button>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button type="button" class="btn-primary" onclick="analyzeMaintenance()" id="maintenanceAnalyzeBtn" data-i18n="maintenance_analyze">Analyser la médiathèque</button>
+          <span id="maintenanceAnalysisMeta" class="text-muted"></span>
         </div>
-        <div id="reclassifyDocsResult" style="margin-top:12px;font-size:13px;display:none"></div>
+        <div id="maintenanceAnalysis" style="margin-top:16px"></div>
 
-        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
-
-        <div class="maintenance-row">
-          <div>
-            <strong>Corriger les faux documentaires</strong>
-            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
-              Détecte les médias classés en documentaires qui ont des genres incompatibles
-              (Action, Science-Fiction, Fantastique, Horreur) et les remet en Films ou Séries.
-              Aucun appel API nécessaire.
-            </p>
+        <div id="maintenanceApplyPanel" style="display:none;margin-top:16px">
+          <label class="catalog-source-choice" style="max-width:720px">
+            <input type="checkbox" id="maintenanceIncludeAnime">
+            <span>
+              <strong data-i18n="maintenance_anime_option">Vérifier aussi les animations avec TMDB</strong><br>
+              <small class="text-muted" data-i18n="maintenance_anime_warning">Option lente : un appel TMDB par candidat Animation afin de ne conserver que les œuvres japonaises.</small>
+            </span>
+          </label>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+            <button type="button" class="btn-danger" onclick="applyMaintenance()" id="maintenanceApplyBtn" data-i18n="maintenance_apply">Sauvegarder puis appliquer les corrections</button>
+            <span id="maintenanceApplyResult" class="text-muted"></span>
           </div>
-          <button class="btn-sm" onclick="fixFalseDocs()" id="fixFalseDocsBtn">▶ Lancer</button>
         </div>
-        <div id="fixFalseDocsResult" style="margin-top:12px;font-size:13px;display:none"></div>
 
-        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
+        <details style="margin-top:20px">
+          <summary data-i18n="maintenance_source_summary">Action après modification des règles de sources</summary>
+          <p class="text-muted" style="font-size:12px;margin:10px 0">
+            Recalcule la catégorie de toute la médiathèque selon les forces et indices d’URL actuels.
+            Cette action peut déplacer beaucoup de médias et reste volontairement manuelle.
+          </p>
+          <button type="button" class="btn-sm" onclick="reclassifyAll()" id="reclassifyAllBtn" data-i18n="maintenance_source_apply">Sauvegarder puis reclassifier par sources</button>
+          <div id="reclassifyAllResult" style="margin-top:12px;font-size:13px;display:none"></div>
+        </details>
 
-        <div class="maintenance-row">
-          <div>
-            <strong>Corriger les fausses émissions TV</strong>
-            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
-              Détecte les séries classées en émissions qui ont des genres incompatibles
-              (Science-Fiction, Fantastique, Animation, Horreur) et les remet en Séries.
-              Aucun appel API nécessaire.
-            </p>
-          </div>
-          <button class="btn-sm" onclick="fixFalseEmissions()" id="fixFalseEmissionsBtn">▶ Lancer</button>
-        </div>
-        <div id="fixFalseEmissionsResult" style="margin-top:12px;font-size:13px;display:none"></div>
-
-        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
-
-        <div class="maintenance-row">
-          <div>
-            <strong>Reclassifier par configuration de flux</strong>
-            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
-              Reclassifie tous les médias selon la configuration actuelle des flux
-              (force manuel + détection automatique depuis l'URL du flux). Aucun appel API nécessaire.
-            </p>
-          </div>
-          <button class="btn-sm" onclick="reclassifyAll()" id="reclassifyAllBtn">▶ Lancer</button>
-        </div>
-        <div id="reclassifyAllResult" style="margin-top:12px;font-size:13px;display:none"></div>
-
-        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
-
-        <div class="maintenance-row">
-          <div>
-            <strong>Reclassifier les concerts</strong>
-            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
-              Détecte les médias avec le genre Music TMDB (10402) sans genres narratifs contradictoires
-              et les reclassifie en concerts. Aucun appel API nécessaire.
-            </p>
-          </div>
-          <button class="btn-sm" onclick="reclassifyConcerts()" id="reclassifyConcertsBtn">▶ Lancer</button>
-        </div>
-        <div id="reclassifyConcertsResult" style="margin-top:12px;font-size:13px;display:none"></div>
-
-        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
-
-        <div class="maintenance-row">
-          <div>
-            <strong>Corriger les faux concerts</strong>
-            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
-              Détecte les médias classés en concerts avec des genres narratifs contradictoires
-              (Drama, Action, Horreur…) et les remet en Films ou Séries. Aucun appel API nécessaire.
-            </p>
-          </div>
-          <button class="btn-sm" onclick="fixFalseConcerts()" id="fixFalseConcertsBtn">▶ Lancer</button>
-        </div>
-        <div id="fixFalseConcertsResult" style="margin-top:12px;font-size:13px;display:none"></div>
-
-        <hr style="border:none;border-top:1px solid var(--border);margin:16px 0">
-
-        <div class="maintenance-row">
-          <div>
-            <strong>Reclassifier les spectacles</strong>
-            <p class="text-muted" style="font-size:12px;margin:3px 0 0">
-              Détecte les médias dont le nom de release contient des mots-clés de spectacle
-              (Stand-up, One Man Show, Théâtre, Cirque…) et les reclassifie. Aucun appel API nécessaire.
-            </p>
-          </div>
-          <button class="btn-sm" onclick="reclassifySpectacles()" id="reclassifySpectaclesBtn">▶ Lancer</button>
-        </div>
-        <div id="reclassifySpectaclesResult" style="margin-top:12px;font-size:13px;display:none"></div>
+        <details style="margin-top:16px" open>
+          <summary data-i18n="maintenance_history_title">Historique des opérations</summary>
+          <div id="maintenanceHistory" style="margin-top:12px"></div>
+        </details>
       </div>
     </section>
 

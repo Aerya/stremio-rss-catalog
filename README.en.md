@@ -74,7 +74,7 @@
 | **Modern WebUI** | Sidebar, dark/light theme, multilingual FR/EN/DE |
 | **Media Library** 🆕 NEW | Redesign: poster/list view, sort, year filter (shortcuts + free input/range), inline releases, RPDB posters, persistent pagination |
 | **Overview** | Latest additions in collapsible per-category accordions (title + year + IMDB link) |
-| **Maintenance suite** | 8 reclassification actions (anime, docs, false docs, false shows, concerts, false concerts, live shows, feed config) |
+| **Migration and repair** | Read-only analysis, SQLite backup, grouped corrections, history, and one-time versioned migrations |
 | **Sources** | Per-feed stats with custom naming |
 | **Indexer APIs** | Multiple renameable Newznab, Prowlarr, Jackett/Torznab, and NZBHydra2 sources with configurable pagination, cap, and delay |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
@@ -237,20 +237,22 @@ Everything is stored in a SQLite database (`data/addon.db`). Content **accumulat
 
 ---
 
-## Maintenance Suite
+## Migration and repair
 
-From **Configuration → Maintenance** in the WebUI, 8 actions are available:
+The advanced **Configuration → Migration and repair** section replaces the
+previous reclassification buttons:
 
-| Action | Description |
-|---|---|
-| Reclassify anime | Detects movies/series with TMDB Animation genre + Japanese origin. Requires TMDB key. |
-| Reclassify documentaries | Detects media with TMDB genre 99 already stored in DB. No API call. |
-| Fix false documentaries | Removes from Documentaries any media with contradicting genres (Action, Sci-Fi…). No API call. |
-| Fix false TV shows | Removes from TV Shows any series with incompatible genres (Sci-Fi, Animation…). No API call. |
-| Reclassify concerts | Detects media with TMDB Music genre (10402) without narrative genres. No API call. |
-| Fix false concerts | Removes from Concerts any media with narrative genres (Drama, Action…). No API call. |
-| Reclassify live shows | Detects media with live show keywords in the release name (Stand-up, Theatre, Circus…). No API call. |
-| Reclassify by feed config | Reclassifies all media based on current feed force settings + URL auto-detection. Respects specificity hierarchy. No API call. |
+1. **Analyze media library** runs a read-only diagnostic and shows proposed
+   corrections per category.
+2. **Back up and apply** first creates a SQLite copy under `/data/backups`, then
+   applies local corrections.
+3. TMDB animation verification is optional because it requires one remote call
+   per candidate and may take several minutes.
+4. Every operation is recorded with its status, result, and backup name.
+
+Source-rule reclassification remains a separate manual action because it may
+move a large part of the library. No destructive correction cron is installed.
+Future migrations are numbered, backed up when required, and run only once.
 
 ---
 
@@ -307,7 +309,7 @@ Database migration runs automatically on first startup. All your existing config
 - Only content with a valid IMDB ID is indexed — Stremio only accepts IMDB IDs
 - Concert and live show detection requires an OMDb API key (free, 1000 req/day at omdbapi.com)
 - AniList is enabled by default and requires no key — it can be disabled from the config
-- Media indexed before the new categories were added will remain in their old category — use the maintenance buttons to reclassify them
+- Media indexed before new categories were added remains in its old category — use analysis followed by grouped repair
 
 ### Inherent limitations of third-party APIs
 

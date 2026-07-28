@@ -16,6 +16,7 @@ const DEFAULT_CATALOGS = [
 
 class DatabaseManager {
   constructor(dbPath) {
+    this.dbPath = dbPath;
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -143,6 +144,19 @@ class DatabaseManager {
       )
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS maintenance_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,
+        status TEXT NOT NULL,
+        details TEXT NOT NULL DEFAULT '{}',
+        backup_path TEXT,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        error_message TEXT
+      )
+    `);
+
     // Migration depuis l'ancien schéma catalog_items si nécessaire
     const alreadyMigrated = this.db.prepare("SELECT value FROM config WHERE key = 'schema_v2_migrated'").get();
     if (!alreadyMigrated) {
@@ -260,7 +274,8 @@ class DatabaseManager {
       apprise_server_url: '',
       apprise_urls: '',
       omdb_api_key: '',
-      notification_language: 'fr'
+      notification_language: 'fr',
+      classification_migration_version: '0'
     };
 
     const stmt = this.db.prepare('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)');
@@ -296,6 +311,63 @@ class DatabaseManager {
 
   setConfig(key, value) {
     this.db.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)').run(key, value);
+  }
+
+  // ─── Maintenance ────────────────────────────────────────────────────────
+
+  getMaintenanceAnalysis() {
+    const counts = {
+      anime_candidates: this.getAnimeCandidatesForReclassify().length,
+      documentaries: this.getDocumentaryCandidatesForReclassify().length,
+      false_documentaries: this.getFalseDocumentaryCandidates().length,
+      false_emissions: this.getFalseEmissionCandidates().length,
+      concerts: this.getConcertCandidatesFromGenre().length,
+      false_concerts: this.getFalseConcertCandidates().length,
+      spectacles: this.getSpectacleCandidatesFromTitle().length
+    };
+    return {
+      media_count: this.db.prepare('SELECT COUNT(*) AS count FROM media').get().count,
+      counts,
+      database_only_count: counts.documentaries + counts.false_documentaries
+        + counts.false_emissions + counts.concerts + counts.false_concerts + counts.spectacles,
+      analyzed_at: Date.now()
+    };
+  }
+
+  async createMaintenanceBackup(label = 'maintenance') {
+    const dir = path.join(path.dirname(this.dbPath), 'backups');
+    fs.mkdirSync(dir, { recursive: true });
+    const safeLabel = String(label).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '') || 'maintenance';
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const destination = path.join(dir, `${stamp}-${safeLabel}.db`);
+    await this.db.backup(destination);
+    return destination;
+  }
+
+  startMaintenanceHistory(action, details = {}) {
+    return this.db.prepare(`
+      INSERT INTO maintenance_history (action, status, details, started_at)
+      VALUES (?, 'running', ?, ?)
+    `).run(action, JSON.stringify(details), Date.now()).lastInsertRowid;
+  }
+
+  finishMaintenanceHistory(id, { status = 'completed', details = {}, backupPath = null, error = null } = {}) {
+    this.db.prepare(`
+      UPDATE maintenance_history
+      SET status = ?, details = ?, backup_path = ?, error_message = ?, finished_at = ?
+      WHERE id = ?
+    `).run(status, JSON.stringify(details), backupPath, error, Date.now(), id);
+  }
+
+  listMaintenanceHistory(limit = 20) {
+    return this.db.prepare(`
+      SELECT * FROM maintenance_history
+      ORDER BY started_at DESC
+      LIMIT ?
+    `).all(Math.min(Math.max(Number(limit) || 20, 1), 100)).map(row => ({
+      ...row,
+      details: JSON.parse(row.details || '{}')
+    }));
   }
 
   getAllConfig() {

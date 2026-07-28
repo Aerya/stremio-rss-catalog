@@ -10,6 +10,15 @@ const { sendAppriseNotification } = require('./services/appriseService');
 const { getStrings }              = require('./services/notifStrings');
 const crypto = require('crypto');
 
+const MAINTENANCE_MIGRATIONS = [
+  {
+    version: 1,
+    name: 'Initialisation du moteur de migrations de classement',
+    needsBackup: false,
+    run: async () => ({ initialized: true })
+  }
+];
+
 class WebUI {
   constructor(db, rssParser, tmdbMatcher, stremioAddon) {
     this.db = db;
@@ -21,10 +30,13 @@ class WebUI {
     this.syncStartedAt = null;
     this.syncStatus = null;
     this.autoRefreshInterval = null;
+    this.maintenanceInProgress = false;
 
     this.setupMiddleware();
     this.setupRoutes();
-    this.startAutoRefresh(true);
+    this.runPendingMaintenanceMigrations()
+      .catch(error => console.error('[Maintenance] Migration automatique échouée :', error.message))
+      .finally(() => this.startAutoRefresh(true));
   }
 
   setupMiddleware() {
@@ -52,6 +64,120 @@ class WebUI {
   authMiddleware(req, res, next) {
     if (req.session.authenticated) return next();
     res.status(401).json({ error: 'Non authentifié' });
+  }
+
+  async runPendingMaintenanceMigrations() {
+    let current = Number(this.db.getConfig('classification_migration_version')) || 0;
+    for (const migration of MAINTENANCE_MIGRATIONS.filter(item => item.version > current)) {
+      const historyId = this.db.startMaintenanceHistory('automatic_migration', {
+        version: migration.version,
+        name: migration.name
+      });
+      let backupPath = null;
+      try {
+        if (migration.needsBackup) {
+          backupPath = await this.db.createMaintenanceBackup(`migration-${migration.version}`);
+        }
+        const result = await migration.run(this);
+        this.db.setConfig('classification_migration_version', String(migration.version));
+        this.db.finishMaintenanceHistory(historyId, {
+          details: { version: migration.version, name: migration.name, result },
+          backupPath
+        });
+        current = migration.version;
+        console.log(`[Maintenance] Migration ${migration.version} appliquée une seule fois : ${migration.name}`);
+      } catch (error) {
+        this.db.finishMaintenanceHistory(historyId, {
+          status: 'error',
+          details: { version: migration.version, name: migration.name },
+          backupPath,
+          error: error.message
+        });
+        throw error;
+      }
+    }
+  }
+
+  async verifyAnimeCandidates() {
+    const apiKey = this.db.getConfig('tmdb_api_key');
+    if (!apiKey) throw new Error('Clé TMDB non configurée pour la vérification des animés');
+    const candidates = this.db.getAnimeCandidatesForReclassify();
+    const axiosConfig = this.tmdbMatcher.getAxiosConfig();
+    let reclassified = 0;
+    let skipped = 0;
+    const errors = [];
+    for (const item of candidates) {
+      try {
+        await new Promise(resolve => setTimeout(resolve, 260));
+        const endpoint = item.type === 'movie'
+          ? `https://api.themoviedb.org/3/movie/${item.tmdb_id}`
+          : `https://api.themoviedb.org/3/tv/${item.tmdb_id}`;
+        const response = await axios.get(endpoint, { ...axiosConfig, params: { api_key: apiKey } });
+        const data = response.data;
+        const countries = Array.isArray(data.origin_country)
+          ? data.origin_country
+          : (Array.isArray(data.production_countries)
+              ? data.production_countries.map(country => country.iso_3166_1)
+              : []);
+        if (data.original_language === 'ja' || countries.includes('JP')) {
+          this.db.reclassifyMediaCatalogType(item.imdb_id, 'animés');
+          reclassified++;
+        } else {
+          skipped++;
+        }
+      } catch (error) {
+        errors.push({ imdb_id: item.imdb_id, name: item.name, error: error.message });
+      }
+    }
+    return { candidates: candidates.length, reclassified, skipped, errors };
+  }
+
+  async applyMaintenanceRepairs({ includeAnime = false } = {}) {
+    const before = this.db.getMaintenanceAnalysis();
+    const historyId = this.db.startMaintenanceHistory('repair', { include_anime: includeAnime, before });
+    let backupPath = null;
+    try {
+      backupPath = await this.db.createMaintenanceBackup('before-repair');
+      const results = {};
+      const apply = (key, candidates, getCatalogType) => {
+        const updates = candidates.map(item => ({
+          imdb_id: item.imdb_id,
+          catalog_type: getCatalogType(item)
+        }));
+        results[key] = updates.length ? this.db.batchUpdateCatalogTypes(updates) : 0;
+      };
+
+      apply('false_documentaries', this.db.getFalseDocumentaryCandidates(),
+        item => item.type === 'series' ? 'series' : 'films');
+      apply('false_emissions', this.db.getFalseEmissionCandidates(), () => 'series');
+      apply('false_concerts', this.db.getFalseConcertCandidates(),
+        item => item.type === 'series' ? 'series' : 'films');
+      apply('documentaries', this.db.getDocumentaryCandidatesForReclassify(), () => 'documentaires');
+      apply('concerts', this.db.getConcertCandidatesFromGenre(), () => 'concerts');
+      apply('spectacles', this.db.getSpectacleCandidatesFromTitle(), () => 'spectacles');
+
+      let anime = null;
+      if (includeAnime) anime = await this.verifyAnimeCandidates();
+      const changed = Object.values(results).reduce((sum, value) => sum + value, 0)
+        + (anime?.reclassified || 0);
+      if (changed > 0) this.stremioAddon.clearCache();
+      const after = this.db.getMaintenanceAnalysis();
+      const details = { include_anime: includeAnime, before, results, anime, changed, after };
+      this.db.finishMaintenanceHistory(historyId, {
+        status: anime?.errors?.length ? 'completed_with_errors' : 'completed',
+        details,
+        backupPath
+      });
+      return { ...details, backup_path: backupPath };
+    } catch (error) {
+      this.db.finishMaintenanceHistory(historyId, {
+        status: 'error',
+        details: { include_anime: includeAnime, before },
+        backupPath,
+        error: error.message
+      });
+      throw error;
+    }
   }
 
   setupRoutes() {
@@ -746,8 +872,48 @@ class WebUI {
       }
     });
 
+    // ─── Maintenance : analyse, réparation et historique ──────────────────
+    this.app.get('/api/maintenance/analysis', this.authMiddleware.bind(this), (req, res) => {
+      try {
+        res.json(this.db.getMaintenanceAnalysis());
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.get('/api/maintenance/history', this.authMiddleware.bind(this), (req, res) => {
+      try {
+        res.json(this.db.listMaintenanceHistory(req.query.limit));
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/maintenance/apply', this.authMiddleware.bind(this), async (req, res) => {
+      if (this.syncInProgress) {
+        return res.status(409).json({ error: 'Une synchronisation est en cours' });
+      }
+      if (this.maintenanceInProgress) {
+        return res.status(409).json({ error: 'Une maintenance est déjà en cours' });
+      }
+      this.maintenanceInProgress = true;
+      try {
+        res.json(await this.applyMaintenanceRepairs({ includeAnime: req.body.include_anime === true }));
+      } catch (error) {
+        console.error('[Maintenance] Réparation échouée :', error);
+        res.status(500).json({ error: error.message });
+      } finally {
+        this.maintenanceInProgress = false;
+      }
+    });
+
     // ─── Reclassifier tous les médias selon config flux actuelle ───────────
-    this.app.post('/api/reclassify', this.authMiddleware.bind(this), (req, res) => {
+    this.app.post('/api/reclassify', this.authMiddleware.bind(this), async (req, res) => {
+      if (this.syncInProgress) return res.status(409).json({ error: 'Une synchronisation est en cours' });
+      if (this.maintenanceInProgress) return res.status(409).json({ error: 'Une maintenance est déjà en cours' });
+      this.maintenanceInProgress = true;
+      let historyId = null;
+      let backupPath = null;
       try {
         // Construire la map url → force depuis la config actuelle
         const feedMap = {};
@@ -808,14 +974,37 @@ class WebUI {
           }
         }
 
+        if (updates.length > 0) {
+          historyId = this.db.startMaintenanceHistory('source_reclassification', {
+            candidates: updates.length,
+            by_category: byCategory
+          });
+          backupPath = await this.db.createMaintenanceBackup('before-source-reclassification');
+        }
         const reclassified = updates.length > 0 ? this.db.batchUpdateCatalogTypes(updates) : 0;
         if (reclassified > 0) this.stremioAddon.clearCache();
+        if (historyId) {
+          this.db.finishMaintenanceHistory(historyId, {
+            details: { total: allMedia.length, reclassified, skipped, by_category: byCategory },
+            backupPath
+          });
+        }
 
         console.log(`[Reclassify] ${reclassified}/${allMedia.length} médias reclassifiés, ${skipped} conservés (spécificité supérieure)`);
-        res.json({ success: true, total: allMedia.length, reclassified, skipped, byCategory });
+        res.json({ success: true, total: allMedia.length, reclassified, skipped, byCategory, backup_path: backupPath });
       } catch (err) {
+        if (historyId) {
+          this.db.finishMaintenanceHistory(historyId, {
+            status: 'error',
+            details: {},
+            backupPath,
+            error: err.message
+          });
+        }
         console.error('[Reclassify]', err);
         res.status(500).json({ error: err.message });
+      } finally {
+        this.maintenanceInProgress = false;
       }
     });
 

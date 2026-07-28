@@ -274,6 +274,36 @@ async function main() {
     db.seedManagedCatalogs();
     assert.equal(db.getCustomCatalog('useflowfr_films'), null);
     assert.ok(db.getMediaByImdbId('tt0000123'));
+    const maintenanceAnalysis = db.getMaintenanceAnalysis();
+    assert.equal(maintenanceAnalysis.media_count, 6);
+    const backupPath = await db.createMaintenanceBackup('integration-test');
+    assert.ok(fs.existsSync(backupPath));
+    const maintenanceId = db.startMaintenanceHistory('integration_test', maintenanceAnalysis);
+    db.finishMaintenanceHistory(maintenanceId, {
+      details: { changed: 0 },
+      backupPath
+    });
+    assert.equal(db.listMaintenanceHistory(1)[0].backup_path, backupPath);
+    fs.unlinkSync(backupPath);
+    db.addMedia({
+      imdb_id: 'tt0000999',
+      tmdb_id: '999',
+      type: 'movie',
+      catalog_type: 'films',
+      name: 'Documentaire à réparer',
+      year: '2024',
+      genres: [99],
+      release_name: 'Documentaire.Test.2024',
+      first_seen_at: Date.now()
+    });
+    const maintenanceRunner = Object.create(WebUI.prototype);
+    maintenanceRunner.db = db;
+    maintenanceRunner.stremioAddon = addon;
+    const repaired = await maintenanceRunner.applyMaintenanceRepairs({ includeAnime: false });
+    assert.equal(repaired.changed, 1);
+    assert.equal(db.getMediaByImdbId('tt0000999').catalog_type, 'documentaires');
+    assert.ok(fs.existsSync(repaired.backup_path));
+    fs.unlinkSync(repaired.backup_path);
     console.log('✓ Pastebin direct, pointeur JSON et index catégorisé');
     console.log('✓ Import TMDB direct films/séries');
     console.log('✓ Filtres source, année et genre');
@@ -282,6 +312,7 @@ async function main() {
     console.log('✓ Suppression durable sans suppression des médias');
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
     console.log('✓ API Newznab/Torznab paginée avec types Prowlarr et Jackett');
+    console.log('✓ Analyse, sauvegarde, réparation groupée et historique de maintenance');
   } finally {
     db.close();
     await new Promise(resolve => server.close(resolve));

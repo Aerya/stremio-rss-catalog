@@ -24,7 +24,7 @@ function navigate(sectionId) {
   if (sectionId === 'catalogs') loadCatalogManager();
   if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); }
   if (sectionId === 'failures') loadFailed();
-  if (sectionId === 'config')   loadConfig();
+  if (sectionId === 'config')   { loadConfig(); loadMaintenanceHistory(); }
   if (sectionId === 'overview') { loadStats(); loadOverview(); }
 }
 
@@ -1676,6 +1676,109 @@ window.testApprise = testApprise;
 
 // ═══════════════════════════ MAINTENANCE ═══════════════════════════════
 
+const maintenanceLabels = {
+  documentaries: 'maintenance_count_documentaries',
+  false_documentaries: 'maintenance_count_false_documentaries',
+  false_emissions: 'maintenance_count_false_emissions',
+  concerts: 'maintenance_count_concerts',
+  false_concerts: 'maintenance_count_false_concerts',
+  spectacles: 'maintenance_count_spectacles',
+  anime_candidates: 'maintenance_count_anime'
+};
+
+function renderMaintenanceAnalysis(data) {
+  const container = document.getElementById('maintenanceAnalysis');
+  const panel = document.getElementById('maintenanceApplyPanel');
+  if (!container || !panel) return;
+  container.innerHTML = `
+    <div class="config-grid">
+      ${Object.entries(maintenanceLabels).map(([key, label]) => `
+        <div class="field" style="padding:12px;border:1px solid var(--border);border-radius:8px">
+          <span class="text-muted" style="font-size:12px">${escHtml(t(label))}</span>
+          <strong style="display:block;font-size:22px;margin-top:3px">${Number(data.counts?.[key] || 0).toLocaleString()}</strong>
+        </div>`).join('')}
+    </div>`;
+  document.getElementById('maintenanceAnalysisMeta').textContent =
+    `${Number(data.media_count || 0).toLocaleString()} médias analysés · ${Number(data.database_only_count || 0).toLocaleString()} correction(s) locale(s) proposée(s)`;
+  panel.style.display = 'block';
+}
+
+async function analyzeMaintenance() {
+  const btn = document.getElementById('maintenanceAnalyzeBtn');
+  const meta = document.getElementById('maintenanceAnalysisMeta');
+  btn.disabled = true;
+  meta.textContent = 'Analyse en lecture seule…';
+  try {
+    const response = await fetch('/api/maintenance/analysis');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Analyse impossible');
+    renderMaintenanceAnalysis(data);
+  } catch (error) {
+    meta.textContent = `✗ ${error.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+window.analyzeMaintenance = analyzeMaintenance;
+
+async function applyMaintenance() {
+  const includeAnime = document.getElementById('maintenanceIncludeAnime').checked;
+  const warning = includeAnime
+    ? 'La sauvegarde sera créée avant les corrections. La vérification TMDB peut durer plusieurs minutes. Continuer ?'
+    : 'Une sauvegarde SQLite sera créée avant les corrections. Continuer ?';
+  if (!confirm(warning)) return;
+  const btn = document.getElementById('maintenanceApplyBtn');
+  const output = document.getElementById('maintenanceApplyResult');
+  btn.disabled = true;
+  output.textContent = includeAnime ? 'Sauvegarde puis vérification TMDB en cours…' : 'Sauvegarde puis corrections en cours…';
+  try {
+    const response = await fetch('/api/maintenance/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ include_anime: includeAnime })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Maintenance impossible');
+    const backup = String(data.backup_path || '').split('/').pop();
+    output.textContent = `✓ ${Number(data.changed || 0).toLocaleString()} correction(s) · sauvegarde ${backup}`;
+    await Promise.all([analyzeMaintenance(), loadMaintenanceHistory(), loadStats(), loadLibraryCounts()]);
+  } catch (error) {
+    output.textContent = `✗ ${error.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+window.applyMaintenance = applyMaintenance;
+
+async function loadMaintenanceHistory() {
+  const container = document.getElementById('maintenanceHistory');
+  if (!container) return;
+  try {
+    const response = await fetch('/api/maintenance/history?limit=10');
+    const rows = await response.json();
+    if (!response.ok) throw new Error(rows.error || 'Historique indisponible');
+    if (!rows.length) {
+      container.innerHTML = '<p class="text-muted">Aucune opération de maintenance.</p>';
+      return;
+    }
+    container.innerHTML = rows.map(row => {
+      const date = new Date(row.started_at).toLocaleString();
+      const backup = row.backup_path ? String(row.backup_path).split('/').pop() : null;
+      const changed = row.details?.changed ?? row.details?.reclassified ?? row.details?.result?.changed;
+      return `<div class="manager-row">
+        <div class="manager-row-main">
+          <div class="manager-row-title">${row.status === 'error' ? '✗' : row.status === 'running' ? '↻' : '✓'} ${escHtml(row.action)}</div>
+          <div class="manager-row-meta">${escHtml(date)}${changed !== undefined ? ` · ${Number(changed).toLocaleString()} correction(s)` : ''}${backup ? ` · sauvegarde ${escHtml(backup)}` : ''}</div>
+          ${row.error_message ? `<div class="manager-row-meta" style="color:var(--danger)">${escHtml(row.error_message)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch (error) {
+    container.innerHTML = `<p style="color:var(--danger)">✗ ${escHtml(error.message)}</p>`;
+  }
+}
+window.loadMaintenanceHistory = loadMaintenanceHistory;
+
 async function reclassifyAnimes() {
   const btn    = document.getElementById('reclassifyAnimesBtn');
   const result = document.getElementById('reclassifyAnimesResult');
@@ -1809,6 +1912,7 @@ async function fixFalseEmissions() {
 window.fixFalseEmissions = fixFalseEmissions;
 
 async function reclassifyAll() {
+  if (!confirm('Cette action peut déplacer de nombreux médias. Une sauvegarde SQLite sera créée avant application. Continuer ?')) return;
   const btn    = document.getElementById('reclassifyAllBtn');
   const result = document.getElementById('reclassifyAllResult');
   btn.disabled = true;
@@ -1836,12 +1940,13 @@ async function reclassifyAll() {
     }
     result.style.display = 'block';
     if (d.reclassified > 0) { loadStats(); loadLibraryCounts(); }
+    loadMaintenanceHistory();
   } catch (e) {
     result.innerHTML = `<span style="color:var(--danger)">✗ Erreur réseau</span>`;
     result.style.display = 'block';
   } finally {
     btn.disabled = false;
-    btn.textContent = '▶ Lancer';
+    btn.textContent = t('maintenance_source_apply');
   }
 }
 window.reclassifyAll = reclassifyAll;

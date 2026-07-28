@@ -74,7 +74,7 @@
 | **Moderne WebUI** | Sidebar, Hell-/Dunkel-Theme, mehrsprachig FR/EN/DE |
 | **Mediathek** 🆕 NEW | Neugestaltung: Poster-/Listenansicht, Sortierung, Jahresfilter (Schnellauswahl + freie Eingabe/Bereich), Releases inline, RPDB-Poster, persistente Paginierung |
 | **Übersicht** | Neueste Hinzufügungen in ausklappbaren Kategorie-Akkordeons (Titel + Jahr + IMDB-Link) |
-| **Wartungs-Suite** | 8 Reklassifizierungsaktionen (Anime, Dokus, falsche Dokus, falsche Sendungen, Konzerte, falsche Konzerte, Aufführungen, Feed-Konfiguration) |
+| **Migration und Reparatur** | Schreibgeschützte Analyse, SQLite-Sicherung, gruppierte Korrekturen, Verlauf und einmalige versionierte Migrationen |
 | **Quellen** | Feed-Statistiken mit benutzerdefinierter Benennung |
 | **Indexer-APIs** | Mehrere umbenennbare Newznab-, Prowlarr-, Jackett/Torznab- und NZBHydra2-Quellen mit konfigurierbarer Pagination, Obergrenze und Verzögerung |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + integrierter Verbindungstest |
@@ -236,20 +236,23 @@ Alles wird in einer SQLite-Datenbank (`data/addon.db`) gespeichert. Inhalte **ak
 
 ---
 
-## Wartungs-Suite
+## Migration und Reparatur
 
-Unter **Konfiguration → Wartung** in der WebUI sind 8 Aktionen verfügbar:
+Der erweiterte Bereich **Konfiguration → Migration und Reparatur** ersetzt die
+bisherigen Schaltflächen:
 
-| Aktion | Beschreibung |
-|---|---|
-| Anime neu klassifizieren | Erkennt Filme/Serien mit TMDB-Animations-Genre + japanischer Herkunft. Erfordert TMDB-Schlüssel. |
-| Dokumentarfilme neu klassifizieren | Erkennt Medien mit TMDB-Genre 99 in der DB. Kein API-Aufruf. |
-| Falsche Dokumentarfilme korrigieren | Entfernt Medien mit widersprüchlichen Genres (Action, SF…) aus Dokumentarfilmen. Kein API-Aufruf. |
-| Falsche TV-Sendungen korrigieren | Entfernt Serien mit inkompatiblen Genres (SF, Animation…) aus TV-Sendungen. Kein API-Aufruf. |
-| Konzerte neu klassifizieren | Erkennt Medien mit TMDB-Music-Genre (10402) ohne narrative Genres. Kein API-Aufruf. |
-| Falsche Konzerte korrigieren | Entfernt Medien mit narrativen Genres (Drama, Action…) aus Konzerten. Kein API-Aufruf. |
-| Aufführungen neu klassifizieren | Erkennt Medien mit Aufführungs-Schlüsselwörtern im Release-Namen (Stand-up, Theater, Zirkus…). Kein API-Aufruf. |
-| Nach Feed-Konfiguration neu klassifizieren | Reklassifiziert alle Medien basierend auf aktuellen Feed-Einstellungen + URL-Erkennung. Respektiert Spezifitätshierarchie. Kein API-Aufruf. |
+1. **Mediathek analysieren** führt eine schreibgeschützte Diagnose aus und zeigt
+   vorgeschlagene Korrekturen je Kategorie.
+2. **Sichern und anwenden** erstellt zuerst eine SQLite-Kopie unter
+   `/data/backups` und wendet danach lokale Korrekturen an.
+3. Die TMDB-Prüfung von Animationen ist optional, da sie einen externen Aufruf
+   pro Kandidat benötigt und mehrere Minuten dauern kann.
+4. Jeder Vorgang wird mit Status, Ergebnis und Sicherungsnamen protokolliert.
+
+Die Neuklassifizierung nach Quellenregeln bleibt eine getrennte manuelle Aktion,
+da sie große Teile der Mediathek verschieben kann. Es wird kein destruktiver
+Korrektur-Cron eingerichtet. Künftige Migrationen sind nummeriert, werden bei
+Bedarf gesichert und nur einmal ausgeführt.
 
 ---
 
@@ -306,7 +309,7 @@ Die Datenbankmigration wird beim ersten Start automatisch durchgeführt. Ihre ge
 - Nur Inhalte mit einer gültigen IMDB-ID werden indexiert — Stremio akzeptiert ausschließlich IMDB-IDs
 - Konzert- und Aufführungserkennung erfordert einen OMDb API-Schlüssel (kostenlos, 1000 Anfragen/Tag auf omdbapi.com)
 - AniList ist standardmäßig aktiviert und erfordert keinen Schlüssel — es kann in der Konfiguration deaktiviert werden
-- Vor Hinzufügung der neuen Kategorien indizierte Medien bleiben in ihrer alten Kategorie — verwenden Sie die Wartungsschaltflächen zur Reklassifizierung
+- Vor Hinzufügung neuer Kategorien indexierte Medien bleiben in ihrer alten Kategorie — verwenden Sie Analyse und anschließende gruppierte Reparatur
 
 ### Inhärente Grenzen von Drittanbieter-APIs
 

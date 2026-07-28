@@ -74,7 +74,7 @@
 | **WebUI moderne** | Sidebar, thème sombre/clair, multilingue FR/EN/DE |
 | **Médiathèque** 🆕 NEW | Refonte : vue affiches/liste, tri, filtre année (raccourcis + saisie libre/plage), releases inline, affiches RPDB, pagination persistante |
 | **Vue d'ensemble** | Derniers ajouts en tiroirs dépliables par catégorie (titre + année + lien IMDB) |
-| **Suite de maintenance** | 8 actions de reclassification en base (animés, documentaires, faux docs, fausses émissions, concerts, faux concerts, spectacles, config flux) |
+| **Migration et réparation** | Analyse en lecture seule, sauvegarde SQLite, corrections groupées, historique et migrations uniques versionnées |
 | **Sources** | Stats par flux RSS avec nommage personnalisé |
 | **API d’indexeurs** | Sources multiples et renommables Newznab, Prowlarr, Jackett/Torznab et NZBHydra2, avec pagination, plafond et délai configurables |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + test de connexion intégré |
@@ -254,20 +254,24 @@ Tout est stocké dans une base SQLite (`data/addon.db`). Les contenus s'**accumu
 
 ---
 
-## Suite de maintenance
+## Migration et réparation
 
-Depuis la section **Configuration → Maintenance** de la WebUI, 8 actions sont disponibles :
+La section avancée **Configuration → Migration et réparation** remplace les
+anciens boutons de reclassement :
 
-| Action | Description |
-|---|---|
-| Reclassifier les animés | Détecte films/séries avec genre Animation TMDB + origine japonaise. Nécessite une clé TMDB. |
-| Reclassifier les documentaires | Détecte médias avec genre 99 TMDB déjà stocké. Sans appel API. |
-| Corriger les faux documentaires | Retire de Documentaires les médias avec genres contradictoires (Action, SF…). Sans appel API. |
-| Corriger les fausses émissions | Retire d'Émissions les séries avec genres incompatibles (SF, Animation…). Sans appel API. |
-| Reclassifier les concerts | Détecte médias avec genre Music TMDB (10402) sans genres narratifs. Sans appel API. |
-| Corriger les faux concerts | Retire de Concerts les médias avec genres narratifs (Drama, Action…). Sans appel API. |
-| Reclassifier les spectacles | Détecte médias avec mots-clés spectacle dans le titre (Stand-up, Théâtre, Cirque…). Sans appel API. |
-| Reclassifier par config flux | Reclassifie selon la force configurée + détection URL flux. Respecte la hiérarchie de spécificité. Sans appel API. |
+1. **Analyser la médiathèque** effectue un diagnostic en lecture seule et affiche
+   le nombre de corrections proposées par catégorie.
+2. **Sauvegarder puis appliquer** crée d’abord une copie SQLite dans
+   `/data/backups`, puis applique les corrections locales.
+3. La vérification des animations via TMDB est facultative, car elle nécessite
+   un appel distant par candidat et peut durer plusieurs minutes.
+4. Chaque opération est enregistrée avec son état, son résultat et le nom de la
+   sauvegarde.
+
+La reclassification selon les règles de sources reste une action séparée et
+manuelle, car elle peut déplacer une grande partie de la médiathèque. Aucun cron
+de correction destructive n’est créé. Les migrations introduites par de futures
+versions sont numérotées, sauvegardées si nécessaire et exécutées une seule fois.
 
 ---
 
@@ -324,7 +328,7 @@ La migration de la base de données s'effectue automatiquement si nécessaire. T
 - Seuls les contenus avec un ID IMDB valide sont indexés — Stremio n'accepte que les IDs IMDB
 - La détection concerts et spectacles nécessite une clé OMDb (gratuite, 1000 req/jour sur omdbapi.com)
 - AniList est activé par défaut et ne nécessite aucune clé — il peut être désactivé dans la config
-- Les médias déjà indexés avant l'ajout des nouvelles catégories restent dans leur ancienne catégorie — utilisez les boutons de maintenance pour les reclassifier
+- Les médias déjà indexés avant l'ajout des nouvelles catégories restent dans leur ancienne catégorie — utilisez l’analyse puis la réparation groupée
 
 ### Limites inhérentes aux APIs tierces
 
