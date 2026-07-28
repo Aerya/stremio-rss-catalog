@@ -47,6 +47,8 @@
 | **Zwei getrennte Pausen** | Neue Kataloginhalte unabhängig von der Sichtbarkeit im Stremio-Manifest einfrieren |
 | **Verschachtelte Pastebins** | Direkte Seiten, JSON-Verweise und kategorisierte Hauptindizes mit begrenzter Rekursion und Deduplizierung |
 | **Stremio-Manifeste** | Generische Erkennung externer Kataloge und Import ihrer Inhalte |
+| **Native Anime- und YouTube-Typen** | `anime`, Kitsu/MAL/AniList/AniDB und `YouTube`/`yt_id:` bleiben erhalten und werden nicht stillschweigend in Filme umgewandelt |
+| **Katalog-Leitlisten** | MDBList, ListSync und SuggestArr liefern Auswahl und Reihenfolge; sichtbar werden nur bereits lokal indexierte Medien |
 | **Testlauf** | Exakte Medienanzahl vor dem Erstellen eines Katalogs |
 | **Manifestverlauf** | Revisionen und Ereignisse für Erstellung, Umbenennung, Einfrieren, Sichtbarkeit und Löschung |
 | **Auto-Erkennung** | Kategorie aus Release-Name, Feed-URL-Schlüsselwörtern oder TMDB/OMDb-Genres ermittelt |
@@ -118,7 +120,7 @@ services:
       - "7973:7000"
     volumes:
     # An Ihre Konfiguration anpassen: /pfad/zu/ihren/daten/:/data
-      - /home/aerya/docker/stremio-rss-catalog/:/data
+      - /pfad/zu/stremio-rss-catalog/:/data
     environment:
       - PORT=7000
       - NODE_ENV=production
@@ -132,7 +134,12 @@ services:
       - SESSION_SECRET=changeme
 ```
 
-Dann die WebUI unter `http://localhost:7973` öffnen, RSS-Feed(s) + TMDB-API-Schlüssel konfigurieren, eine erste Synchronisierung starten und das Addon in Stremio mit der angegebenen URL installieren.
+Öffnen Sie danach die WebUI unter `http://localhost:7973`, fügen Sie unter
+**Quellen** Inhaltsquellen hinzu, verwalten Sie unter **Kataloge** bestehende
+und eigene Kataloge, wenden Sie bei Bedarf eine MDBList-, ListSync- oder
+SuggestArr-Leitliste an, starten Sie die erste Synchronisierung und installieren
+Sie das Addon mit der angegebenen URL in Stremio. Für Quellen, deren Titel noch
+zugeordnet werden müssen, ist ein TMDB-Schlüssel erforderlich.
 
 > **`TZ`** legt die Zeitzone des Containers fest. Passen Sie diese an Ihre eigene Zeitzone an (z. B. `Europe/Berlin`) für eine korrekte Datumsanzeige in der WebUI und eine korrekte Gruppierung des Sync-Verlaufs.
 
@@ -169,6 +176,12 @@ Pastebin-Quellen unterstützen direkte Inhalte, JSON-Verweise und kategorisierte
 Hauptindizes. Stremio-Manifeste erkennen externe Kataloge und machen sie in der
 Katalogverwaltung auswählbar.
 
+Damit lassen sich auch Film-/Serienkataloge kompatibler Addons wie Plexio oder
+Stremio Jellyfin sowie Anime-/YouTube-Kataloge von Kitsu oder YouTubio
+importieren. Ein reines Stream-Manifest legt die interne Datenbank eines Addons
+nicht offen; ein Comet-Manifest kann ohne Export-API nicht alle Medien
+aufzählen.
+
 Eine WebDAV-Quelle zeigt auf einen Stammordner. Das Addon durchsucht Unterordner
 mit `PROPFIND`, behält konfigurierte Videoerweiterungen und verwendet danach
 dieselbe Titelbereinigung und TMDB-Zuordnung wie bei RSS. Es spielt keine
@@ -191,6 +204,30 @@ separate Bestätigung. Vor jedem Import wird eine SQLite-Sicherung erstellt.
 > dynamisch, Stremio speichert das Manifest jedoch im Benutzerprofil. Nach
 > Erstellen, Löschen, Umbenennen oder Sichtbarkeitsänderungen verwenden Sie
 > **Installieren / aktualisieren**, ohne das Addon zu deinstallieren.
+
+## Katalog-Leitlisten
+
+Eine Leitliste ist keine Inhaltsquelle. Sie liefert eine geordnete Liste von
+Kennungen, die mit der lokalen Mediathek geschnitten wird:
+
+```text
+geordnete externe Liste ∩ bereits indexierte Medien = Kataloginhalt
+```
+
+- **MDBList**: Listen-URL oder Kennung, paginiert bis zur gewählten Obergrenze;
+- **ListSync**: Instanz-URL, Listentyp und Listenkennung; der aktuelle
+  ListSync-Endpunkt ist auf 100 Elemente pro Liste begrenzt;
+- **SuggestArr**: Instanz-URL, lokales Konto und Empfehlungsstatus; JWT-Anmeldung
+  und 100er-Paginierung erfolgen automatisch.
+
+Zugangsdaten bleiben verborgen und sind nur nach ausdrücklicher Bestätigung in
+Konfigurationsexporten enthalten.
+
+[Agregarr](https://github.com/agregarr/agregarr) unterstützt zahlreiche
+Listenanbieter, bietet derzeit aber keinen stabilen Endpunkt, der Elemente
+einer bestehenden Sammlung unabhängig von Plex aufzählt. Die Vorschau benötigt
+eine authentifizierte Sitzung und eine Plex-Bibliothek; daher wird kein
+fragiler Scraper eingebaut.
 
 ---
 

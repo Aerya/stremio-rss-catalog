@@ -47,6 +47,8 @@
 | **Deux pauses distinctes** | Gel des nouveaux contenus indépendamment de la visibilité du catalogue dans le manifeste Stremio |
 | **Pastebins imbriqués** | Pages directes, pointeurs JSON et index maîtres catégorisés avec récursion bornée, déduplication et protection des hôtes découverts |
 | **Manifestes Stremio** | Découverte générique des catalogues d'un autre addon et import de leurs contenus |
+| **Anime et YouTube natifs** | Conservation des types et identifiants `anime`, Kitsu/MAL/AniList/AniDB et `YouTube`/`yt_id:` sans conversion silencieuse en film |
+| **Guides de catalogues** | MDBList, ListSync et SuggestArr fournissent une sélection et un ordre ; seuls les médias déjà indexés localement sont exposés |
 | **Test à blanc** | Compte exact des médias qui alimenteraient un catalogue avant sa création |
 | **Historique du manifeste** | Révisions et événements de création, renommage, gel, visibilité et suppression des catalogues |
 | **Détection automatique** | Catégorie identifiée depuis le nom de release, l'URL du flux ou les genres TMDB/OMDb |
@@ -118,7 +120,7 @@ services:
       - "7973:7000"
     volumes:
     # À adapter à votre configuration : /chemin/vers/vos/données/:/data
-      - /home/aerya/docker/stremio-rss-catalog/:/data
+      - /chemin/vers/stremio-rss-catalog/:/data
     environment:
       - PORT=7000
       - NODE_ENV=production
@@ -135,7 +137,7 @@ services:
 Puis ouvrir la WebUI sur `http://localhost:7973` :
 
 1. Ajouter les sources dans **Sources** : RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaCustom ou manifeste Stremio.
-2. Ouvrir **Catalogues** pour gérer les catalogues historiques ou en créer de nouveaux avec des sources uniques ou mixtes.
+2. Ouvrir **Catalogues** pour gérer les catalogues historiques, créer des catalogues à sources uniques ou mixtes et, si besoin, leur appliquer un guide MDBList, ListSync ou SuggestArr.
 3. Configurer la clé TMDB si des sources RSS ou Pastebin sont utilisées.
 4. Lancer une première synchronisation, puis installer l'addon dans Stremio avec l'URL fournie.
 
@@ -187,6 +189,12 @@ Les sources Pastebin acceptent :
 
 Les manifestes Stremio sont ajoutés avec leur URL `manifest.json`. L'addon découvre les catalogues déclarés et les expose comme sources sélectionnables dans le gestionnaire de catalogues.
 
+Ce mécanisme importe aussi les catalogues Films/Séries d’addons compatibles tels
+que Plexio ou Stremio Jellyfin, ainsi que les catalogues anime/YouTube de Kitsu
+ou YouTubio. Il ne donne pas accès à la base interne d’un addon `stream` qui
+n’expose aucun catalogue : un manifeste `stream` seul, comme celui de Comet, ne
+permet pas d’énumérer tous ses médias.
+
 Une source [WaCustom](https://github.com/dydy13014/wacustom) utilise l’URL de
 l’instance et son mot de passe administrateur. L’addon lit l’API WASource
 paginée, conserve les identifiants et métadonnées utiles au catalogue, mais ne
@@ -211,6 +219,31 @@ spécifique pour les inclure. Une sauvegarde SQLite précède tout import.
 > après création, suppression, renommage ou changement de visibilité, utilisez
 > **Installer / mettre à niveau** pour actualiser ce manifeste sans désinstaller
 > l’addon.
+
+## Guides de catalogues
+
+Un guide ne devient jamais une nouvelle source de contenu. Il fournit une liste
+ordonnée d’identifiants, puis Stremio RSS Catalog calcule son intersection avec
+la médiathèque locale :
+
+```text
+liste externe ordonnée ∩ médias déjà indexés = contenu du catalogue
+```
+
+- **MDBList** : URL ou identifiant de liste, pagination jusqu’au plafond choisi ;
+- **ListSync** : URL de l’instance, type et identifiant de liste ; l’endpoint
+  actuel de ListSync limite une liste à 100 éléments ;
+- **SuggestArr** : URL, compte local et statuts de recommandations ; le jeton JWT
+  est obtenu automatiquement et les pages sont lues par lots de 100.
+
+Les identifiants et mots de passe restent masqués, sont exclus des exports par
+défaut et ne sont inclus qu’après confirmation explicite.
+
+[Agregarr](https://github.com/agregarr/agregarr) sait agréger de nombreuses
+listes, mais ne fournit pas actuellement d’endpoint stable énumérant les
+éléments d’une collection existante indépendamment de Plex. Son aperçu dépend
+d’une session authentifiée et d’une bibliothèque Plex ; aucun scraper fragile
+n’est donc embarqué.
 
 ---
 

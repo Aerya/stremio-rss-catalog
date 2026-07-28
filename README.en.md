@@ -47,6 +47,8 @@
 | **Two separate pauses** | Freeze new catalog content independently from catalog visibility in the Stremio manifest |
 | **Nested Pastebins** | Direct pages, JSON pointers, and categorized master indexes with bounded recursion and deduplication |
 | **Stremio manifests** | Generic remote catalog discovery and content import |
+| **Native anime and YouTube** | Preserve `anime`, Kitsu/MAL/AniList/AniDB and `YouTube`/`yt_id:` types and identifiers without silently converting them to movies |
+| **Catalog guides** | MDBList, ListSync, and SuggestArr provide selection and ordering; only media already indexed locally is exposed |
 | **Dry run** | Exact media count before creating a catalog |
 | **Manifest history** | Revisions and create, rename, freeze, visibility, and delete events |
 | **Auto detection** | Category identified from release name, feed URL keywords, or TMDB/OMDb genres |
@@ -118,7 +120,7 @@ services:
       - "7973:7000"
     volumes:
     # Adapt to your setup: /path/to/your/data/:/data
-      - /home/aerya/docker/stremio-rss-catalog/:/data
+      - /path/to/stremio-rss-catalog/:/data
     environment:
       - PORT=7000
       - NODE_ENV=production
@@ -132,7 +134,11 @@ services:
       - SESSION_SECRET=changeme
 ```
 
-Then open the WebUI at `http://localhost:7973`, add RSS, Pastebin, or Stremio-manifest sources under **Sources**, manage historical and custom catalogs under **Catalogs**, run a first sync, and install the addon in Stremio using the provided URL. A TMDB key is required for RSS and Pastebin sources.
+Then open the WebUI at `http://localhost:7973`, add content sources under
+**Sources**, manage historical and custom catalogs under **Catalogs**, optionally
+apply an MDBList, ListSync, or SuggestArr guide, run a first sync, and install
+the addon in Stremio using the provided URL. A TMDB key is required for sources
+whose titles still need matching.
 
 > **`TZ`** sets the container timezone. Adjust to your own timezone (e.g. `America/New_York`) for correct date display in the WebUI and proper sync history grouping.
 
@@ -170,6 +176,12 @@ Pastebin sources support direct content, JSON pointers, and categorized master
 indexes. Stremio manifest sources discover remote catalogs and make them
 selectable in the catalog manager.
 
+This also imports movie/series catalogs from compatible addons such as Plexio
+or Stremio Jellyfin, and anime/YouTube catalogs from Kitsu or YouTubio. A
+stream-only manifest does not expose an addon's internal database: for example,
+a Comet manifest cannot enumerate every media item without a dedicated export
+API.
+
 A WebDAV source points to a root folder. The addon scans subfolders with
 `PROPFIND`, keeps configured video extensions, then applies the same title
 cleanup and TMDB matching used for RSS. It does not play files: install
@@ -191,6 +203,29 @@ created before every import.
 > but Stremio stores the manifest in the user profile. After creating, deleting,
 > renaming, or changing catalog visibility, use **Install / upgrade** to refresh
 > it without uninstalling the addon.
+
+## Catalog guides
+
+A guide is never a content source. It provides an ordered identifier list and
+the addon intersects it with its local library:
+
+```text
+ordered external list ∩ already indexed media = catalog content
+```
+
+- **MDBList**: list URL or identifier with pagination up to the chosen cap;
+- **ListSync**: instance URL, list type, and list identifier; ListSync's current
+  per-list endpoint is limited to 100 items;
+- **SuggestArr**: instance URL, local account, and recommendation statuses; JWT
+  login and 100-item pagination are handled automatically.
+
+Credentials remain masked and are excluded from configuration exports unless
+the user explicitly includes secrets.
+
+[Agregarr](https://github.com/agregarr/agregarr) supports many list providers,
+but currently has no stable endpoint that enumerates an existing collection
+independently from Plex. Its preview requires an authenticated session and a
+Plex library, so this addon does not ship a fragile scraper.
 
 ---
 
