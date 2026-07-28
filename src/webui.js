@@ -244,6 +244,7 @@ class WebUI {
       const includeSecrets = req.query.include_secrets === 'true';
       const secretConfigKeys = new Set([
         'tmdb_api_key', 'tvdb_api_key', 'omdb_api_key', 'mal_client_id',
+        'stremio_metadata_manifest_url',
         'rpdb_api_key', 'proxy_username', 'proxy_password',
         'proxy_host', 'proxy_port', 'discord_webhook_url',
         'apprise_server_url', 'apprise_urls',

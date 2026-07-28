@@ -56,6 +56,8 @@
 | **Anime** | Detected via TMDB genre 16 + Japanese origin, OVA/OAV in title, or forced per feed |
 | **MAL** | MyAnimeList API v2 — EN title normalizer to improve TMDB matching for anime (optional, free key) |
 | **AniList** 🆕 NEW | AniList GraphQL API — complementary title normalizer (romaji + native titles) + anime dedup, fully free and anonymous, no sign-up required |
+| **Kitsu** | Keyless native anime fallback: recognized content remains indexable with its `kitsu:` identifier even when TMDB has no match |
+| **Stremio metadata addon** | Configurable fallback through a search-enabled `manifest.json`, for example [AIOMetadata](https://github.com/cedya77/aiometadata) |
 | **Concerts** 🆕 NEW | Detected via TMDB genre 10402 (Music) + OMDb confirmation, without narrative genres (Drama, Action…) |
 | **Live Shows** 🆕 NEW | Detected via title keywords (Stand-up, One Man Show, Theatre, Circus…) + OMDb confirmation |
 | **OMDb** | OMDb API queried after each TMDB match to confirm concert and live show classification |
@@ -266,9 +268,9 @@ RSS Release
   → Total failure → failed_releases (manual or auto retry)
 ```
 
-**Anime title normalization (MAL + AniList):**
+**Anime identification (MAL + AniList + Kitsu):**
 
-MAL and AniList are used in combination to obtain the canonical English title before searching TMDB. MAL takes priority when a key is configured; AniList complements it (or acts alone when MAL is not configured). TMDB search attempts are built from both sources' titles, deduplicated and ordered by relevance (EN title, romaji, native, cleanName fallback).
+MAL, AniList, and Kitsu provide canonical titles before TMDB is searched. If TMDB fails, a configured Stremio metadata addon is queried, then the native Kitsu, MAL, or AniList identifier is preserved. The corresponding metadata addon must also be installed in Stremio to display the full metadata page.
 
 **TMDB — 5 attempts in order (non-anime):**
 1. Exact title + year, French
@@ -364,6 +366,8 @@ Database migration runs automatically on first startup. All your existing config
 - **TVDB API key** — improves documentary series detection (free at [thetvdb.com](https://thetvdb.com))
 - **MAL Client ID** — improves anime matching (free at [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig))
 - **AniList** — enabled by default, no key required
+- **Kitsu** — enabled by default, no key required
+- **Stremio metadata addon** — optional fallback through a configured `manifest.json` URL, for example AIOMetadata
 - **OMDb API key** — enables concert and live show detection (free at [omdbapi.com](https://www.omdbapi.com/apikey.aspx), 1000 req/day)
 
 **5. Reinstall the addon in Stremio** if you changed ports.
@@ -374,7 +378,7 @@ Database migration runs automatically on first startup. All your existing config
 
 - The first sync may take several minutes depending on feed size — do it **before** installing the addon in Stremio
 - Catalogs are paginated in pages of 100 media — Stremio loads them as you scroll, with no limit
-- Only content with a valid IMDB ID is indexed — Stremio only accepts IMDB IDs
+- IMDb IDs are preferred; supported native anime and YouTube identifiers are also preserved
 - Concert and live show detection requires an OMDb API key (free, 1000 req/day at omdbapi.com)
 - AniList is enabled by default and requires no key — it can be disabled from the config
 - Media indexed before new categories were added remains in its old category — use analysis followed by grouped repair
@@ -399,7 +403,7 @@ The maintenance tools (manual reclassification, false positive correction) and t
 
 - Successor to [UseFlow-FR](https://github.com/Aerya/UseFlow-FR) — original codebase, compatible database
 - Built on the [Stremio Addon SDK](https://github.com/Stremio/stremio-addon-sdk)
-- Metadata: [TMDB](https://www.themoviedb.org/), [TVDB](https://thetvdb.com/), [OMDb](https://www.omdbapi.com/), [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/)
+- Metadata: [TMDB](https://www.themoviedb.org/), [TVDB](https://thetvdb.com/), [OMDb](https://www.omdbapi.com/), [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/), [Kitsu](https://kitsu.io/), and [AIOMetadata](https://github.com/cedya77/aiometadata)
 - Integrations: [Prowlarr](https://prowlarr.com/), [NZBHydra2](https://github.com/theotherp/nzbhydra2), [Apprise](https://github.com/caronc/apprise), [RPDB](https://ratingposterdb.com/)
 
 ---

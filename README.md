@@ -56,6 +56,8 @@
 | **Animés** | Détectés via TMDB genre 16 + origine japonaise, OVA/OAV dans le titre, ou forcé par flux |
 | **MAL** | MyAnimeList API v2 — normalisateur de titre EN pour améliorer le match TMDB des animés (optionnel, clé gratuite) |
 | **AniList** 🆕 NEW | API GraphQL AniList — normalisateur complémentaire (titres romaji + natifs) + déduplication animés, entièrement gratuit et anonyme, sans inscription |
+| **Kitsu** | Fallback anime natif sans clé : un contenu reconnu reste indexable avec son identifiant `kitsu:` même s'il n'existe pas dans TMDB |
+| **Addon de métadonnées Stremio** | Fallback configurable via un `manifest.json` doté de catalogues de recherche, par exemple [AIOMetadata](https://github.com/cedya77/aiometadata) |
 | **Concerts** 🆕 NEW | Détectés via TMDB genre 10402 (Music) + confirmation OMDb, sans genres narratifs (Drama, Action…) |
 | **Spectacles** 🆕 NEW | Détectés via mots-clés titre (Stand-up, One Man Show, Théâtre, Cirque…) + confirmation OMDb |
 | **OMDb** | API OMDb interrogée après chaque match TMDB pour confirmer la classification concerts et spectacles |
@@ -284,9 +286,9 @@ Release RSS
   → Échec total → failed_releases (retry manuel ou automatique)
 ```
 
-**Normalisation du titre animé (MAL + AniList) :**
+**Identification des animés (MAL + AniList + Kitsu) :**
 
-MAL et AniList sont utilisés en combinaison pour obtenir le titre anglais canonique avant de chercher sur TMDB. MAL est prioritaire quand une clé est configurée, AniList intervient en complément (ou seul si MAL n'est pas configuré). Les tentatives TMDB sont construites à partir des titres des deux sources, dédupliqués et ordonnés par pertinence (titre EN, romaji, natif, cleanName de fallback).
+MAL, AniList et Kitsu sont combinés pour obtenir les titres canoniques avant de chercher sur TMDB. Si TMDB échoue, un addon Stremio de métadonnées configuré est interrogé, puis l'identifiant anime natif Kitsu, MAL ou AniList est conservé. L'addon de métadonnées correspondant doit aussi être installé dans Stremio pour afficher la fiche complète.
 
 **TMDB — 5 tentatives dans l'ordre (hors animés) :**
 1. Titre exact + année, français
@@ -384,6 +386,8 @@ La migration de la base de données s'effectue automatiquement si nécessaire. T
 - **Clé API TVDB** — améliore la détection des docu-séries (gratuit sur [thetvdb.com](https://thetvdb.com))
 - **Client ID MAL** — améliore le matching des animés (gratuit sur [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig))
 - **AniList** — activé par défaut, aucune clé requise
+- **Kitsu** — activé par défaut, aucune clé requise
+- **Addon de métadonnées Stremio** — fallback optionnel via l'URL configurée d'un `manifest.json`, par exemple AIOMetadata
 - **Clé API OMDb** — active la détection des concerts et spectacles (gratuit sur [omdbapi.com](https://www.omdbapi.com/apikey.aspx), 1000 req/jour)
 
 **5. Réinstaller l'addon dans Stremio** si vous avez changé de port.
@@ -419,7 +423,7 @@ Les outils de maintenance (reclassification manuelle, correction des faux positi
 
 - Successeur de [UseFlow-FR](https://github.com/Aerya/UseFlow-FR) — base de code historique, base de données compatible
 - Bâti sur le [Stremio Addon SDK](https://github.com/Stremio/stremio-addon-sdk)
-- Métadonnées : [TMDB](https://www.themoviedb.org/), [TVDB](https://thetvdb.com/), [OMDb](https://www.omdbapi.com/), [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/)
+- Métadonnées : [TMDB](https://www.themoviedb.org/), [TVDB](https://thetvdb.com/), [OMDb](https://www.omdbapi.com/), [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/), [Kitsu](https://kitsu.io/) et [AIOMetadata](https://github.com/cedya77/aiometadata)
 - Intégrations : [Prowlarr](https://prowlarr.com/), [NZBHydra2](https://github.com/theotherp/nzbhydra2), [Apprise](https://github.com/caronc/apprise), [RPDB](https://ratingposterdb.com/)
 
 ---

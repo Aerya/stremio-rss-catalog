@@ -3,7 +3,9 @@ const { SocksProxyAgent } = require('socks-proxy-agent');
 const TVDBService     = require('./services/tvdbService');
 const MALService      = require('./services/malService');
 const AniListService  = require('./services/anilistService');
+const KitsuService    = require('./services/kitsuService');
 const OMDbService     = require('./services/omdbService');
+const StremioMetadataService = require('./services/stremioMetadataService');
 
 // Genres TMDB qui indiquent une émission TV plutôt qu'une série narrative
 const EMISSIONS_GENRE_IDS = new Set([10763, 10764, 10766, 10767]); // News, Reality, Soap, Talk
@@ -36,7 +38,9 @@ class TMDBMatcher {
     this.tvdb    = new TVDBService(db);
     this.mal     = new MALService(db);
     this.anilist = new AniListService(db);
+    this.kitsu   = new KitsuService(db, () => this.getAxiosConfig());
     this.omdb    = new OMDbService(db);
+    this.stremioMetadata = new StremioMetadataService(db, () => this.getAxiosConfig());
   }
 
   linkDirectIdentities(item, mediaId) {
@@ -234,6 +238,7 @@ class TMDBMatcher {
   async matchAnimeItem(item) {
     let malResult    = null;
     let anilistResult = null;
+    let kitsuResult = null;
 
     // ── 1. MAL (si clé configurée) ────────────────────────────────────────────
     if (this.mal.isConfigured()) {
@@ -259,11 +264,24 @@ class TMDBMatcher {
       }
     }
 
-    // ── 3. Matching TMDB avec titres normalisés ───────────────────────────────
-    if (malResult || anilistResult) {
-      // Priorité MAL, AniList en complément
-      const primary   = malResult || anilistResult;
-      const secondary = malResult ? anilistResult : null;
+    // ── 3. Kitsu (sans clé) ───────────────────────────────────────────────────
+    if (this.kitsu.isEnabled()) {
+      try {
+        kitsuResult = await this.kitsu.search(item.cleanName, item.year);
+        if (kitsuResult) {
+          console.log(`[Kitsu] ✓ "${item.cleanName}" → "${kitsuResult.title}" (id:${kitsuResult.kitsu_id})`);
+        }
+      } catch (err) {
+        console.error(`[Kitsu] Erreur pour "${item.cleanName}":`, err.message);
+      }
+    }
+
+    // ── 4. Matching TMDB avec titres normalisés ───────────────────────────────
+    if (malResult || anilistResult || kitsuResult) {
+      // Priorité MAL, puis AniList et Kitsu en compléments
+      const primary = malResult || anilistResult || kitsuResult;
+      const secondaryResults = [anilistResult, kitsuResult]
+        .filter(result => result && result !== primary);
 
       const isTV = (primary.stremio_type === 'series') || item.type === 'series';
       const search = isTV
@@ -282,18 +300,18 @@ class TMDBMatcher {
 
       // Titres principaux (MAL prioritaire)
       addTitle(primary.title);
-      if (secondary) addTitle(secondary.title);
+      secondaryResults.forEach(result => addTitle(result.title));
 
       // Titres alternatifs
       addTitle(primary.title_romaji ?? primary.title_ja);
-      if (secondary) {
-        addTitle(secondary.title_romaji);
-        addTitle(secondary.title_ja);
-      }
+      secondaryResults.forEach(result => {
+        addTitle(result.title_romaji);
+        addTitle(result.title_ja);
+      });
       addTitle(primary.title_ja);
       addTitle(item.cleanName); // toujours en dernier fallback
 
-      const bestYear = primary.year || (secondary && secondary.year) || item.year;
+      const bestYear = primary.year || secondaryResults.find(result => result.year)?.year || item.year;
 
       // Tentatives : premier titre + année, puis tous les titres sans année
       const attempts = [
@@ -328,8 +346,38 @@ class TMDBMatcher {
       console.log(`[Anime→TMDB] Aucun résultat TMDB pour "${primary.title}" (${item.cleanName})`);
     }
 
-    // Fallback : matching standard TMDB sans normalisateur
-    return this.matchItem(item);
+    // ── 5. Fallback fournisseur de métadonnées Stremio ───────────────────────
+    const standardMatch = await this.matchItem(item);
+    if (standardMatch) return standardMatch;
+
+    const stremioMatch = await this.stremioMetadata.search(item);
+    if (stremioMatch) return stremioMatch;
+
+    // ── 6. ID anime natif ─────────────────────────────────────────────────────
+    // Ces identifiants sont résolus dans Stremio par un addon de métadonnées
+    // compatible (AIOMetadata, Kitsu Anime, etc.), sans imposer un faux IMDb ID.
+    const native = kitsuResult
+      ? { ...kitsuResult, id: `kitsu:${kitsuResult.kitsu_id}` }
+      : malResult
+      ? { ...malResult, id: `mal:${malResult.mal_id}` }
+      : anilistResult
+      ? { ...anilistResult, id: `anilist:${anilistResult.anilist_id}` }
+      : null;
+    if (!native) return null;
+
+    return {
+      imdb_id: native.id,
+      tmdb_id: null,
+      name: native.title || item.cleanName,
+      year: native.year || item.year || null,
+      poster: native.poster || null,
+      background: native.background || null,
+      description: native.synopsis || null,
+      genres: [],
+      vote_average: native.score || null,
+      original_language: 'ja',
+      origin_country: ['JP']
+    };
   }
 
   async matchBatch(items, onProgress = null) {
@@ -402,6 +450,9 @@ class TMDBMatcher {
           : item.tmdb_id
           ? await this.fetchByTmdbId(item.tmdb_id, item.type === 'series' ? 'tv' : 'movie')
           : (isAnime ? await this.matchAnimeItem(item) : await this.matchItem(item));
+        if (!match && !isAnime) {
+          match = await this.stremioMetadata.search(item);
+        }
       } catch (err) {
         console.error(`[TMDB] Erreur inattendue sur "${item.cleanName}":`, err.message);
       }

@@ -56,6 +56,8 @@
 | **Anime** | Via TMDB-Genre 16 + japanische Herkunft, OVA/OAV im Titel oder per Feed erzwungen |
 | **MAL** | MyAnimeList API v2 — EN-Titel-Normalisierer für besseren TMDB-Abgleich bei Anime (optional, kostenloser Schlüssel) |
 | **AniList** 🆕 NEW | AniList GraphQL-API — ergänzender Titel-Normalisierer (Romaji + Originaltitel) + Anime-Deduplizierung, vollständig kostenlos und anonym, keine Registrierung erforderlich |
+| **Kitsu** | Nativer Anime-Fallback ohne Schlüssel: Erkannte Inhalte bleiben mit ihrer `kitsu:`-ID indexierbar, auch wenn TMDB keinen Treffer hat |
+| **Stremio-Metadaten-Addon** | Konfigurierbarer Fallback über eine `manifest.json` mit Suchkatalogen, zum Beispiel [AIOMetadata](https://github.com/cedya77/aiometadata) |
 | **Konzerte** 🆕 NEW | Via TMDB-Genre 10402 (Music) + OMDb-Bestätigung, ohne narrative Genres (Drama, Action…) |
 | **Aufführungen** 🆕 NEW | Via Titel-Schlüsselwörter (Stand-up, One Man Show, Theater, Zirkus…) + OMDb-Bestätigung |
 | **OMDb** | OMDb-API nach jedem TMDB-Match abgefragt, um Konzert- und Aufführungsklassifizierung zu bestätigen |
@@ -268,9 +270,9 @@ RSS-Release
   → Vollständiger Fehlschlag → failed_releases (manueller oder automatischer Retry)
 ```
 
-**Anime-Titel-Normalisierung (MAL + AniList):**
+**Anime-Identifizierung (MAL + AniList + Kitsu):**
 
-MAL und AniList werden kombiniert eingesetzt, um vor der TMDB-Suche den kanonischen englischen Titel zu ermitteln. MAL hat Priorität, wenn ein Schlüssel konfiguriert ist; AniList ergänzt ihn (oder agiert allein, wenn MAL nicht konfiguriert ist). Die TMDB-Suchversuche werden aus den Titeln beider Quellen aufgebaut, dedupliziert und nach Relevanz geordnet (EN-Titel, Romaji, Originaltitel, cleanName-Fallback).
+MAL, AniList und Kitsu liefern kanonische Titel vor der TMDB-Suche. Wenn TMDB keinen Treffer liefert, wird ein konfiguriertes Stremio-Metadaten-Addon abgefragt und anschließend die native Kitsu-, MAL- oder AniList-ID erhalten. Für die vollständige Detailseite muss das passende Metadaten-Addon ebenfalls in Stremio installiert sein.
 
 **TMDB — 5 Versuche der Reihe nach (Nicht-Anime):**
 1. Genauer Titel + Jahr, Französisch
@@ -367,6 +369,8 @@ Die Datenbankmigration wird beim ersten Start automatisch durchgeführt. Ihre ge
 - **TVDB API-Schlüssel** — verbessert die Erkennung von Doku-Serien (kostenlos auf [thetvdb.com](https://thetvdb.com))
 - **MAL Client-ID** — verbessert den Anime-Abgleich (kostenlos auf [myanimelist.net/apiconfig](https://myanimelist.net/apiconfig))
 - **AniList** — standardmäßig aktiviert, kein Schlüssel erforderlich
+- **Kitsu** — standardmäßig aktiviert, kein Schlüssel erforderlich
+- **Stremio-Metadaten-Addon** — optionaler Fallback über eine konfigurierte `manifest.json`, zum Beispiel AIOMetadata
 - **OMDb API-Schlüssel** — aktiviert die Konzert- und Aufführungserkennung (kostenlos auf [omdbapi.com](https://www.omdbapi.com/apikey.aspx), 1000 Anfragen/Tag)
 
 **5. Addon in Stremio neu installieren**, falls Sie den Port geändert haben.
@@ -377,7 +381,7 @@ Die Datenbankmigration wird beim ersten Start automatisch durchgeführt. Ihre ge
 
 - Die erste Synchronisierung kann je nach Feed-Größe mehrere Minuten dauern — **vor** der Installation des Addons in Stremio durchführen
 - Kataloge werden in Seiten von 100 Medien paginiert — Stremio lädt sie beim Scrollen, ohne Limit
-- Nur Inhalte mit einer gültigen IMDB-ID werden indexiert — Stremio akzeptiert ausschließlich IMDB-IDs
+- IMDb-IDs werden bevorzugt; unterstützte native Anime- und YouTube-IDs bleiben ebenfalls erhalten
 - Konzert- und Aufführungserkennung erfordert einen OMDb API-Schlüssel (kostenlos, 1000 Anfragen/Tag auf omdbapi.com)
 - AniList ist standardmäßig aktiviert und erfordert keinen Schlüssel — es kann in der Konfiguration deaktiviert werden
 - Vor Hinzufügung neuer Kategorien indexierte Medien bleiben in ihrer alten Kategorie — verwenden Sie Analyse und anschließende gruppierte Reparatur
@@ -402,7 +406,7 @@ Die Wartungswerkzeuge (manuelle Reklassifizierung, Korrektur von Falsch-Positive
 
 - Nachfolger von [UseFlow-FR](https://github.com/Aerya/UseFlow-FR) — ursprüngliche Codebasis, kompatible Datenbank
 - Basiert auf dem [Stremio Addon SDK](https://github.com/Stremio/stremio-addon-sdk)
-- Metadaten: [TMDB](https://www.themoviedb.org/), [TVDB](https://thetvdb.com/), [OMDb](https://www.omdbapi.com/), [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/)
+- Metadaten: [TMDB](https://www.themoviedb.org/), [TVDB](https://thetvdb.com/), [OMDb](https://www.omdbapi.com/), [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/), [Kitsu](https://kitsu.io/) und [AIOMetadata](https://github.com/cedya77/aiometadata)
 - Integrationen: [Prowlarr](https://prowlarr.com/), [NZBHydra2](https://github.com/theotherp/nzbhydra2), [Apprise](https://github.com/caronc/apprise), [RPDB](https://ratingposterdb.com/)
 
 ---

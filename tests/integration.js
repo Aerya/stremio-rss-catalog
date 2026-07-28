@@ -119,6 +119,25 @@ async function main() {
         hasMore: false
       }));
     }
+    if (req.url.startsWith('/metadata/manifest.json')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        id: 'test.metadata', version: '1.0.0', name: 'Métadonnées de test',
+        catalogs: [{
+          type: 'movie', id: 'search.movie', name: 'Recherche films',
+          extra: [{ name: 'search', isRequired: true }]
+        }]
+      }));
+    }
+    if (req.url.startsWith('/metadata/catalog/movie/search.movie/search=Film%20Fallback.json')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        metas: [{
+          id: 'tt0000999', type: 'movie', name: 'Film Fallback',
+          releaseInfo: '2026', poster: 'https://images.invalid/fallback.jpg'
+        }]
+      }));
+    }
     if (req.url.startsWith('/mdblist/items')) {
       const requestUrl = new URL(req.url, baseUrl);
       mdblistKeyReceived = requestUrl.searchParams.get('apikey') === 'mdblist-test-key';
@@ -296,6 +315,27 @@ async function main() {
     assert.equal(match.failed, 0);
     assert.equal(db.getMediaByImdbId('tt0000123').year, '2026');
     assert.equal(db.getMediaByImdbId('tt0000456').type, 'series');
+
+    matcher.anilist.search = async () => null;
+    matcher.kitsu.search = async () => ({
+      kitsu_id: '777', title: 'Anime Natif', year: '2026',
+      stremio_type: 'series', score: 8.1, poster: 'https://images.invalid/kitsu.jpg'
+    });
+    matcher.matchItem = async () => null;
+    matcher.stremioMetadata.search = async () => null;
+    const nativeAnime = await matcher.matchAnimeItem({
+      cleanName: 'Anime Natif', year: '2026', type: 'series', catalog_type: 'animés'
+    });
+    assert.equal(nativeAnime.imdb_id, 'kitsu:777');
+
+    db.setConfig('stremio_metadata_enabled', 'true');
+    db.setConfig('stremio_metadata_manifest_url', `${baseUrl}/metadata/manifest.json?token=test`);
+    const metadataMatch = await new (require('../src/services/stremioMetadataService'))(
+      db, () => ({ timeout: 2000 })
+    ).search({
+      cleanName: 'Film Fallback', year: '2026', type: 'movie'
+    });
+    assert.equal(metadataMatch.imdb_id, 'tt0000999');
 
     const rssParser = new RSSParser({}, db);
     rssParser.mdblistGuideParser.itemsUrl = () => `${baseUrl}/mdblist/items`;

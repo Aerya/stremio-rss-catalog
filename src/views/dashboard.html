@@ -817,7 +817,7 @@
         </div>
 
         <div class="config-section">
-          <h3>API</h3>
+          <h3 data-i18n="config_identification_title">Services d’identification des contenus</h3>
           <div class="field">
             <label>
               <span data-i18n="config_tmdb_key">Clé API TMDB</span>
@@ -857,6 +857,42 @@
             </div>
             <small class="field-hint" data-i18n="config_anilist_hint">
               AniList est utilisé en complément de MAL pour normaliser les titres d'animés. Gratuit et anonyme — aucune inscription requise.
+            </small>
+          </div>
+          <div class="field">
+            <div class="toggle-row" style="margin-bottom:4px">
+              <label class="toggle-switch">
+                <input type="checkbox" id="kitsu_enabled" name="kitsu_enabled">
+                <span class="slider"></span>
+              </label>
+              <label for="kitsu_enabled" data-i18n="config_kitsu_enable">
+                Activer Kitsu (matching anime natif, sans clé API)
+              </label>
+            </div>
+            <small class="field-hint" data-i18n="config_kitsu_hint">
+              Ajoute un fallback anime avec des identifiants Kitsu lorsque TMDB ne trouve pas le contenu.
+            </small>
+          </div>
+          <div class="field">
+            <div class="toggle-row" style="margin-bottom:4px">
+              <label class="toggle-switch">
+                <input type="checkbox" id="stremio_metadata_enabled" name="stremio_metadata_enabled">
+                <span class="slider"></span>
+              </label>
+              <label for="stremio_metadata_enabled" data-i18n="config_stremio_metadata_enable">
+                Utiliser un addon Stremio de métadonnées comme fallback
+              </label>
+            </div>
+            <label>
+              <span data-i18n="config_stremio_metadata_url">URL de son manifest.json configuré</span>
+              <a href="https://github.com/cedya77/aiometadata" target="_blank" class="label-link">AIOMetadata ↗</a>
+            </label>
+            <input type="password" id="stremio_metadata_manifest_url"
+              name="stremio_metadata_manifest_url"
+              placeholder="https://metadata.exemple.fr/stremio/utilisateur/manifest.json"
+              autocomplete="off">
+            <small data-i18n="config_stremio_metadata_hint">
+              Le service est interrogé uniquement après échec des identifiants directs et de TMDB. Compatible avec les addons exposant des catalogues de recherche Stremio.
             </small>
           </div>
           <div class="field">

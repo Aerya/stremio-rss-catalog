@@ -2964,7 +2964,8 @@ async function loadConfig() {
     const cfg = await r.json();
 
     ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
-     'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
+     'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'stremio_metadata_manifest_url',
+     'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
      'proxy_password', 'refresh_interval', 'discord_webhook_url',
      'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
       const el = document.getElementById(k);
@@ -2973,7 +2974,8 @@ async function loadConfig() {
 
     ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
      'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
-     'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled'].forEach(k => {
+     'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled',
+     'kitsu_enabled', 'stremio_metadata_enabled'].forEach(k => {
       const el = document.getElementById(k);
       if (el) el.checked = cfg[k] === 'true';
     });
@@ -2988,7 +2990,8 @@ async function saveConfig(e) {
 
   const cfg = {};
   ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
-   'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
+   'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'stremio_metadata_manifest_url',
+   'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
    'proxy_password', 'refresh_interval', 'discord_webhook_url',
    'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
     const el = document.getElementById(k);
@@ -2997,7 +3000,8 @@ async function saveConfig(e) {
 
   ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
    'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
-   'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled'].forEach(k => {
+   'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled',
+   'kitsu_enabled', 'stremio_metadata_enabled'].forEach(k => {
     const el = document.getElementById(k);
     if (el) cfg[k] = el.checked ? 'true' : 'false';
   });
