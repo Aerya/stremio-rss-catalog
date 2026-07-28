@@ -550,6 +550,13 @@ class WebUI {
         year: year || null,
         quality: quality || null
       });
+      const sourceNameMap = this.getSourceNameMap();
+      result.items = result.items.map(item => ({
+        ...item,
+        source_names: [...new Set((item.source_urls || [])
+          .map(sourceUrl => sourceNameMap[sourceUrl])
+          .filter(Boolean))]
+      }));
       res.json(result);
     });
 
@@ -564,23 +571,21 @@ class WebUI {
         page: parseInt(page) || 1,
         limit: parseInt(limit) || 50
       });
-      // Build URL→name map from RSS config
-      let feedNameMap = {};
-      try {
-        const rawUrls = this.db.getConfig('rss_additional_urls') || '[]';
-        const feeds = JSON.parse(rawUrls);
-        feeds.forEach(f => { if (f.url && f.name) feedNameMap[f.url] = f.name; });
-      } catch (e) { /* silencieux */ }
+      const sourceNameMap = this.getSourceNameMap();
       result.items = result.items.map(item => ({
         ...item,
-        source_name: (item.source_url && feedNameMap[item.source_url]) || null
+        source_name: (item.source_url && sourceNameMap[item.source_url]) || null
       }));
       res.json(result);
     });
 
     this.app.get('/api/media/:imdbId/releases', this.authMiddleware.bind(this), (req, res) => {
+      const sourceNameMap = this.getSourceNameMap();
       const releases = this.db.getReleasesByMedia(req.params.imdbId);
-      res.json(releases);
+      res.json(releases.map(release => ({
+        ...release,
+        source_name: (release.source_url && sourceNameMap[release.source_url]) || null
+      })));
     });
 
     this.app.post('/api/media/:imdbId/catalog', this.authMiddleware.bind(this), (req, res) => {
@@ -598,31 +603,7 @@ class WebUI {
 
     // ─── Sources ────────────────────────────────────────────────────────────
     this.app.get('/api/sources/stats', this.authMiddleware.bind(this), (req, res) => {
-      // Map url → nom depuis la config
-      const nameMap = {};
-      const mainUrl  = this.db.getConfig('rss_films_url');
-      const mainName = this.db.getConfig('rss_films_name');
-      if (mainUrl && mainName) nameMap[mainUrl] = mainName;
-      try {
-        const additional = JSON.parse(this.db.getConfig('rss_additional_urls') || '[]');
-        additional.forEach(item => { if (item.url && item.name) nameMap[item.url] = item.name; });
-      } catch (e) {}
-      this.rssParser.pastebinParser.getSources().forEach(item => {
-        if (item.url && item.name) nameMap[item.url] = item.name;
-      });
-      this.rssParser.stremioManifestParser.getSources().forEach(source => {
-        (source.catalogs || []).forEach(catalog => {
-          nameMap[this.rssParser.stremioManifestParser.sourceKey(source.id, catalog)] = `${source.name} — ${catalog.name}`;
-        });
-      });
-      this.rssParser.newznabParser.getSources().forEach(source => {
-        if (source.categories?.movie) {
-          nameMap[this.rssParser.newznabParser.sourceKey(source.id, 'movie')] = `${source.name} — Films`;
-        }
-        if (source.categories?.series) {
-          nameMap[this.rssParser.newznabParser.sourceKey(source.id, 'series')] = `${source.name} — Séries`;
-        }
-      });
+      const nameMap = this.getSourceNameMap();
 
       // Flux avec releases
       const stats = this.db.getSourceStats();
@@ -1077,6 +1058,37 @@ class WebUI {
   bumpManifestRevision() {
     const next = (Number(this.db.getConfig('manifest_revision')) || 0) + 1;
     this.db.setConfig('manifest_revision', String(next));
+  }
+
+  getSourceNameMap() {
+    const nameMap = {};
+    const mainUrl = this.db.getConfig('rss_films_url');
+    const mainName = this.db.getConfig('rss_films_name');
+    if (mainUrl && mainName) nameMap[mainUrl] = mainName;
+    try {
+      const additional = JSON.parse(this.db.getConfig('rss_additional_urls') || '[]');
+      additional.forEach(source => {
+        if (source.url && source.name) nameMap[source.url] = source.name;
+      });
+    } catch {}
+    this.rssParser.pastebinParser.getSources().forEach(source => {
+      if (source.url && source.name) nameMap[source.url] = source.name;
+    });
+    this.rssParser.stremioManifestParser.getSources().forEach(source => {
+      (source.catalogs || []).forEach(catalog => {
+        nameMap[this.rssParser.stremioManifestParser.sourceKey(source.id, catalog)] =
+          `${source.name} — ${catalog.name}`;
+      });
+    });
+    this.rssParser.newznabParser.getSources().forEach(source => {
+      if (source.categories?.movie) {
+        nameMap[this.rssParser.newznabParser.sourceKey(source.id, 'movie')] = `${source.name} — Films`;
+      }
+      if (source.categories?.series) {
+        nameMap[this.rssParser.newznabParser.sourceKey(source.id, 'series')] = `${source.name} — Séries`;
+      }
+    });
+    return nameMap;
   }
 
   getAdditionalRssSources() {

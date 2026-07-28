@@ -732,7 +732,11 @@ class DatabaseManager {
       SELECT m.*, COUNT(r.id) as release_count,
         (SELECT GROUP_CONCAT(release_name, '|||')
          FROM (SELECT release_name FROM releases WHERE media_imdb_id = m.imdb_id ORDER BY added_at DESC LIMIT 3)
-        ) as release_names_raw
+        ) as release_names_raw,
+        (SELECT json_group_array(DISTINCT source_url)
+         FROM releases
+         WHERE media_imdb_id = m.imdb_id AND source_url IS NOT NULL AND source_url != ''
+        ) as source_urls_raw
       FROM media m LEFT JOIN releases r ON r.media_imdb_id = m.imdb_id
       ${where}
       GROUP BY m.imdb_id
@@ -744,7 +748,8 @@ class DatabaseManager {
       items: rows.map(r => ({
         ...r,
         genres: r.genres ? JSON.parse(r.genres) : [],
-        release_names: r.release_names_raw ? r.release_names_raw.split('|||') : []
+        release_names: r.release_names_raw ? r.release_names_raw.split('|||') : [],
+        source_urls: r.source_urls_raw ? JSON.parse(r.source_urls_raw) : []
       })),
       total, page: Number(page), limit: Number(limit),
       pages: Math.ceil(total / Number(limit))

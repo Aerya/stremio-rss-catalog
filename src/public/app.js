@@ -378,6 +378,15 @@ function renderMediaContent(data) {
   else renderMediaGrid(data);
 }
 
+function renderSourceBadges(names = [], limit = 2) {
+  const unique = [...new Set(names.filter(Boolean))];
+  if (!unique.length) return '<span class="text-muted">—</span>';
+  const visible = unique.slice(0, limit)
+    .map(name => `<span class="source-name-badge" title="${escHtml(name)}">${escHtml(name)}</span>`)
+    .join(' ');
+  return `${visible}${unique.length > limit ? ` <span class="source-more">+${unique.length - limit}</span>` : ''}`;
+}
+
 function renderMediaList(data) {
   const grid  = document.getElementById('libraryGrid');
   const pager = document.getElementById('libraryPager');
@@ -392,7 +401,7 @@ function renderMediaList(data) {
   grid.className = 'media-list-view';
   grid.innerHTML = `<table class="media-list-table">
     <thead><tr>
-      <th>Titre</th><th>Releases</th><th>Année</th><th>Catégorie</th><th>Ajouté le</th>
+      <th>Titre</th><th>Releases</th><th>Sources</th><th>Année</th><th>Catégorie</th><th>Ajouté le</th>
     </tr></thead>
     <tbody>
       ${data.items.map(m => {
@@ -411,6 +420,7 @@ function renderMediaList(data) {
             <span>${escHtml(m.name)}</span>
           </td>
           <td class="mlt-rlz-cell">${rlzCell}</td>
+          <td class="media-sources-cell">${renderSourceBadges(m.source_names)}</td>
           <td class="mlt-year">${m.year || '—'}</td>
           <td><span class="${badgeCls}">${m.catalog_type}</span></td>
           <td class="mlt-date">${fmtDate(m.first_seen_at)}</td>
@@ -454,6 +464,7 @@ function renderMediaGrid(data) {
           <span class="media-rlz">${m.release_count || 0} rlz</span>
         </div>
         <div style="margin-top:5px"><span class="${badgeCls}">${m.catalog_type}</span></div>
+        ${m.source_names?.length ? `<div class="media-card-sources">${renderSourceBadges(m.source_names, 1)}</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -606,6 +617,7 @@ function openDrawer(imdbId, media) {
       IMDB: <a href="https://www.imdb.com/title/${escHtml(imdbId)}" target="_blank">${escHtml(imdbId)}</a>
     </div>
     ${media.description ? `<p style="margin-top:10px;font-size:13px;color:var(--text-muted);line-height:1.6">${escHtml(media.description.substring(0, 220))}${media.description.length > 220 ? '…' : ''}</p>` : ''}
+    ${media.source_names?.length ? `<div class="drawer-source-list">${renderSourceBadges(media.source_names, 4)}</div>` : ''}
     <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <select id="drawerCatalogSelect" class="select-sm" style="font-size:12px">${catOptions}</select>
       <button class="btn-sm" onclick="changeCatalog('${escHtml(imdbId)}')" style="font-size:12px">Appliquer</button>
@@ -624,26 +636,26 @@ function openDrawer(imdbId, media) {
         body.innerHTML = '<p class="text-muted">' + t('library_releases_none') + '</p>';
         return;
       }
-      const src = releases.find(r => r.source_url)?.source_url;
       body.innerHTML = `
         <p class="text-muted" style="margin-bottom:12px">${releases.length} release${releases.length > 1 ? 's' : ''}</p>
         <div style="overflow-x:auto">
         <table class="releases-table">
           <thead><tr>
             <th data-i18n="library_col_name">Nom</th>
+            <th>Source</th>
             <th data-i18n="library_col_quality">Qualité</th>
             <th data-i18n="library_col_date">Date</th>
           </tr></thead>
           <tbody>
             ${releases.map(r => `<tr>
               <td style="font-size:11px">${escHtml(r.release_name)}</td>
+              <td>${r.source_name ? renderSourceBadges([r.source_name], 1) : '<span class="text-muted">—</span>'}</td>
               <td>${r.quality ? `<span class="quality-badge">${escHtml(r.quality)}</span>` : '<span class="text-muted">—</span>'}</td>
               <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${fmtDate(r.added_at)}</td>
             </tr>`).join('')}
           </tbody>
         </table>
         </div>
-        ${src ? `<p style="margin-top:14px;font-size:12px;color:var(--text-muted)">Source : <span style="font-family:monospace">${escHtml(trimUrl(src))}</span></p>` : ''}
       `;
       applyI18nToElement(body);
     })
@@ -1046,6 +1058,7 @@ function renderNewznabSources() {
         ${(source.catalogs || []).map(catalog =>
           `<button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(catalog.source_key).replace(/'/g, '%27')}','${encodeURIComponent(`${source.name} — ${catalog.name}`).replace(/'/g, '%27')}')">${t('sources_catalog_action')} ${escHtml(catalog.name)}</button>`
         ).join('')}
+        <button class="btn-sm" onclick="renameNewznabSource('${source.id}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_rename')}</button>
         <button class="btn-sm" onclick="toggleNewznabSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
         <button class="btn-danger btn-sm" onclick="deleteNewznabSource('${source.id}')">${t('sources_delete')}</button>
       </div>
@@ -1081,6 +1094,17 @@ async function addNewznabSource() {
 }
 window.addNewznabSource = addNewznabSource;
 
+async function renameNewznabSource(id, encodedName) {
+  const name = prompt(t('sources_rename_prompt'), decodeURIComponent(encodedName));
+  if (!name?.trim()) return;
+  const response = await fetch(`/api/newznab-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() })
+  });
+  if (!response.ok) return alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.renameNewznabSource = renameNewznabSource;
+
 async function toggleNewznabSource(id, paused) {
   const response = await fetch(`/api/newznab-sources/${id}`, {
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
@@ -1115,6 +1139,7 @@ function renderStremioSources() {
         ).join(' ')}</div>
       </div>
       <div class="manager-row-actions">
+        <button class="btn-sm" onclick="renameStremioSource('${source.id}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_rename')}</button>
         <button class="btn-sm" onclick="toggleStremioSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
         <button class="btn-danger btn-sm" onclick="deleteStremioSource('${source.id}')">${t('sources_delete')}</button>
       </div>
@@ -1152,6 +1177,17 @@ async function addStremioSource() {
   loadSourceManager();
 }
 window.addStremioSource = addStremioSource;
+
+async function renameStremioSource(id, encodedName) {
+  const name = prompt(t('sources_rename_prompt'), decodeURIComponent(encodedName));
+  if (!name?.trim()) return;
+  const response = await fetch(`/api/stremio-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() })
+  });
+  if (!response.ok) return alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.renameStremioSource = renameStremioSource;
 
 async function toggleStremioSource(id, paused) {
   await fetch(`/api/stremio-sources/${id}`, {

@@ -630,6 +630,15 @@ input:checked + .slider::before { transform: translateX(22px); }
 .media-meta { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
 .media-year { font-size: 11px; color: var(--text-muted); }
 .media-rlz  { font-size: 10px; color: var(--text-dim); }
+.media-card-sources {
+  display: flex; align-items: center; gap: 4px; margin-top: 7px;
+  min-width: 0; overflow: hidden;
+}
+.media-card-sources .source-name-badge {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.media-sources-cell { min-width: 150px; max-width: 260px; }
+.drawer-source-list { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
 
 .catalog-badge {
   display: inline-block; font-size: 10px; font-weight: 600;
@@ -739,6 +748,7 @@ input:checked + .slider::before { transform: translateX(22px); }
 .quality-badge { background: var(--accent-dim); color: var(--accent); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
 .hash-mono { font-family: monospace; font-size: 11px; color: var(--text-muted); }
 .source-name-badge { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted); }
+.source-more { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
 /* ─── RSS field row ───────────────────────────────────────────────── */
 .rss-field-block { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }

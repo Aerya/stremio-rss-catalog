@@ -9,6 +9,7 @@ const TMDBMatcher = require('../src/tmdb-matcher');
 const StremioAddon = require('../src/addon');
 const StremioManifestParser = require('../src/stremio-manifest-parser');
 const RSSParser = require('../src/rss-parser');
+const WebUI = require('../src/webui');
 
 const header = 'CAT;TMDB;TITLE;SAISON;GROUPES;CAST;DIRECTOR;NETWORK;YEAR;GENRES;RES;URLS=https://alldebrid.com/f/';
 const movieRow = "film;123;Film Test;;[];[];[];[];2026;[28];['MULTI - 1080p'];['abc']";
@@ -196,6 +197,25 @@ async function main() {
     const remoteMatch = await matcher.matchBatch(remoteItems);
     assert.equal(remoteMatch.matched, 1);
     assert.equal(db.getMediaByImdbId('tt0000789').name, 'Film distant');
+
+    db.setConfig('newznab_sources', JSON.stringify([
+      newznabSource,
+      { ...newznabSource, id: 'newznab-second', name: 'API secondaire', url: `${baseUrl}/newznab-2/api` }
+    ]));
+    db.setConfig('stremio_manifest_sources', JSON.stringify([
+      remoteSource,
+      { ...remoteSource, id: 'remote-second', name: 'Manifeste secondaire' }
+    ]));
+    const webuiForNames = Object.create(WebUI.prototype);
+    webuiForNames.db = db;
+    webuiForNames.rssParser = rssParser;
+    const sourceNames = webuiForNames.getSourceNameMap();
+    assert.equal(sourceNames['newznab:newznab-test:movie'], 'API de test — Films');
+    assert.equal(sourceNames['newznab:newznab-second:series'], 'API secondaire — Séries');
+    assert.equal(sourceNames['stremio-manifest:remote-test:movie:remote_movies'], 'Source distante de test — Sélection distante');
+    assert.equal(sourceNames['stremio-manifest:remote-second:movie:remote_movies'], 'Manifeste secondaire — Sélection distante');
+    const apiMedia = db.getMediaList({ search: 'API Film One' }).items[0];
+    assert.ok(apiMedia.source_urls.includes('newznab:newznab-test:movie'));
 
     const catalog = db.saveCustomCatalog({
       id: 'custom_films_2026',
