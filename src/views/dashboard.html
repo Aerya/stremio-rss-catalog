@@ -241,8 +241,21 @@
         <button class="btn-sm" onclick="loadSourceManager()">↺ Actualiser</button>
       </div>
 
-      <div class="card" style="margin-bottom:20px">
-        <h3 data-i18n="sources_rss_title">Sources RSS</h3>
+      <div class="source-toolbar card">
+        <input id="sourceSearch" type="search" placeholder="Rechercher une source…" oninput="applySourceFilters()">
+        <div class="source-tabs" id="sourceTabs">
+          <button class="source-tab active" data-source-tab="all" onclick="selectSourceTab('all')">Toutes</button>
+          <button class="source-tab" data-source-tab="rss" onclick="selectSourceTab('rss')">RSS</button>
+          <button class="source-tab" data-source-tab="pastebin" onclick="selectSourceTab('pastebin')">Pastebin</button>
+          <button class="source-tab" data-source-tab="indexer" onclick="selectSourceTab('indexer')">Indexeurs</button>
+          <button class="source-tab" data-source-tab="stremio" onclick="selectSourceTab('stremio')">Stremio</button>
+          <button class="source-tab" data-source-tab="diagnostics" onclick="selectSourceTab('diagnostics')">Diagnostics</button>
+        </div>
+      </div>
+
+      <details class="card source-group" data-source-group="rss" open>
+        <summary><span data-i18n="sources_rss_title">Sources RSS</span> <span class="source-group-count" id="rssGroupCount"></span></summary>
+        <input id="rssSourceEditId" type="hidden">
         <div class="rss-row" style="margin-top:14px">
           <input id="rssSourceName" type="text" placeholder="Nom de la source" data-i18n-placeholder="sources_name_placeholder" class="rss-name-input">
           <input id="rssSourceUrl" type="url" placeholder="https://example.net/rss..." class="flex-1">
@@ -253,31 +266,48 @@
             <option value="animés">Animés</option><option value="concerts">Concerts</option>
             <option value="spectacles">Spectacles</option>
           </select>
-          <button type="button" class="btn-primary" onclick="addRssSource()" data-i18n="sources_add">Ajouter</button>
+          <input id="rssSourceInterval" type="number" min="5" max="43200" placeholder="Fréquence (min)" title="Vide : fréquence globale">
+          <button type="button" class="btn-primary" id="rssSourceSubmit" onclick="saveRssSource()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-sm source-edit-cancel" id="rssSourceCancel" onclick="resetRssSourceForm()" hidden>Annuler</button>
         </div>
         <div id="rssSourceList" style="margin-top:14px"></div>
-      </div>
+      </details>
 
-      <div class="card" style="margin-bottom:20px">
-        <h3 data-i18n="sources_pastebin_title">Sources Pastebin</h3>
+      <details class="card source-group" data-source-group="pastebin">
+        <summary><span data-i18n="sources_pastebin_title">Sources Pastebin</span> <span class="source-group-count" id="pastebinGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_pastebin_desc">
           URL directe, pointeur JSON ou index maître catégorisé.
         </p>
+        <input id="pastebinEditId" type="hidden">
         <div class="rss-row">
           <input id="pastebinName" type="text" placeholder="Nom de la source" data-i18n-placeholder="sources_name_placeholder" class="rss-name-input">
           <input id="pastebinUrl" type="url" placeholder="https://paste.example/raw/..." class="flex-1">
+          <select id="pastebinForce" title="Catégorie forcée">
+            <option value="auto">Catégories du Pastebin</option>
+            <option value="films">Films</option><option value="series">Séries</option>
+            <option value="documentaires">Documentaires</option><option value="documentaires_series">Documentaires (séries)</option>
+            <option value="emissions">Émissions TV</option>
+            <option value="animes_films">Animés (films)</option><option value="animes_series">Animés (séries)</option>
+            <option value="concerts">Concerts</option>
+            <option value="spectacles">Spectacles</option>
+          </select>
+          <input id="pastebinMaxDepth" type="number" min="0" max="10" value="5" title="Profondeur maximale">
+          <input id="pastebinMaxPages" type="number" min="1" max="5000" value="1000" title="Maximum de pages">
+          <input id="pastebinInterval" type="number" min="5" max="43200" placeholder="Fréquence (min)" title="Vide : fréquence globale">
           <button type="button" class="btn-sm" onclick="previewPastebin()" data-i18n="sources_preview">Prévisualiser</button>
-          <button type="button" class="btn-primary" onclick="addPastebin()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-primary" id="pastebinSubmit" onclick="savePastebin()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-sm" id="pastebinCancel" onclick="resetPastebinForm()" hidden>Annuler</button>
         </div>
         <div id="pastebinPreview" class="text-muted" style="margin-top:10px"></div>
         <div id="pastebinList" style="margin-top:14px"></div>
-      </div>
+      </details>
 
-      <div class="card" style="margin-bottom:20px">
-        <h3 data-i18n="sources_newznab_title">API d’indexeurs</h3>
+      <details class="card source-group" data-source-group="indexer">
+        <summary><span data-i18n="sources_newznab_title">API d’indexeurs</span> <span class="source-group-count" id="indexerGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_newznab_desc">
           Sources Newznab, Prowlarr, Jackett/Torznab et NZBHydra2 paginées.
         </p>
+        <input id="newznabEditId" type="hidden">
         <div class="config-grid">
           <div class="field">
             <label data-i18n="sources_indexer_type">Type d’indexeur</label>
@@ -317,38 +347,66 @@
             <label data-i18n="sources_newznab_delay">Délai entre les pages (ms)</label>
             <input id="newznabRequestDelay" type="number" min="250" max="10000" step="250" value="750">
           </div>
+          <div class="field">
+            <label>Fenêtre de recouvrement du curseur (h)</label>
+            <input id="newznabLookbackHours" type="number" min="1" max="720" value="24">
+          </div>
+          <div class="field">
+            <label>Fréquence de collecte (min)</label>
+            <input id="newznabInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale">
+          </div>
         </div>
         <div class="integration-cat-hint" style="margin-top:12px" data-i18n="sources_indexer_collection_help">
-          À chaque synchronisation : interrogation de <code>t=caps</code>, puis pages <code>t=search</code>
-          jusqu’au maximum configuré par catégorie. La taille d’une page respecte la limite annoncée par le serveur.
+          Première collecte jusqu’au plafond, puis reprise incrémentale depuis le curseur mémorisé.
+          La fenêtre de recouvrement absorbe les retards ou réordonnancements de l’indexeur.
         </div>
         <div style="display:flex;gap:8px;margin-top:14px">
           <button type="button" class="btn-sm" onclick="previewNewznabSource()" data-i18n="sources_test">Tester</button>
-          <button type="button" class="btn-primary" onclick="addNewznabSource()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-primary" id="newznabSubmit" onclick="saveNewznabSource()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-sm" id="newznabCancel" onclick="resetNewznabForm()" hidden>Annuler</button>
         </div>
         <div id="newznabSourcePreview" class="text-muted" style="margin-top:10px"></div>
         <div id="newznabSourceList" style="margin-top:14px"></div>
-      </div>
+      </details>
 
-      <div class="card" style="margin-bottom:20px">
-        <h3 data-i18n="sources_stremio_title">Manifestes Stremio</h3>
+      <details class="card source-group" data-source-group="stremio">
+        <summary><span data-i18n="sources_stremio_title">Manifestes Stremio</span> <span class="source-group-count" id="stremioGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_stremio_desc">
           Importe les catalogues déclarés par un autre addon.
         </p>
+        <input id="stremioEditId" type="hidden">
         <div class="rss-row">
           <input id="stremioSourceName" type="text" placeholder="Nom de la source" data-i18n-placeholder="sources_name_placeholder" class="rss-name-input">
           <input id="stremioSourceUrl" type="password" autocomplete="off"
             placeholder="https://example.net/manifest.json?..." class="flex-1">
+          <input id="stremioMaxItems" type="number" min="1" max="20000" value="5000" title="Maximum par catalogue">
+          <input id="stremioInterval" type="number" min="5" max="43200" placeholder="Fréquence (min)" title="Vide : fréquence globale">
           <button type="button" class="btn-sm" onclick="previewStremioSource()" data-i18n="sources_preview">Prévisualiser</button>
-          <button type="button" class="btn-primary" onclick="addStremioSource()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-primary" id="stremioSubmit" onclick="saveStremioSource()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-sm" id="stremioCancel" onclick="resetStremioForm()" hidden>Annuler</button>
         </div>
+        <div id="stremioCatalogChoices" class="catalog-source-choices" style="margin-top:12px"></div>
         <div id="stremioSourcePreview" class="text-muted" style="margin-top:10px"></div>
         <div id="stremioSourceList" style="margin-top:14px"></div>
-      </div>
+      </details>
 
-      <div id="sourcesContainer" class="card">
-        <p class="text-muted" data-i18n="sync_loading">Chargement...</p>
-      </div>
+      <details class="card source-group" data-source-group="diagnostics">
+        <summary>Diagnostics détaillés</summary>
+        <div id="sourcesContainer"><p class="text-muted" data-i18n="sync_loading">Chargement...</p></div>
+      </details>
+
+      <details class="card source-group" data-source-group="all">
+        <summary>Export / import de la configuration</summary>
+        <p class="text-muted">Les secrets sont exclus par défaut. Leur export ou leur import exige une confirmation explicite.</p>
+        <div class="source-export-actions">
+          <button class="btn-sm" onclick="exportConfiguration(false)">Exporter sans secrets</button>
+          <button class="btn-sm" onclick="exportConfiguration(true)">Exporter avec secrets…</button>
+          <input id="configImportFile" type="file" accept="application/json">
+          <label><input id="configImportSecrets" type="checkbox"> Autoriser l’import des secrets</label>
+          <button class="btn-primary" onclick="importConfiguration()">Analyser et importer</button>
+        </div>
+        <div id="configImportStatus" class="text-muted"></div>
+      </details>
     </section>
 
     <!-- ─── Catalogues personnalisés ──────────────────────────────── -->
@@ -441,6 +499,12 @@
         <h3 data-i18n="catalogs_configured">Catalogues configurés</h3>
         <div id="catalogList" style="margin-top:14px"></div>
       </div>
+
+      <details class="card" style="margin-top:20px">
+        <summary>Historique du manifeste Stremio</summary>
+        <p class="text-muted">Trace les apparitions, suspensions, reprises, renommages et suppressions de catalogues.</p>
+        <div id="manifestHistory" class="manifest-history"><span class="text-muted">Chargement…</span></div>
+      </details>
     </section>
 
     <!-- ─── Synchronisation ───────────────────────────────────────── -->
@@ -455,7 +519,7 @@
           <span id="autoRefreshState" data-i18n="sync_loading">Chargement...</span>
         </div>
         <div style="text-align:center;margin-top:16px">
-          <button class="btn-primary" onclick="startSync()" data-i18n="sync_start_btn">▶️ Lancer la synchronisation</button>
+          <button class="btn-primary" onclick="startSync()" data-i18n="sync_start_btn">▶️ Collecter toutes les sources et actualiser les catalogues</button>
         </div>
         <div id="syncStatusBox" class="sync-status-box" style="display:none;margin-top:20px">
           <div class="sync-stage" id="syncStage" data-i18n="sync_in_progress">En cours...</div>
@@ -641,9 +705,10 @@
         <div class="config-section">
           <h3 data-i18n="config_auto_sync_title">Synchronisation automatique</h3>
           <div class="integration-cat-hint" style="margin-bottom:14px" data-i18n="config_auto_sync_pipeline">
-            Une synchronisation interroge les sources actives, normalise et enrichit les résultats,
-            les enregistre dans la médiathèque, met à jour les catalogues non gelés, puis rend leur
-            contenu disponible à Stremio via le manifeste déjà installé.
+            Le planificateur vérifie chaque minute les échéances. Il collecte uniquement les sources
+            arrivées à échéance, puis normalise et enrichit le lot, l’injecte dans les catalogues non
+            gelés et invalide leur cache. Stremio lit alors immédiatement le contenu actualisé depuis
+            la même URL d’addon : il n’existe pas de second « envoi » à programmer.
           </div>
           <div class="toggle-row">
             <label class="toggle-switch">
@@ -653,8 +718,9 @@
             <label for="auto_refresh_enabled" data-i18n="config_auto_sync_enable">Activer</label>
           </div>
           <div class="field">
-            <label data-i18n="config_refresh_interval">Intervalle (minutes)</label>
+            <label data-i18n="config_refresh_interval">Fréquence par défaut des sources (minutes)</label>
             <input type="number" id="refresh_interval" name="refresh_interval" min="5" placeholder="60">
+            <small>Chaque source peut remplacer cette fréquence depuis la page Sources.</small>
           </div>
         </div>
 

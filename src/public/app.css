@@ -703,6 +703,49 @@ input:checked + .slider::before { transform: translateX(22px); }
 .source-row-warn  td { background: rgba(245,158,11,.04); }
 .source-num { font-weight: 700; color: var(--text); font-size: 15px; }
 
+.source-toolbar {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 16px;
+  position: sticky; top: 0; z-index: 5;
+}
+.source-toolbar > input { flex: 1; min-width: 220px; }
+.source-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.source-tab {
+  padding: 7px 11px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface-2); color: var(--text-muted); cursor: pointer;
+}
+.source-tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+.source-group { margin-bottom: 14px; }
+.source-group > summary {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  font-size: 16px; font-weight: 700; list-style: none;
+}
+.source-group > summary::-webkit-details-marker { display: none; }
+.source-group > summary::before {
+  content: '›'; color: var(--text-muted); transition: transform .15s;
+}
+.source-group[open] > summary::before { transform: rotate(90deg); }
+.source-group-count {
+  min-width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: var(--surface-2); color: var(--text-muted); font-size: 11px;
+}
+.source-runtime {
+  display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 8px;
+  font-size: 11px; color: var(--text-muted);
+}
+.source-runtime > span { white-space: nowrap; }
+.source-runtime-ok { color: var(--success); font-weight: 700; }
+.source-runtime-error { color: var(--danger); font-weight: 600; }
+.source-runtime-paused { color: var(--warning); font-weight: 700; }
+.sensitive-source-value { font-family: monospace; }
+.source-export-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+.source-export-actions label { font-size: 12px; color: var(--text-muted); }
+.manifest-history-head { padding: 10px 0; color: var(--text-muted); font-size: 12px; }
+.manifest-history-row {
+  display: grid; grid-template-columns: 54px minmax(0, 1fr) auto;
+  gap: 10px; padding: 9px 0; border-top: 1px solid var(--border); font-size: 12px;
+}
+.manifest-revision { font-family: monospace; color: var(--accent); font-weight: 700; }
+
 /* ─── Drawer (releases) ───────────────────────────────────────────── */
 .drawer-backdrop {
   display: none; position: fixed; inset: 0;

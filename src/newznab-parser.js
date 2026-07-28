@@ -23,6 +23,11 @@ class NewznabParser {
     return `${kind}:${sourceId}:${mediaType}`;
   }
 
+  scheduleKey(source) {
+    const kind = ['newznab', 'prowlarr', 'jackett', 'nzbhydra2'].includes(source?.kind) ? source.kind : 'newznab';
+    return `${kind}:${source.id}`;
+  }
+
   buildUrl(source, params) {
     const url = new URL(source.url);
     for (const [key, value] of Object.entries(params)) {
@@ -90,6 +95,17 @@ class NewznabParser {
     };
   }
 
+  itemId(item) {
+    const value = typeof item?.guid === 'object' ? item.guid._ : (item?.guid || item?.link || item?.title);
+    return value ? String(value) : null;
+  }
+
+  itemPublishedAt(item) {
+    const value = item?.pubDate || item?.published || item?.updated;
+    const timestamp = value ? Date.parse(String(value)) : NaN;
+    return Number.isFinite(timestamp) ? timestamp : null;
+  }
+
   itemAttributes(item) {
     const attrs = [
       ...(!item?.['newznab:attr'] ? [] : (Array.isArray(item['newznab:attr']) ? item['newznab:attr'] : [item['newznab:attr']])),
@@ -142,6 +158,7 @@ class NewznabParser {
   async fetchCategory(source, mediaType, categoryIds, capabilities = null) {
     const force = mediaType === 'series' ? 'series' : 'films';
     const sourceKey = this.sourceKey(source.id, mediaType);
+    const startedAt = this.db.beginSourceSync(sourceKey, source.kind || 'newznab');
     const caps = capabilities || await this.inspect(source);
     const requestedPageSize = Math.min(Math.max(Number(source.pageSize) || caps.serverMax, 1), 1000);
     const pageSize = Math.min(requestedPageSize, caps.serverMax);
@@ -149,41 +166,110 @@ class NewznabParser {
     const delayMs = Math.min(Math.max(Number(source.requestDelayMs) || 750, 250), 10000);
     const parsed = [];
     const seen = new Set();
+    const previousState = this.db.getSourceSyncState(sourceKey);
+    const storedCursor = previousState?.cursor || {};
+    const previousCursor = storedCursor.committed || (
+      Array.isArray(storedCursor.recent_ids) ? storedCursor : {}
+    );
+    const knownIds = new Set(Array.isArray(previousCursor.recent_ids) ? previousCursor.recent_ids.map(String) : []);
+    const lookbackHours = Math.min(Math.max(Number(source.lookbackHours) || 24, 1), 24 * 30);
+    const oldestUsefulTimestamp = previousCursor.newest_published_at
+      ? Number(previousCursor.newest_published_at) - lookbackHours * 60 * 60 * 1000
+      : null;
+    const fetchedIds = [];
+    let newestPublishedAt = Number(previousCursor.newest_published_at) || null;
+    let fetchedRaw = 0;
+    let cursorReached = false;
     let offset = 0;
 
-    while (parsed.length < maxItems) {
-      const limit = Math.min(pageSize, maxItems - parsed.length);
-      const result = await this.fetchXml(source, {
-        t: 'search',
-        cat: categoryIds,
-        extended: 1,
-        offset,
-        limit
-      });
-      const page = this.responseData(result);
-      const uniqueItems = page.items.filter(item => {
-        const id = typeof item.guid === 'object' ? item.guid._ : (item.guid || item.link || item.title);
-        if (!id || seen.has(String(id))) return false;
-        seen.add(String(id));
-        return true;
-      });
-      if (!uniqueItems.length) break;
+    try {
+      while (fetchedRaw < maxItems) {
+        const limit = Math.min(pageSize, maxItems - fetchedRaw);
+        const result = await this.fetchXml(source, {
+          t: 'search',
+          cat: categoryIds,
+          extended: 1,
+          offset,
+          limit
+        });
+        const page = this.responseData(result);
+        fetchedRaw += page.items.length;
+        const uniqueItems = page.items.filter(item => {
+          const id = this.itemId(item);
+          if (!id || seen.has(id)) return false;
+          seen.add(id);
+          fetchedIds.push(id);
+          const publishedAt = this.itemPublishedAt(item);
+          if (publishedAt && (!newestPublishedAt || publishedAt > newestPublishedAt)) {
+            newestPublishedAt = publishedAt;
+          }
+          if (knownIds.has(id)) cursorReached = true;
+          return !knownIds.has(id);
+        });
 
-      const pageItems = this.parseItems(uniqueItems, force, sourceKey);
-      parsed.push(...this.enrichParsedItems(uniqueItems, pageItems));
-      offset += page.items.length;
-      if (page.items.length < limit || (page.total !== null && offset >= page.total) || parsed.length >= maxItems) break;
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+        if (uniqueItems.length) {
+          const pageItems = this.parseItems(uniqueItems, force, sourceKey);
+          parsed.push(...this.enrichParsedItems(uniqueItems, pageItems));
+        }
+        offset += page.items.length;
+        const pageDates = page.items.map(item => this.itemPublishedAt(item)).filter(Boolean);
+        const pageIsOlderThanWindow = oldestUsefulTimestamp && pageDates.length
+          && Math.max(...pageDates) < oldestUsefulTimestamp;
+        if (
+          !page.items.length
+          || page.items.length < limit
+          || (page.total !== null && offset >= page.total)
+          || fetchedRaw >= maxItems
+          || (knownIds.size > 0 && (cursorReached || pageIsOlderThanWindow))
+        ) break;
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+
+      const pendingCursor = {
+        recent_ids: [...new Set([...fetchedIds, ...knownIds])].slice(0, 500),
+        newest_published_at: newestPublishedAt,
+        updated_at: Date.now()
+      };
+      this.db.finishSourceSync(sourceKey, {
+        sourceKind: source.kind || 'newznab',
+        startedAt,
+        itemsFetched: fetchedRaw,
+        quotaLimit: maxItems,
+        quotaUsed: fetchedRaw,
+        quotaStatus: fetchedRaw >= maxItems ? 'limit_reached' : (cursorReached ? 'cursor_reached' : 'available'),
+        cursor: {
+          committed: previousCursor,
+          pending: pendingCursor
+        }
+      });
+      return parsed.slice(0, maxItems);
+    } catch (error) {
+      this.db.failSourceSync(sourceKey, {
+        sourceKind: source.kind || 'newznab',
+        startedAt,
+        errorMessage: error.message,
+        httpStatus: error.response?.status || null
+      });
+      throw error;
     }
-
-    this.db.recordFeedSuccess(sourceKey);
-    return parsed.slice(0, maxItems);
   }
 
-  async parseAll() {
+  async parseAll({ forceAll = false, defaultIntervalMinutes = 180 } = {}) {
     const allItems = [];
+    this.lastPendingCursorKeys = [];
     for (const source of this.getSources()) {
       if (source.paused) continue;
+      const intervalMinutes = Math.min(Math.max(
+        Number(source.syncIntervalMinutes) || Number(defaultIntervalMinutes) || 180,
+        5
+      ), 43200);
+      const scheduleKey = this.scheduleKey(source);
+      if (!forceAll && !this.db.isSourceDue(scheduleKey, intervalMinutes)) continue;
+      const startedAt = this.db.beginSourceSync(scheduleKey, source.kind || 'newznab');
+      let fetched = 0;
+      let quotaLimit = 0;
+      let quotaUsed = 0;
+      let quotaStatus = 'available';
       try {
         const capabilities = await this.inspect(source);
         const mappings = [
@@ -192,11 +278,34 @@ class NewznabParser {
         ];
         for (const [mediaType, categoryIds] of mappings) {
           if (!String(categoryIds || '').trim()) continue;
-          allItems.push(...await this.fetchCategory(source, mediaType, categoryIds, capabilities));
+          const items = await this.fetchCategory(source, mediaType, categoryIds, capabilities);
+          this.lastPendingCursorKeys.push(this.sourceKey(source.id, mediaType));
+          fetched += items.length;
+          allItems.push(...items);
+          const categoryState = this.db.getSourceSyncState(this.sourceKey(source.id, mediaType));
+          quotaLimit += Number(categoryState?.quota_limit) || 0;
+          quotaUsed += Number(categoryState?.quota_used) || 0;
+          if (categoryState?.quota_status === 'limit_reached') quotaStatus = 'limit_reached';
+          else if (categoryState?.quota_status === 'cursor_reached' && quotaStatus !== 'limit_reached') {
+            quotaStatus = 'cursor_reached';
+          }
         }
+        this.db.finishSourceSync(scheduleKey, {
+          sourceKind: source.kind || 'newznab',
+          startedAt,
+          itemsFetched: quotaUsed,
+          quotaLimit: quotaLimit || null,
+          quotaUsed: quotaUsed || 0,
+          quotaStatus
+        });
       } catch (error) {
-        const sourceKey = this.sourceKey(source.id, 'all');
-        this.db.recordFeedError(sourceKey, error.message, null);
+        this.db.failSourceSync(scheduleKey, {
+          sourceKind: source.kind || 'newznab',
+          startedAt,
+          errorMessage: error.message,
+          httpStatus: error.response?.status || null
+        });
+        this.db.recordFeedError(scheduleKey, error.message, error.response?.status || null);
         console.error(`[Indexeur] Échec de la source ${source.id}: ${error.message}`);
       }
     }

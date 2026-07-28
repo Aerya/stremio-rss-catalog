@@ -157,6 +157,46 @@ class DatabaseManager {
       )
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS source_sync_state (
+        source_key TEXT PRIMARY KEY,
+        source_kind TEXT NOT NULL,
+        last_attempt_at INTEGER,
+        last_success_at INTEGER,
+        last_duration_ms INTEGER,
+        last_items_fetched INTEGER NOT NULL DEFAULT 0,
+        last_error_at INTEGER,
+        last_error_message TEXT,
+        last_http_status INTEGER,
+        consecutive_errors INTEGER NOT NULL DEFAULT 0,
+        quota_limit INTEGER,
+        quota_used INTEGER,
+        quota_status TEXT,
+        cursor_json TEXT NOT NULL DEFAULT '{}',
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS manifest_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        revision INTEGER NOT NULL,
+        event TEXT NOT NULL,
+        catalog_id TEXT,
+        catalog_name TEXT,
+        details TEXT NOT NULL DEFAULT '{}',
+        snapshot TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_source_sync_success
+        ON source_sync_state(last_success_at);
+      CREATE INDEX IF NOT EXISTS idx_manifest_history_revision
+        ON manifest_history(revision DESC);
+    `);
+
     // Migration depuis l'ancien schéma catalog_items si nécessaire
     const alreadyMigrated = this.db.prepare("SELECT value FROM config WHERE key = 'schema_v2_migrated'").get();
     if (!alreadyMigrated) {
@@ -241,6 +281,7 @@ class DatabaseManager {
       rss_films_url: '',
       rss_films_force: 'auto',
       rss_films_paused: 'false',
+      rss_films_sync_interval: '',
       rss_additional_urls: '[]',
       pastebin_sources: '[]',
       stremio_manifest_sources: '[]',
@@ -256,6 +297,7 @@ class DatabaseManager {
       proxy_protocol: 'http',
       refresh_interval: '180',
       auto_refresh_enabled: 'false',
+      last_catalog_refresh: '0',
       last_sync_films: '0',
       discord_webhook_url: '',
       discord_notifications_enabled: 'false',
@@ -431,7 +473,7 @@ class DatabaseManager {
     return this.db.prepare('DELETE FROM custom_catalogs WHERE id = ?').run(id).changes > 0;
   }
 
-  getCustomCatalogMedia(catalog, skip = 0, limit = 101, search = null) {
+  _customCatalogConditions(catalog, search = null) {
     const conditions = ['m.type = ?'];
     const params = [catalog.type];
     const filters = catalog.filters || {};
@@ -500,6 +542,20 @@ class DatabaseManager {
       }
     }
 
+    return { conditions, params };
+  }
+
+  countCustomCatalogMedia(catalog, search = null) {
+    const { conditions, params } = this._customCatalogConditions(catalog, search);
+    return this.db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM media m
+      WHERE ${conditions.join(' AND ')}
+    `).get(...params).total;
+  }
+
+  getCustomCatalogMedia(catalog, skip = 0, limit = 101, search = null) {
+    const { conditions, params } = this._customCatalogConditions(catalog, search);
     params.push(Number(limit), Number(skip));
     const rows = this.db.prepare(`
       SELECT m.* FROM media m
@@ -917,6 +973,183 @@ class DatabaseManager {
       // On supprime les erreurs précédentes pour ce flux quand il revient en succès
       this.db.prepare(`DELETE FROM feed_fetch_errors WHERE source_url = ?`).run(url);
     } catch (e) { console.error('[DB] recordFeedSuccess:', e.message); }
+  }
+
+  beginSourceSync(sourceKey, sourceKind) {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO source_sync_state
+        (source_key, source_kind, last_attempt_at, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(source_key) DO UPDATE SET
+        source_kind = excluded.source_kind,
+        last_attempt_at = excluded.last_attempt_at,
+        updated_at = excluded.updated_at
+    `).run(sourceKey, sourceKind, now, now);
+    return now;
+  }
+
+  finishSourceSync(sourceKey, {
+    sourceKind = 'unknown',
+    startedAt = Date.now(),
+    itemsFetched = 0,
+    quotaLimit = null,
+    quotaUsed = null,
+    quotaStatus = null,
+    cursor = undefined
+  } = {}) {
+    const now = Date.now();
+    const current = this.getSourceSyncState(sourceKey);
+    this.db.prepare(`
+      INSERT INTO source_sync_state (
+        source_key, source_kind, last_attempt_at, last_success_at,
+        last_duration_ms, last_items_fetched, last_error_at,
+        last_error_message, last_http_status, consecutive_errors,
+        quota_limit, quota_used, quota_status, cursor_json, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, ?, ?, ?, ?, ?)
+      ON CONFLICT(source_key) DO UPDATE SET
+        source_kind = excluded.source_kind,
+        last_success_at = excluded.last_success_at,
+        last_duration_ms = excluded.last_duration_ms,
+        last_items_fetched = excluded.last_items_fetched,
+        last_error_at = NULL,
+        last_error_message = NULL,
+        last_http_status = NULL,
+        consecutive_errors = 0,
+        quota_limit = excluded.quota_limit,
+        quota_used = excluded.quota_used,
+        quota_status = excluded.quota_status,
+        cursor_json = excluded.cursor_json,
+        updated_at = excluded.updated_at
+    `).run(
+      sourceKey, sourceKind, Number(startedAt) || now, now,
+      Math.max(0, now - (Number(startedAt) || now)),
+      Math.max(0, Number(itemsFetched) || 0),
+      quotaLimit === null ? current?.quota_limit ?? null : Number(quotaLimit),
+      quotaUsed === null ? current?.quota_used ?? null : Number(quotaUsed),
+      quotaStatus === null ? current?.quota_status ?? null : String(quotaStatus),
+      JSON.stringify(cursor === undefined ? (current?.cursor || {}) : cursor),
+      now
+    );
+    this.recordFeedSuccess(sourceKey);
+  }
+
+  failSourceSync(sourceKey, {
+    sourceKind = 'unknown',
+    startedAt = Date.now(),
+    errorMessage = null,
+    httpStatus = null
+  } = {}) {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO source_sync_state (
+        source_key, source_kind, last_attempt_at, last_duration_ms,
+        last_error_at, last_error_message, last_http_status,
+        consecutive_errors, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+      ON CONFLICT(source_key) DO UPDATE SET
+        source_kind = excluded.source_kind,
+        last_attempt_at = excluded.last_attempt_at,
+        last_duration_ms = excluded.last_duration_ms,
+        last_error_at = excluded.last_error_at,
+        last_error_message = excluded.last_error_message,
+        last_http_status = excluded.last_http_status,
+        consecutive_errors = source_sync_state.consecutive_errors + 1,
+        updated_at = excluded.updated_at
+    `).run(
+      sourceKey, sourceKind, Number(startedAt) || now,
+      Math.max(0, now - (Number(startedAt) || now)),
+      now, errorMessage || null, httpStatus || null, now
+    );
+  }
+
+  getSourceSyncState(sourceKey) {
+    const row = this.db.prepare('SELECT * FROM source_sync_state WHERE source_key = ?').get(sourceKey);
+    if (!row) return null;
+    return { ...row, cursor: JSON.parse(row.cursor_json || '{}') };
+  }
+
+  listSourceSyncStates() {
+    return this.db.prepare('SELECT * FROM source_sync_state ORDER BY updated_at DESC').all().map(row => ({
+      ...row,
+      cursor: JSON.parse(row.cursor_json || '{}')
+    }));
+  }
+
+  isSourceDue(sourceKey, intervalMinutes, now = Date.now()) {
+    const state = this.getSourceSyncState(sourceKey);
+    if (!state?.last_attempt_at) return true;
+    return now - state.last_attempt_at >= Math.max(1, Number(intervalMinutes) || 1) * 60 * 1000;
+  }
+
+  deleteSourceSyncState(sourceKey) {
+    return this.db.prepare('DELETE FROM source_sync_state WHERE source_key = ?').run(sourceKey).changes > 0;
+  }
+
+  deleteSourceSyncStates(sourceKeys) {
+    const keys = [...new Set((sourceKeys || []).filter(Boolean))];
+    if (!keys.length) return 0;
+    return this.db.prepare(`
+      DELETE FROM source_sync_state WHERE source_key IN (${keys.map(() => '?').join(',')})
+    `).run(...keys).changes;
+  }
+
+  clearSourceSyncStates() {
+    return this.db.prepare('DELETE FROM source_sync_state').run().changes;
+  }
+
+  commitPendingSourceCursors(sourceKeys = null) {
+    const keys = Array.isArray(sourceKeys) ? [...new Set(sourceKeys.filter(Boolean))] : null;
+    if (keys && !keys.length) return 0;
+    const rows = this.db.prepare(`
+      SELECT source_key, cursor_json
+      FROM source_sync_state
+      WHERE cursor_json LIKE '%"pending"%'
+      ${keys ? `AND source_key IN (${keys.map(() => '?').join(',')})` : ''}
+    `).all(...(keys || []));
+    const update = this.db.prepare(`
+      UPDATE source_sync_state SET cursor_json = ?, updated_at = ? WHERE source_key = ?
+    `);
+    let committed = 0;
+    const commit = this.db.transaction(() => {
+      for (const row of rows) {
+        let cursor;
+        try { cursor = JSON.parse(row.cursor_json || '{}'); } catch { continue; }
+        if (!cursor.pending || typeof cursor.pending !== 'object') continue;
+        update.run(JSON.stringify({ committed: cursor.pending }), Date.now(), row.source_key);
+        committed++;
+      }
+    });
+    commit();
+    return committed;
+  }
+
+  recordManifestHistory({ revision, event, catalog = null, details = {} }) {
+    const snapshot = this.listCustomCatalogs().map(item => ({
+      id: item.id,
+      name: item.name,
+      type: item.type,
+      enabled: item.enabled,
+      updates_enabled: item.updates_enabled
+    }));
+    this.db.prepare(`
+      INSERT INTO manifest_history
+        (revision, event, catalog_id, catalog_name, details, snapshot, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      Number(revision), String(event), catalog?.id || null, catalog?.name || null,
+      JSON.stringify(details || {}), JSON.stringify(snapshot), Date.now()
+    );
+  }
+
+  listManifestHistory(limit = 50) {
+    return this.db.prepare(`
+      SELECT * FROM manifest_history ORDER BY revision DESC, id DESC LIMIT ?
+    `).all(Math.min(Math.max(Number(limit) || 50, 1), 200)).map(row => ({
+      ...row,
+      details: JSON.parse(row.details || '{}'),
+      snapshot: JSON.parse(row.snapshot || '[]')
+    }));
   }
 
   getSourceStats() {

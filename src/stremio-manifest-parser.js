@@ -174,17 +174,46 @@ class StremioManifestParser {
     return items;
   }
 
-  async parseAll() {
+  async parseAll({ forceAll = false, defaultIntervalMinutes = 180 } = {}) {
     const items = [];
     for (const source of this.getSources()) {
       if (!source?.url || source.paused === true) continue;
+      const stateKey = `stremio:${source.id}`;
+      const intervalMinutes = Math.min(Math.max(
+        Number(source.syncIntervalMinutes) || Number(defaultIntervalMinutes) || 180,
+        5
+      ), 43200);
+      if (!forceAll && !this.db.isSourceDue(stateKey, intervalMinutes)) continue;
+      const startedAt = this.db.beginSourceSync(stateKey, 'stremio');
+      let fetched = 0;
+      let errors = 0;
       for (const catalog of source.catalogs || []) {
         if (catalog.enabled === false) continue;
         try {
-          items.push(...await this.fetchCatalog(source, catalog));
+          const catalogItems = await this.fetchCatalog(source, catalog);
+          fetched += catalogItems.length;
+          items.push(...catalogItems);
+          this.db.recordFeedSuccess(this.sourceKey(source.id, catalog));
         } catch (error) {
+          errors++;
           this.db.recordFeedError(this.sourceKey(source.id, catalog), error.message, error.response?.status || null);
         }
+      }
+      if (errors > 0 && fetched === 0) {
+        this.db.failSourceSync(stateKey, {
+          sourceKind: 'stremio',
+          startedAt,
+          errorMessage: `${errors} catalogue(s) indisponible(s)`
+        });
+      } else {
+        this.db.finishSourceSync(stateKey, {
+          sourceKind: 'stremio',
+          startedAt,
+          itemsFetched: fetched,
+          quotaLimit: Number(source.maxItemsPerCatalog) || 5000,
+          quotaUsed: fetched,
+          quotaStatus: fetched >= (Number(source.maxItemsPerCatalog) || 5000) ? 'limit_reached' : 'available'
+        });
       }
     }
     return items;

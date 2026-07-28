@@ -169,6 +169,18 @@ async function main() {
       newznabMovies.map(item => item.direct_meta.imdb_id),
       ['tt0000901', 'tt0000902', 'tt0000903']
     );
+    const newznabState = db.getSourceSyncState('newznab:newznab-test:movie');
+    assert.equal(newznabState.last_items_fetched, 3);
+    assert.equal(newznabState.quota_status, 'limit_reached');
+    assert.equal(newznabState.cursor.pending.recent_ids.length, 3);
+    assert.deepEqual(newznabState.cursor.committed, {});
+    assert.equal(db.commitPendingSourceCursors(), 1);
+    assert.equal(db.getSourceSyncState('newznab:newznab-test:movie').cursor.committed.recent_ids.length, 3);
+    const incrementalMovies = await rssParser.newznabParser.fetchCategory(
+      newznabSource, 'movie', '2000', capabilities
+    );
+    assert.equal(incrementalMovies.length, 0);
+    assert.equal(db.getSourceSyncState('newznab:newznab-test:movie').quota_status, 'cursor_reached');
     assert.ok(newznabKeyReceived);
     const newznabMatch = await matcher.matchBatch(newznabMovies);
     assert.equal(newznabMatch.matched, 3);
@@ -225,6 +237,7 @@ async function main() {
       filters: { year_mode: 'include', years: ['2026'], genres_include: [28] }
     });
     assert.deepEqual(db.getCustomCatalogMedia(catalog).map(item => item.imdb_id), ['tt0000123']);
+    assert.equal(db.countCustomCatalogMedia(catalog), 1);
     const mixedCatalog = db.saveCustomCatalog({
       id: 'custom_mixed',
       name: 'Sources mixtes',
@@ -274,6 +287,12 @@ async function main() {
     db.seedManagedCatalogs();
     assert.equal(db.getCustomCatalog('useflowfr_films'), null);
     assert.ok(db.getMediaByImdbId('tt0000123'));
+    db.recordManifestHistory({
+      revision: 2,
+      event: 'catalog_deleted',
+      catalog: { id: 'useflowfr_films', name: 'Films' }
+    });
+    assert.equal(db.listManifestHistory(1)[0].event, 'catalog_deleted');
     const maintenanceAnalysis = db.getMaintenanceAnalysis();
     assert.equal(maintenanceAnalysis.media_count, 6);
     const backupPath = await db.createMaintenanceBackup('integration-test');
@@ -312,6 +331,8 @@ async function main() {
     console.log('✓ Suppression durable sans suppression des médias');
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
     console.log('✓ API Newznab/Torznab paginée avec types Prowlarr et Jackett');
+    console.log('✓ Curseur Newznab incrémental, états de collecte et test à blanc exact');
+    console.log('✓ Historique versionné du manifeste');
     console.log('✓ Analyse, sauvegarde, réparation groupée et historique de maintenance');
   } finally {
     db.close();

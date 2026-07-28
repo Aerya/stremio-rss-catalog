@@ -46,6 +46,8 @@
 | **Deux pauses distinctes** | Gel des nouveaux contenus indépendamment de la visibilité du catalogue dans le manifeste Stremio |
 | **Pastebins imbriqués** | Pages directes, pointeurs JSON et index maîtres catégorisés avec récursion bornée, déduplication et protection des hôtes découverts |
 | **Manifestes Stremio** | Découverte générique des catalogues d'un autre addon et import de leurs contenus |
+| **Test à blanc** | Compte exact des médias qui alimenteraient un catalogue avant sa création |
+| **Historique du manifeste** | Révisions et événements de création, renommage, gel, visibilité et suppression des catalogues |
 | **Détection automatique** | Catégorie identifiée depuis le nom de release, l'URL du flux ou les genres TMDB/OMDb |
 | **Détection par URL de flux** | La catégorie est devinée automatiquement depuis les mots-clés dans l'URL du flux RSS (`concert`, `anime`, `docu`, `serie`…) |
 | **Animés** | Détectés via TMDB genre 16 + origine japonaise, OVA/OAV dans le titre, ou forcé par flux |
@@ -70,13 +72,15 @@
 | **Notifs Discord** 🆕 NEW | Notifications enrichies avec galerie d'affiches à chaque sync |
 | **Notifs Apprise** 🆕 NEW | Notifications multi-services via serveur Apprise (optionnel) |
 | **Langue des notifs** 🆕 NEW | Langue Discord/Apprise configurable indépendamment de la WebUI (FR/EN/DE) |
-| **Sync auto explicite** | Sources actives → normalisation et matching → médiathèque → catalogues non gelés → contenu servi à Stremio |
+| **Sync auto explicite** | Collecte des sources dues selon leur fréquence → normalisation et matching → catalogues non gelés → cache Stremio invalidé |
 | **WebUI moderne** | Sidebar, thème sombre/clair, multilingue FR/EN/DE |
 | **Médiathèque** 🆕 NEW | Refonte : vue affiches/liste, tri, filtre année (raccourcis + saisie libre/plage), releases inline, affiches RPDB, pagination persistante |
 | **Vue d'ensemble** | Derniers ajouts en tiroirs dépliables par catégorie (titre + année + lien IMDB) |
 | **Migration et réparation** | Analyse en lecture seule, sauvegarde SQLite, corrections groupées, historique et migrations uniques versionnées |
-| **Sources** | Stats par flux RSS avec nommage personnalisé |
-| **API d’indexeurs** | Sources multiples et renommables Newznab, Prowlarr, Jackett/Torznab et NZBHydra2, avec pagination, plafond et délai configurables |
+| **Gestion des sources** | Onglets, recherche, groupes repliables, modification complète et fréquence propre à chaque source |
+| **Suivi par source** | Dernier succès, prochaine collecte, durée, éléments lus, erreurs consécutives et consommation du plafond |
+| **API d’indexeurs** | Sources multiples et renommables Newznab, Prowlarr, Jackett/Torznab et NZBHydra2, avec pagination, curseur incrémental, plafond et délai configurables |
+| **Sauvegarde de configuration** | Export/import versionné ; clés et URLs sensibles exclues sauf demande explicite |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + test de connexion intégré |
 | **SQLite** | Données persistantes, contenu incrémental, index optimisés |
 | **Filtrage par tags** | Tags requis configurables depuis la WebUI (FRENCH, MULTi, 1080p…) |
@@ -150,15 +154,26 @@ depuis l’interface, par exemple
 Ajouter chaque indexeur séparément permet de le renommer et d’identifier son
 origine dans la médiathèque.
 
-À chaque synchronisation, l’addon :
+Lors de la première collecte d’un indexeur, l’addon :
 
 1. interroge `t=caps` pour connaître les capacités et la taille maximale d’une page ;
 2. appelle `t=search` par pages avec `offset` ;
-3. s’arrête au plafond configuré **par catégorie et par synchronisation** ;
+3. s’arrête au plafond configuré **par catégorie** ;
 4. attend le délai configuré entre les pages pour ménager l’indexeur.
 
 Par défaut, le plafond est de 1 000 résultats par catégorie, avec des pages
 limitées par le serveur et 750 ms entre deux pages.
+
+Les collectes suivantes repartent du début, puis s’arrêtent dès le curseur
+mémorisé ou la fin de la fenêtre de recouvrement. Le curseur n’est validé
+qu’après le traitement réussi du lot : un arrêt pendant le matching provoque
+une relecture sûre, pas une perte d’éléments.
+
+La fréquence globale sert de valeur par défaut. Chaque source peut définir sa
+propre fréquence depuis **Sources**. Le planificateur vérifie les échéances
+chaque minute et collecte uniquement les sources dues. Dès qu’un lot est
+disponible, le traitement et l’invalidation du cache des catalogues sont
+immédiats : il n’existe pas de second envoi différé vers Stremio.
 
 ## Sources Pastebin et manifestes Stremio
 
@@ -169,6 +184,11 @@ Les sources Pastebin acceptent :
 - un index maître utilisant des sections telles que `#FILMS`, `#SERIES` ou `#DOCUMENTAIRES`, suivies de codes ou d'URLs enfants.
 
 Les manifestes Stremio sont ajoutés avec leur URL `manifest.json`. L'addon découvre les catalogues déclarés et les expose comme sources sélectionnables dans le gestionnaire de catalogues.
+
+La page **Sources** masque les URLs et clés sensibles dans les cartes. Leur
+révélation ou leur copie exige une action explicite. L’export de configuration
+fonctionne de la même façon : sans secrets par défaut, avec confirmation
+spécifique pour les inclure. Une sauvegarde SQLite précède tout import.
 
 > L’URL `manifest.json` ne change jamais. Les contenus des catalogues déjà connus
 > sont dynamiques. En revanche, Stremio conserve le manifeste dans le profil :

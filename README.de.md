@@ -46,6 +46,8 @@
 | **Zwei getrennte Pausen** | Neue Kataloginhalte unabhängig von der Sichtbarkeit im Stremio-Manifest einfrieren |
 | **Verschachtelte Pastebins** | Direkte Seiten, JSON-Verweise und kategorisierte Hauptindizes mit begrenzter Rekursion und Deduplizierung |
 | **Stremio-Manifeste** | Generische Erkennung externer Kataloge und Import ihrer Inhalte |
+| **Testlauf** | Exakte Medienanzahl vor dem Erstellen eines Katalogs |
+| **Manifestverlauf** | Revisionen und Ereignisse für Erstellung, Umbenennung, Einfrieren, Sichtbarkeit und Löschung |
 | **Auto-Erkennung** | Kategorie aus Release-Name, Feed-URL-Schlüsselwörtern oder TMDB/OMDb-Genres ermittelt |
 | **Feed-URL-Erkennung** | Kategorie wird im Auto-Modus automatisch aus Schlüsselwörtern in der RSS-Feed-URL abgeleitet (`concert`, `anime`, `docu`, `serie`…) |
 | **Anime** | Via TMDB-Genre 16 + japanische Herkunft, OVA/OAV im Titel oder per Feed erzwungen |
@@ -70,13 +72,15 @@
 | **Discord-Benachrichtigungen** 🆕 NEW | Erweiterte Benachrichtigungen mit Poster-Galerie bei jeder Sync |
 | **Apprise-Benachrichtigungen** 🆕 NEW | Multi-Service-Benachrichtigungen via Apprise-Server (optional) |
 | **Benachrichtigungssprache** 🆕 NEW | Discord/Apprise-Sprache unabhängig von der WebUI konfigurierbar (FR/EN/DE) |
-| **Erklärte Auto-Sync** | Aktive Quellen → Normalisierung und Abgleich → Mediathek → nicht eingefrorene Kataloge → an Stremio bereitgestellte Inhalte |
+| **Erklärte Auto-Sync** | Fällige Quellen nach eigenem Zeitplan sammeln → normalisieren und abgleichen → nicht eingefrorene Kataloge → Stremio-Cache leeren |
 | **Moderne WebUI** | Sidebar, Hell-/Dunkel-Theme, mehrsprachig FR/EN/DE |
 | **Mediathek** 🆕 NEW | Neugestaltung: Poster-/Listenansicht, Sortierung, Jahresfilter (Schnellauswahl + freie Eingabe/Bereich), Releases inline, RPDB-Poster, persistente Paginierung |
 | **Übersicht** | Neueste Hinzufügungen in ausklappbaren Kategorie-Akkordeons (Titel + Jahr + IMDB-Link) |
 | **Migration und Reparatur** | Schreibgeschützte Analyse, SQLite-Sicherung, gruppierte Korrekturen, Verlauf und einmalige versionierte Migrationen |
-| **Quellen** | Feed-Statistiken mit benutzerdefinierter Benennung |
-| **Indexer-APIs** | Mehrere umbenennbare Newznab-, Prowlarr-, Jackett/Torznab- und NZBHydra2-Quellen mit konfigurierbarer Pagination, Obergrenze und Verzögerung |
+| **Quellenverwaltung** | Tabs, Suche, einklappbare Gruppen, vollständige Bearbeitung und eigener Zeitplan pro Quelle |
+| **Status pro Quelle** | Letzter Erfolg, nächste Sammlung, Dauer, gelesene Elemente, aufeinanderfolgende Fehler und Nutzung der Obergrenze |
+| **Indexer-APIs** | Mehrere umbenennbare Newznab-, Prowlarr-, Jackett/Torznab- und NZBHydra2-Quellen mit Pagination, inkrementellem Cursor, Obergrenze und Verzögerung |
+| **Konfigurationssicherung** | Versionierter Export/Import; sensible Schlüssel und URLs nur auf ausdrücklichen Wunsch |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + integrierter Verbindungstest |
 | **SQLite** | Persistente Daten, inkrementelle Inhalte, optimierte Indizes |
 | **Tag-Filterung** | Konfigurierbare erforderliche Tags über die WebUI (FRENCH, MULTi, 1080p…) |
@@ -144,14 +148,29 @@ kopierten Torznab-Endpunkt, zum Beispiel
 `http://jackett:9117/api/v2.0/indexers/mein-indexer/results/torznab/api`.
 Getrennte Indexer können umbenannt und in der Mediathek als Herkunft erkannt werden.
 
-Bei jeder Synchronisierung wird `t=caps` gelesen. Danach werden `t=search`-Seiten
-mit `offset` bis zur konfigurierten Obergrenze **pro Kategorie und
-Synchronisierung** geladen. Standardmäßig sind das 1.000 Ergebnisse pro
-Kategorie, vom Server begrenzte Seitengrößen und 750 ms Pause zwischen Seiten.
+Bei der ersten Sammlung wird `t=caps` gelesen. Danach werden `t=search`-Seiten
+mit `offset` bis zur konfigurierten Obergrenze **pro Kategorie** geladen.
+Standardmäßig sind das 1.000 Ergebnisse pro Kategorie, vom Server begrenzte
+Seitengrößen und 750 ms Pause zwischen Seiten.
+
+Spätere Sammlungen beginnen bei den neuesten Ergebnissen und enden am
+gespeicherten Cursor oder am Ende des Überlappungsfensters. Der Cursor wird erst
+nach erfolgreicher Verarbeitung des Stapels bestätigt; ein Abbruch führt daher
+zu einer sicheren Wiederholung statt zu verlorenen Elementen.
+
+Die globale Frequenz ist der Standard. Jede Quelle kann sie unter **Quellen**
+überschreiben. Der Planer prüft jede Minute die Fälligkeiten und sammelt nur
+fällige Quellen. Danach folgen Katalogverarbeitung und Cache-Invalidierung
+sofort; es gibt keinen zweiten verzögerten Versand an Stremio.
 
 Pastebin-Quellen unterstützen direkte Inhalte, JSON-Verweise und kategorisierte
 Hauptindizes. Stremio-Manifeste erkennen externe Kataloge und machen sie in der
 Katalogverwaltung auswählbar.
+
+Quellkarten verbergen sensible URLs und Schlüssel. Anzeigen oder Kopieren
+erfordert eine ausdrückliche Aktion. Konfigurationsexporte verhalten sich
+genauso: Geheimnisse sind standardmäßig ausgeschlossen und benötigen eine
+separate Bestätigung. Vor jedem Import wird eine SQLite-Sicherung erstellt.
 
 > Die URL `manifest.json` bleibt unverändert. Inhalte bekannter Kataloge sind
 > dynamisch, Stremio speichert das Manifest jedoch im Benutzerprofil. Nach

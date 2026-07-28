@@ -236,19 +236,179 @@ class WebUI {
       }
     });
 
+    this.app.get('/api/config/export', this.authMiddleware.bind(this), (req, res) => {
+      const includeSecrets = req.query.include_secrets === 'true';
+      const secretConfigKeys = new Set([
+        'tmdb_api_key', 'tvdb_api_key', 'omdb_api_key', 'mal_client_id',
+        'rpdb_api_key', 'proxy_username', 'proxy_password',
+        'proxy_host', 'proxy_port', 'discord_webhook_url',
+        'apprise_server_url', 'apprise_urls',
+        'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey'
+      ]);
+      const excludedConfigKeys = new Set([
+        'tvdb_token', 'tvdb_token_expiry', 'manifest_revision',
+        'last_sync_films', 'last_catalog_refresh', 'managed_catalogs_seeded',
+        'schema_v2_migrated', 'classification_migration_version',
+        'rss_films_name', 'rss_films_url', 'rss_films_force',
+        'rss_films_paused', 'rss_films_sync_interval', 'rss_additional_urls',
+        'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources'
+      ]);
+      const config = Object.fromEntries(Object.entries(this.db.getAllConfig())
+        .filter(([key]) => !excludedConfigKeys.has(key))
+        .map(([key, value]) => [key, !includeSecrets && secretConfigKeys.has(key) ? null : value]));
+      const redactUrl = source => ({
+        ...source,
+        url: includeSecrets ? source.url : null,
+        ...(Object.hasOwn(source, 'apiKey') ? { apiKey: includeSecrets ? source.apiKey : null } : {})
+      });
+      res.setHeader('Content-Disposition', `attachment; filename="stremio-rss-catalog-${new Date().toISOString().slice(0, 10)}.json"`);
+      res.json({
+        format: 'stremio-rss-catalog-config',
+        version: 1,
+        exported_at: Date.now(),
+        includes_secrets: includeSecrets,
+        config,
+        sources: {
+          rss: this.getRssSources().map(redactUrl),
+          pastebin: this.rssParser.pastebinParser.getSources().map(redactUrl),
+          stremio: this.rssParser.stremioManifestParser.getSources().map(redactUrl),
+          indexers: this.rssParser.newznabParser.getSources().map(redactUrl)
+        },
+        catalogs: this.db.listCustomCatalogs().map(catalog => ({
+          ...catalog,
+          source_urls: includeSecrets
+            ? catalog.source_urls
+            : catalog.source_urls.filter(value => !/^https?:\/\//i.test(value))
+        }))
+      });
+    });
+
+    this.app.post('/api/config/import', this.authMiddleware.bind(this), async (req, res) => {
+      const payload = req.body?.payload;
+      const allowSecrets = req.body?.include_secrets === true;
+      if (payload?.format !== 'stremio-rss-catalog-config' || payload?.version !== 1) {
+        return res.status(400).json({ error: 'Format d’export non reconnu' });
+      }
+      if (!payload.sources || !Array.isArray(payload.catalogs)) {
+        return res.status(400).json({ error: 'Export incomplet' });
+      }
+      if (req.body?.dry_run !== false) {
+        return res.json({
+          valid: true,
+          includes_secrets: Boolean(payload.includes_secrets),
+          secrets_will_be_imported: Boolean(payload.includes_secrets && allowSecrets),
+          counts: {
+            rss: payload.sources.rss?.length || 0,
+            pastebin: payload.sources.pastebin?.length || 0,
+            stremio: payload.sources.stremio?.length || 0,
+            indexers: payload.sources.indexers?.length || 0,
+            catalogs: payload.catalogs.length
+          }
+        });
+      }
+
+      const backupPath = await this.db.createMaintenanceBackup('before-config-import');
+      const secretConfigKeys = new Set([
+        'tmdb_api_key', 'tvdb_api_key', 'omdb_api_key', 'mal_client_id',
+        'rpdb_api_key', 'proxy_username', 'proxy_password',
+        'proxy_host', 'proxy_port', 'discord_webhook_url',
+        'apprise_server_url', 'apprise_urls',
+        'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey'
+      ]);
+      for (const [key, value] of Object.entries(payload.config || {})) {
+        if (value === null || (secretConfigKeys.has(key) && !allowSecrets)) continue;
+        this.db.setConfig(key, String(value));
+      }
+      const mergeSources = (current, incoming, secretFields = ['url']) => {
+        const byId = new Map(current.map(source => [source.id, source]));
+        for (const imported of Array.isArray(incoming) ? incoming : []) {
+          const existing = byId.get(imported.id);
+          const next = { ...(existing || {}), ...imported };
+          for (const field of secretFields) {
+            if (!allowSecrets || imported[field] === null || imported[field] === undefined) {
+              next[field] = existing?.[field] ?? null;
+            }
+          }
+          if (next.id && next.url) byId.set(next.id, next);
+        }
+        return [...byId.values()];
+      };
+      const rss = mergeSources(this.getRssSources(), payload.sources.rss);
+      const rssMain = rss.find(source => source.id === 'rss-main');
+      if (rssMain) {
+        this.db.setConfig('rss_films_name', rssMain.name || '');
+        this.db.setConfig('rss_films_url', rssMain.url || '');
+        this.db.setConfig('rss_films_force', rssMain.force || 'auto');
+        this.db.setConfig('rss_films_paused', rssMain.paused ? 'true' : 'false');
+        this.db.setConfig('rss_films_sync_interval', String(rssMain.syncIntervalMinutes || ''));
+      }
+      this.db.setConfig('rss_additional_urls', JSON.stringify(rss.filter(source => source.id !== 'rss-main')));
+      this.db.setConfig('pastebin_sources', JSON.stringify(mergeSources(
+        this.rssParser.pastebinParser.getSources(), payload.sources.pastebin
+      )));
+      this.db.setConfig('stremio_manifest_sources', JSON.stringify(mergeSources(
+        this.rssParser.stremioManifestParser.getSources(), payload.sources.stremio
+      )));
+      this.db.setConfig('newznab_sources', JSON.stringify(mergeSources(
+        this.rssParser.newznabParser.getSources(), payload.sources.indexers, ['url', 'apiKey']
+      )));
+      this.db.clearSourceSyncStates();
+      for (const catalog of payload.catalogs) {
+        if (catalog?.id && catalog?.name && ['movie', 'series'].includes(catalog.type)) {
+          this.db.saveCustomCatalog(catalog);
+        }
+      }
+      this.bumpManifestRevision('configuration_imported', null, {
+        imported_catalogs: payload.catalogs.length,
+        secrets_imported: Boolean(payload.includes_secrets && allowSecrets)
+      });
+      this.stremioAddon.clearCache();
+      this.startAutoRefresh();
+      res.json({ success: true, backup_path: backupPath });
+    });
+
+    this.app.get('/api/source-secrets/:kind/:id', this.authMiddleware.bind(this), (req, res) => {
+      const { kind, id } = req.params;
+      let source = null;
+      if (kind === 'rss') source = this.getRssSources().find(item => item.id === id);
+      if (kind === 'pastebin') source = this.rssParser.pastebinParser.getSources().find(item => item.id === id);
+      if (kind === 'stremio') source = this.rssParser.stremioManifestParser.getSources().find(item => item.id === id);
+      if (kind === 'indexer') source = this.rssParser.newznabParser.getSources().find(item => item.id === id);
+      if (!source) return res.status(404).json({ error: 'Source introuvable' });
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({
+        url: source.url || null,
+        ...(kind === 'indexer' ? { api_key: source.apiKey || null } : {})
+      });
+    });
+
     // ─── Sources RSS ───────────────────────────────────────────────────────
     this.app.get('/api/rss-sources', this.authMiddleware.bind(this), (req, res) => {
-      res.json(this.getRssSources());
+      res.json(this.getRssSources().map(source => ({
+        ...source,
+        sync_interval_minutes: source.syncIntervalMinutes || null,
+        runtime: this.getSourceRuntime(`rss:${source.id}`, source.syncIntervalMinutes)
+      })));
     });
 
     this.app.post('/api/rss-sources', this.authMiddleware.bind(this), (req, res) => {
-      const { name = '', url, force = 'auto', paused = false } = req.body;
+      const { name = '', url, force = 'auto', paused = false, sync_interval_minutes } = req.body;
       if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+      if (!['auto', 'films', 'series', 'documentaires', 'emissions', 'animés', 'concerts', 'spectacles'].includes(force)) {
+        return res.status(400).json({ error: 'Catégorie forcée invalide' });
+      }
       const additional = this.getAdditionalRssSources();
       if (this.getRssSources().some(source => source.url === url)) {
         return res.status(409).json({ error: 'Cette source existe déjà' });
       }
-      const source = { id: crypto.randomUUID(), name: String(name).trim() || new URL(url).hostname, url, force, paused: Boolean(paused) };
+      const source = {
+        id: crypto.randomUUID(),
+        name: String(name).trim() || new URL(url).hostname,
+        url,
+        force,
+        paused: Boolean(paused),
+        syncIntervalMinutes: this.normalizeSourceInterval(sync_interval_minutes)
+      };
       additional.push(source);
       this.db.setConfig('rss_additional_urls', JSON.stringify(additional));
       res.status(201).json({ ...source, kind: 'rss' });
@@ -260,16 +420,30 @@ class WebUI {
         if (!current) return res.status(404).json({ error: 'Source introuvable' });
         const next = { ...current, ...req.body, id: 'rss-main' };
         if (!/^https?:\/\//i.test(next.url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        if (next.url !== current.url) this.db.deleteSourceSyncState('rss:rss-main');
         this.db.setConfig('rss_films_name', next.name || '');
         this.db.setConfig('rss_films_url', next.url);
         this.db.setConfig('rss_films_force', next.force || 'auto');
         this.db.setConfig('rss_films_paused', next.paused ? 'true' : 'false');
+        this.db.setConfig('rss_films_sync_interval', String(this.normalizeSourceInterval(
+          req.body.sync_interval_minutes ?? next.syncIntervalMinutes
+        ) || ''));
         return res.json(next);
       }
       const additional = this.getAdditionalRssSources();
       const index = additional.findIndex(source => source.id === req.params.id);
       if (index < 0) return res.status(404).json({ error: 'Source introuvable' });
-      additional[index] = { ...additional[index], ...req.body, id: additional[index].id };
+      const currentUrl = additional[index].url;
+      const body = { ...req.body };
+      if (body.sync_interval_minutes !== undefined) {
+        body.syncIntervalMinutes = this.normalizeSourceInterval(body.sync_interval_minutes);
+        delete body.sync_interval_minutes;
+      }
+      additional[index] = { ...additional[index], ...body, id: additional[index].id };
+      if (!/^https?:\/\//i.test(additional[index].url || '')) {
+        return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+      }
+      if (additional[index].url !== currentUrl) this.db.deleteSourceSyncState(`rss:${req.params.id}`);
       this.db.setConfig('rss_additional_urls', JSON.stringify(additional));
       res.json({ ...additional[index], kind: 'rss' });
     });
@@ -278,18 +452,24 @@ class WebUI {
       if (req.params.id === 'rss-main') {
         this.db.setConfig('rss_films_name', '');
         this.db.setConfig('rss_films_url', '');
+        this.db.deleteSourceSyncState('rss:rss-main');
         return res.json({ success: true });
       }
       const additional = this.getAdditionalRssSources();
       const next = additional.filter(source => source.id !== req.params.id);
       if (next.length === additional.length) return res.status(404).json({ error: 'Source introuvable' });
       this.db.setConfig('rss_additional_urls', JSON.stringify(next));
+      this.db.deleteSourceSyncState(`rss:${req.params.id}`);
       res.json({ success: true });
     });
 
     // ─── Sources Pastebin ──────────────────────────────────────────────────
     this.app.get('/api/pastebins', this.authMiddleware.bind(this), (req, res) => {
-      res.json(this.rssParser.pastebinParser.getSources());
+      res.json(this.rssParser.pastebinParser.getSources().map(source => ({
+        ...source,
+        sync_interval_minutes: source.syncIntervalMinutes || null,
+        runtime: this.getSourceRuntime(`pastebin:${source.id}`, source.syncIntervalMinutes)
+      })));
     });
 
     this.app.post('/api/pastebins/preview', this.authMiddleware.bind(this), async (req, res) => {
@@ -318,7 +498,10 @@ class WebUI {
     });
 
     this.app.post('/api/pastebins', this.authMiddleware.bind(this), (req, res) => {
-      const { name = '', url, paused = false, force = 'auto' } = req.body;
+      const {
+        name = '', url, paused = false, force = 'auto', max_depth = 5,
+        max_pages = 1000, sync_interval_minutes
+      } = req.body;
       if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
       const sources = this.rssParser.pastebinParser.getSources();
       if (sources.some(source => source.url === url)) return res.status(409).json({ error: 'Cette source existe déjà' });
@@ -328,8 +511,9 @@ class WebUI {
         url,
         paused: Boolean(paused),
         force,
-        maxDepth: 5,
-        maxPages: 1000
+        maxDepth: Math.min(Math.max(Number.isFinite(Number(max_depth)) ? Number(max_depth) : 5, 0), 10),
+        maxPages: Math.min(Math.max(Number(max_pages) || 1000, 1), 5000),
+        syncIntervalMinutes: this.normalizeSourceInterval(sync_interval_minutes)
       };
       sources.push(source);
       this.db.setConfig('pastebin_sources', JSON.stringify(sources));
@@ -340,9 +524,23 @@ class WebUI {
       const sources = this.rssParser.pastebinParser.getSources();
       const index = sources.findIndex(source => source.id === req.params.id);
       if (index < 0) return res.status(404).json({ error: 'Source introuvable' });
+      const currentUrl = sources[index].url;
       const next = { ...sources[index], ...req.body, id: sources[index].id };
+      if (req.body.sync_interval_minutes !== undefined) {
+        next.syncIntervalMinutes = this.normalizeSourceInterval(req.body.sync_interval_minutes);
+        delete next.sync_interval_minutes;
+      }
+      if (req.body.max_depth !== undefined) {
+        next.maxDepth = Math.min(Math.max(Number.isFinite(Number(req.body.max_depth)) ? Number(req.body.max_depth) : 5, 0), 10);
+        delete next.max_depth;
+      }
+      if (req.body.max_pages !== undefined) {
+        next.maxPages = Math.min(Math.max(Number(req.body.max_pages) || 1000, 1), 5000);
+        delete next.max_pages;
+      }
       if (!/^https?:\/\//i.test(next.url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
       sources[index] = next;
+      if (next.url !== currentUrl) this.db.deleteSourceSyncState(`pastebin:${req.params.id}`);
       this.db.setConfig('pastebin_sources', JSON.stringify(sources));
       res.json(next);
     });
@@ -352,6 +550,7 @@ class WebUI {
       const next = sources.filter(source => source.id !== req.params.id);
       if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
       this.db.setConfig('pastebin_sources', JSON.stringify(next));
+      this.db.deleteSourceSyncState(`pastebin:${req.params.id}`);
       res.json({ success: true });
     });
 
@@ -363,6 +562,9 @@ class WebUI {
         name: source.name,
         display_url: source.url,
         paused: Boolean(source.paused),
+        max_items_per_catalog: Number(source.maxItemsPerCatalog) || 5000,
+        sync_interval_minutes: source.syncIntervalMinutes || null,
+        runtime: this.getSourceRuntime(`stremio:${source.id}`, source.syncIntervalMinutes),
         catalogs: (source.catalogs || []).map(catalog => ({
           ...catalog,
           source_key: parser.sourceKey(source.id, catalog)
@@ -383,7 +585,10 @@ class WebUI {
 
     this.app.post('/api/stremio-sources', this.authMiddleware.bind(this), async (req, res) => {
       try {
-        const { url, name = '' } = req.body;
+        const {
+          url, name = '', max_items_per_catalog = 5000, sync_interval_minutes,
+          catalogs: requestedCatalogs
+        } = req.body;
         if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
         const parser = this.rssParser.stremioManifestParser;
         const sources = parser.getSources();
@@ -394,8 +599,14 @@ class WebUI {
           name: String(name).trim() || 'Manifeste Stremio',
           url,
           paused: false,
-          maxItemsPerCatalog: 5000,
-          catalogs: inspected.catalogs.map(catalog => ({ ...catalog, enabled: true }))
+          maxItemsPerCatalog: Math.min(Math.max(Number(max_items_per_catalog) || 5000, 1), 20000),
+          syncIntervalMinutes: this.normalizeSourceInterval(sync_interval_minutes),
+          catalogs: inspected.catalogs.map(catalog => ({
+            ...catalog,
+            enabled: Array.isArray(requestedCatalogs)
+              ? requestedCatalogs.find(item => item.id === catalog.id && item.type === catalog.type)?.enabled !== false
+              : true
+          }))
         };
         sources.push(source);
         this.db.setConfig('stremio_manifest_sources', JSON.stringify(sources));
@@ -404,6 +615,9 @@ class WebUI {
           name: source.name,
           display_url: source.url,
           paused: false,
+          max_items_per_catalog: source.maxItemsPerCatalog,
+          sync_interval_minutes: source.syncIntervalMinutes || null,
+          runtime: this.getSourceRuntime(`stremio:${source.id}`, source.syncIntervalMinutes),
           catalogs: source.catalogs.map(catalog => ({
             ...catalog,
             source_key: parser.sourceKey(source.id, catalog)
@@ -414,18 +628,42 @@ class WebUI {
       }
     });
 
-    this.app.put('/api/stremio-sources/:id', this.authMiddleware.bind(this), (req, res) => {
+    this.app.put('/api/stremio-sources/:id', this.authMiddleware.bind(this), async (req, res) => {
       const parser = this.rssParser.stremioManifestParser;
       const sources = parser.getSources();
       const index = sources.findIndex(source => source.id === req.params.id);
       if (index < 0) return res.status(404).json({ error: 'Source introuvable' });
+      const currentUrl = sources[index].url;
       const allowed = {};
       if (req.body.name !== undefined) allowed.name = String(req.body.name).trim();
       if (req.body.paused !== undefined) allowed.paused = Boolean(req.body.paused);
       if (Array.isArray(req.body.catalogs)) allowed.catalogs = req.body.catalogs;
-      sources[index] = { ...sources[index], ...allowed };
-      this.db.setConfig('stremio_manifest_sources', JSON.stringify(sources));
-      res.json({ success: true });
+      if (req.body.max_items_per_catalog !== undefined) {
+        allowed.maxItemsPerCatalog = Math.min(Math.max(Number(req.body.max_items_per_catalog) || 5000, 1), 20000);
+      }
+      if (req.body.sync_interval_minutes !== undefined) {
+        allowed.syncIntervalMinutes = this.normalizeSourceInterval(req.body.sync_interval_minutes);
+      }
+      try {
+        if (req.body.url !== undefined && req.body.url !== sources[index].url) {
+          if (!/^https?:\/\//i.test(req.body.url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+          const inspected = parser.anonymizeInspection(await parser.inspect(req.body.url));
+          const selection = Array.isArray(req.body.catalogs) ? req.body.catalogs : sources[index].catalogs;
+          const enabledById = new Map((selection || [])
+            .map(catalog => [`${catalog.type}:${catalog.id}`, catalog.enabled !== false]));
+          allowed.url = req.body.url;
+          allowed.catalogs = inspected.catalogs.map(catalog => ({
+            ...catalog,
+            enabled: enabledById.get(`${catalog.type}:${catalog.id}`) ?? true
+          }));
+        }
+        sources[index] = { ...sources[index], ...allowed };
+        if (sources[index].url !== currentUrl) this.db.deleteSourceSyncState(`stremio:${req.params.id}`);
+        this.db.setConfig('stremio_manifest_sources', JSON.stringify(sources));
+        res.json({ success: true });
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
     });
 
     this.app.delete('/api/stremio-sources/:id', this.authMiddleware.bind(this), (req, res) => {
@@ -434,6 +672,7 @@ class WebUI {
       const next = sources.filter(source => source.id !== req.params.id);
       if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
       this.db.setConfig('stremio_manifest_sources', JSON.stringify(next));
+      this.db.deleteSourceSyncState(`stremio:${req.params.id}`);
       res.json({ success: true });
     });
 
@@ -468,7 +707,10 @@ class WebUI {
         max_items_per_category: Number(source.maxItemsPerCategory) || 1000,
         page_size: Number(source.pageSize) || Number(source.serverMax) || 100,
         request_delay_ms: Number(source.requestDelayMs) || 750,
+        lookback_hours: Number(source.lookbackHours) || 24,
+        sync_interval_minutes: source.syncIntervalMinutes || null,
         server_max: Number(source.serverMax) || null,
+        runtime: this.getSourceRuntime(parser.scheduleKey(source), source.syncIntervalMinutes),
         catalogs
       };
     };
@@ -502,7 +744,8 @@ class WebUI {
         const {
           name = '', kind = 'newznab', url, api_key: apiKey, movie_categories = '2000',
           series_categories = '5000', max_items_per_category = 1000,
-          request_delay_ms = 750, paused = false
+          request_delay_ms = 750, lookback_hours = 24,
+          sync_interval_minutes, paused = false
         } = req.body;
         if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
         if (!['newznab', 'prowlarr', 'jackett', 'nzbhydra2'].includes(kind)) return res.status(400).json({ error: 'Type d’indexeur invalide' });
@@ -527,6 +770,8 @@ class WebUI {
           maxItemsPerCategory: Math.min(Math.max(Number(max_items_per_category) || 1000, 1), 20000),
           pageSize: inspection.serverMax,
           requestDelayMs: Math.min(Math.max(Number(request_delay_ms) || 750, 250), 10000),
+          lookbackHours: Math.min(Math.max(Number(lookback_hours) || 24, 1), 720),
+          syncIntervalMinutes: this.normalizeSourceInterval(sync_interval_minutes),
           serverMax: inspection.serverMax
         };
         sources.push(source);
@@ -537,17 +782,27 @@ class WebUI {
       }
     });
 
-    this.app.put('/api/newznab-sources/:id', this.authMiddleware.bind(this), (req, res) => {
+    this.app.put('/api/newznab-sources/:id', this.authMiddleware.bind(this), async (req, res) => {
       const parser = this.rssParser.newznabParser;
       const sources = parser.getSources();
       const index = sources.findIndex(source => source.id === req.params.id);
       if (index < 0) return res.status(404).json({ error: 'Source introuvable' });
       const current = sources[index];
       const next = { ...current };
+      const cursorConfigBefore = JSON.stringify({
+        kind: current.kind,
+        url: current.url,
+        apiKey: current.apiKey,
+        categories: current.categories
+      });
       if (req.body.name !== undefined) next.name = String(req.body.name).trim() || current.name;
       if (req.body.kind !== undefined && ['newznab', 'prowlarr', 'jackett', 'nzbhydra2'].includes(req.body.kind)) next.kind = req.body.kind;
       if (req.body.paused !== undefined) next.paused = Boolean(req.body.paused);
       if (String(req.body.api_key || '').trim()) next.apiKey = String(req.body.api_key).trim();
+      if (req.body.url !== undefined) {
+        if (!/^https?:\/\//i.test(req.body.url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        next.url = req.body.url;
+      }
       if (req.body.movie_categories !== undefined || req.body.series_categories !== undefined) {
         const movie = normalizeCategoryIds(req.body.movie_categories ?? current.categories?.movie);
         const series = normalizeCategoryIds(req.body.series_categories ?? current.categories?.series);
@@ -562,9 +817,39 @@ class WebUI {
       if (req.body.request_delay_ms !== undefined) {
         next.requestDelayMs = Math.min(Math.max(Number(req.body.request_delay_ms) || 750, 250), 10000);
       }
-      sources[index] = next;
-      this.db.setConfig('newznab_sources', JSON.stringify(sources));
-      res.json(serializeNewznabSource(next));
+      if (req.body.lookback_hours !== undefined) {
+        next.lookbackHours = Math.min(Math.max(Number(req.body.lookback_hours) || 24, 1), 720);
+      }
+      if (req.body.sync_interval_minutes !== undefined) {
+        next.syncIntervalMinutes = this.normalizeSourceInterval(req.body.sync_interval_minutes);
+      }
+      try {
+        if (next.url !== current.url || next.apiKey !== current.apiKey || next.kind !== current.kind) {
+          const inspection = await parser.inspect(next);
+          next.serverMax = inspection.serverMax;
+          next.pageSize = Math.min(Number(next.pageSize) || inspection.serverMax, inspection.serverMax);
+        }
+        sources[index] = next;
+        const cursorConfigAfter = JSON.stringify({
+          kind: next.kind,
+          url: next.url,
+          apiKey: next.apiKey,
+          categories: next.categories
+        });
+        if (cursorConfigAfter !== cursorConfigBefore) {
+          const kinds = [...new Set([current.kind || 'newznab', next.kind || 'newznab'])];
+          this.db.deleteSourceSyncStates(kinds.flatMap(kind => [
+            `${kind}:${next.id}`,
+            `${kind}:${next.id}:movie`,
+            `${kind}:${next.id}:series`,
+            `${kind}:${next.id}:all`
+          ]));
+        }
+        this.db.setConfig('newznab_sources', JSON.stringify(sources));
+        res.json(serializeNewznabSource(next));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
     });
 
     this.app.delete('/api/newznab-sources/:id', this.authMiddleware.bind(this), (req, res) => {
@@ -572,6 +857,7 @@ class WebUI {
       const next = sources.filter(source => source.id !== req.params.id);
       if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
       this.db.setConfig('newznab_sources', JSON.stringify(next));
+      this.db.deleteSourceSyncState(this.rssParser.newznabParser.scheduleKey(sources.find(source => source.id === req.params.id)));
       res.json({ success: true });
     });
 
@@ -590,7 +876,7 @@ class WebUI {
         id: `custom_${slug}_${crypto.randomUUID().slice(0, 8)}`,
         name: String(name).trim(), type, source_urls, filters, enabled, updates_enabled
       });
-      this.bumpManifestRevision();
+      this.bumpManifestRevision('catalog_created', catalog);
       this.stremioAddon.clearCache();
       res.status(201).json(catalog);
     });
@@ -603,14 +889,29 @@ class WebUI {
         return res.status(400).json({ error: 'Nom ou type invalide' });
       }
       const catalog = this.db.saveCustomCatalog(next);
-      this.bumpManifestRevision();
+      let event = 'catalog_updated';
+      if (current.enabled !== catalog.enabled) {
+        event = catalog.enabled ? 'catalog_published' : 'catalog_hidden';
+      } else if (current.updates_enabled !== catalog.updates_enabled) {
+        event = catalog.updates_enabled ? 'catalog_updates_resumed' : 'catalog_updates_paused';
+      } else if (current.name !== catalog.name) {
+        event = 'catalog_renamed';
+      }
+      this.bumpManifestRevision(event, catalog, {
+        previous: {
+          name: current.name,
+          enabled: current.enabled,
+          updates_enabled: current.updates_enabled
+        }
+      });
       this.stremioAddon.clearCache();
       res.json(catalog);
     });
 
     this.app.delete('/api/catalogs/:id', this.authMiddleware.bind(this), (req, res) => {
-      if (!this.db.deleteCustomCatalog(req.params.id)) return res.status(404).json({ error: 'Catalogue introuvable' });
-      this.bumpManifestRevision();
+      const current = this.db.getCustomCatalog(req.params.id);
+      if (!current || !this.db.deleteCustomCatalog(req.params.id)) return res.status(404).json({ error: 'Catalogue introuvable' });
+      this.bumpManifestRevision('catalog_deleted', current);
       this.stremioAddon.clearCache();
       res.json({ success: true });
     });
@@ -624,9 +925,16 @@ class WebUI {
       if (!['movie', 'series'].includes(virtual.type)) return res.status(400).json({ error: 'Type invalide' });
       const items = this.db.getCustomCatalogMedia(virtual, 0, 21);
       res.json({
-        count_at_least: items.length,
-        truncated: items.length > 20,
+        count: this.db.countCustomCatalogMedia(virtual),
         items: items.slice(0, 20).map(item => ({ imdb_id: item.imdb_id, name: item.name, year: item.year }))
+      });
+    });
+
+    this.app.get('/api/manifest/history', this.authMiddleware.bind(this), (req, res) => {
+      res.json({
+        revision: Number(this.db.getConfig('manifest_revision')) || 0,
+        last_catalog_refresh: Number(this.db.getConfig('last_catalog_refresh')) || null,
+        items: this.db.listManifestHistory(parseInt(req.query.limit) || 50)
       });
     });
 
@@ -776,7 +1084,7 @@ class WebUI {
       this.syncStartedAt  = Date.now();
       this.syncStatus = { running: true, stage: 'Démarrage...', progress: 0, total: 0, matched: 0, failed: 0 };
       res.json({ success: true, message: 'Synchronisation démarrée' });
-      this.runSync().catch(error => {
+      this.runSync({ forceAll: true }).catch(error => {
         console.error('Sync error:', error);
         this.syncStatus.error = error.message;
       }).finally(() => {
@@ -1249,9 +1557,41 @@ class WebUI {
     });
   }
 
-  bumpManifestRevision() {
+  normalizeSourceInterval(value) {
+    if (value === null || value === undefined || value === '') return null;
+    return Math.min(Math.max(Number(value) || 5, 5), 43200);
+  }
+
+  getSourceRuntime(sourceKey, ownInterval = null) {
+    const own = this.normalizeSourceInterval(ownInterval);
+    const intervalMinutes = own || Number(this.db.getConfig('refresh_interval')) || 180;
+    const state = this.db.getSourceSyncState(sourceKey);
+    return {
+      source_key: sourceKey,
+      interval_minutes: intervalMinutes,
+      uses_global_interval: !own,
+      next_sync_at: state?.last_attempt_at
+        ? state.last_attempt_at + intervalMinutes * 60 * 1000
+        : Date.now(),
+      last_attempt_at: state?.last_attempt_at || null,
+      last_success_at: state?.last_success_at || null,
+      last_duration_ms: state?.last_duration_ms || null,
+      last_items_fetched: state?.last_items_fetched || 0,
+      last_error_at: state?.last_error_at || null,
+      last_error_message: state?.last_error_message || null,
+      last_http_status: state?.last_http_status || null,
+      consecutive_errors: state?.consecutive_errors || 0,
+      quota_limit: state?.quota_limit ?? null,
+      quota_used: state?.quota_used ?? null,
+      quota_status: state?.quota_status || null
+    };
+  }
+
+  bumpManifestRevision(event = 'updated', catalog = null, details = {}) {
     const next = (Number(this.db.getConfig('manifest_revision')) || 0) + 1;
     this.db.setConfig('manifest_revision', String(next));
+    this.db.recordManifestHistory({ revision: next, event, catalog, details });
+    return next;
   }
 
   getSourceNameMap() {
@@ -1294,6 +1634,7 @@ class WebUI {
         source.name ||= source.url;
         source.force ||= 'auto';
         source.paused = Boolean(source.paused);
+        source.syncIntervalMinutes = this.normalizeSourceInterval(source.syncIntervalMinutes);
         return source;
       });
     } catch {
@@ -1311,13 +1652,14 @@ class WebUI {
         name: this.db.getConfig('rss_films_name') || mainUrl,
         url: mainUrl,
         force: this.db.getConfig('rss_films_force') || 'auto',
-        paused: this.db.getConfig('rss_films_paused') === 'true'
+        paused: this.db.getConfig('rss_films_paused') === 'true',
+        syncIntervalMinutes: this.normalizeSourceInterval(this.db.getConfig('rss_films_sync_interval'))
       });
     }
     return [...sources, ...this.getAdditionalRssSources().map(source => ({ ...source, kind: 'rss' }))];
   }
 
-  async runSync() {
+  async runSync({ forceAll = false } = {}) {
     let syncId = null;
     const startTime = Date.now();
     const notifLang = this.db.getConfig('notification_language') || 'fr';
@@ -1332,22 +1674,27 @@ class WebUI {
     };
 
     try {
-      this.syncStatus.stage = 'Récupération des sources...';
-      const rssData = await this.rssParser.parseAll();
+      this.syncStatus.stage = 'Collecte des sources...';
+      const rssData = await this.rssParser.parseAll({
+        forceAll,
+        defaultIntervalMinutes: Number(this.db.getConfig('refresh_interval')) || 180
+      });
       console.log('Sources récupérées - Éléments: ' + rssData.films.length);
 
       const allItems = [...rssData.films];
       if (allItems.length === 0) {
-        this.syncStatus.stage   = 'Aucun item trouvé';
+        this.db.commitPendingSourceCursors(rssData.pendingCursorKeys);
+        this.syncStatus.stage   = forceAll ? 'Aucun élément trouvé' : 'Aucune source arrivée à échéance';
         this.syncStatus.running = false;
-        this.syncStatus.error   = 'Aucun élément trouvé dans les sources';
+        this.syncStatus.completed = true;
+        this.syncStatus.noItems = true;
         console.log('Aucun élément trouvé dans les sources');
         return;
       }
       syncId = this.db.createSyncHistory(allItems.length);
 
       this.syncStatus.total = allItems.length;
-      this.syncStatus.stage = 'Matching TMDB...';
+      this.syncStatus.stage = 'Traitement et actualisation des catalogues...';
       console.log('Starting TMDB matching for ' + allItems.length + ' items...');
       const result = await this.tmdbMatcher.matchBatch(allItems, (progress) => {
         this.syncStatus.progress    = progress.current;
@@ -1402,6 +1749,8 @@ class WebUI {
 
       console.log('Sync completed:', result);
       this.stremioAddon.clearCache();
+      this.db.setConfig('last_catalog_refresh', String(Date.now()));
+      this.db.commitPendingSourceCursors(rssData.pendingCursorKeys);
 
       const discordEnabled = this.db.getConfig('discord_notifications_enabled') === 'true';
       const webhookUrl     = this.db.getConfig('discord_webhook_url');
@@ -1517,7 +1866,7 @@ class WebUI {
       this.syncStartedAt  = Date.now();
       this.syncStatus = { running: true, stage: 'Démarrage...', progress: 0, total: 0, matched: 0, failed: 0 };
       try {
-        await this.runSync();
+        await this.runSync({ forceAll: false });
       } catch (error) {
         console.error('[Auto-Refresh] Erreur:', error);
       } finally {
@@ -1537,14 +1886,14 @@ class WebUI {
     const enabled = this.db.getConfig('auto_refresh_enabled') === 'true';
     if (!enabled) { console.log('[Auto-Refresh] Désactivé'); return; }
     const interval   = parseInt(this.db.getConfig('refresh_interval')) || 180;
-    const intervalMs = interval * 60 * 1000;
+    const schedulerMs = 60 * 1000;
     if (triggerImmediate) {
-      console.log('[Auto-Refresh] Activé - Intervalle: ' + interval + ' minutes - Sync immédiate au démarrage');
+      console.log('[Auto-Refresh] Activé - Fréquence par défaut: ' + interval + ' minutes - vérification immédiate des échéances');
       this.runAutoSync();
     } else {
-      console.log('[Auto-Refresh] Intervalle mis à jour : ' + interval + ' minutes (prochaine sync dans ' + interval + ' min)');
+      console.log('[Auto-Refresh] Fréquence par défaut mise à jour : ' + interval + ' minutes (échéances vérifiées chaque minute)');
     }
-    this.autoRefreshInterval = setInterval(() => this.runAutoSync(), intervalMs);
+    this.autoRefreshInterval = setInterval(() => this.runAutoSync(), schedulerMs);
   }
 
   stopAutoRefresh() {

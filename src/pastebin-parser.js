@@ -222,12 +222,40 @@ class PastebinParser {
     };
   }
 
-  async parseAll() {
+  async parseAll({ forceAll = false, defaultIntervalMinutes = 180 } = {}) {
     const all = [];
     for (const source of this.getSources()) {
       if (!source?.url || source.paused === true) continue;
-      const result = await this.discover(source.url, source);
-      all.push(...result.items);
+      const stateKey = `pastebin:${source.id}`;
+      const intervalMinutes = Math.min(Math.max(
+        Number(source.syncIntervalMinutes) || Number(defaultIntervalMinutes) || 180,
+        5
+      ), 43200);
+      if (!forceAll && !this.db.isSourceDue(stateKey, intervalMinutes)) continue;
+      const startedAt = this.db.beginSourceSync(stateKey, 'pastebin');
+      try {
+        const result = await this.discover(source.url, source);
+        const successfulPages = result.pages.filter(page => !['error', 'blocked'].includes(page.kind));
+        if (!successfulPages.length && result.pages.some(page => page.kind === 'error')) {
+          throw new Error(result.pages.find(page => page.kind === 'error').error || 'Source Pastebin indisponible');
+        }
+        this.db.finishSourceSync(stateKey, {
+          sourceKind: 'pastebin',
+          startedAt,
+          itemsFetched: result.rawItems,
+          quotaLimit: Number(source.maxPages) || 1000,
+          quotaUsed: result.visited,
+          quotaStatus: result.truncated ? 'limit_reached' : 'available'
+        });
+        all.push(...result.items);
+      } catch (error) {
+        this.db.failSourceSync(stateKey, {
+          sourceKind: 'pastebin',
+          startedAt,
+          errorMessage: error.message,
+          httpStatus: error.response?.status || null
+        });
+      }
     }
     return all;
   }

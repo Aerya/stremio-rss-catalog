@@ -63,26 +63,29 @@ class RSSParser {
     }
   }
 
-  async fetchRSS(url) {
+  async fetchRSS(url, { stateKey = url, sourceKind = 'rss' } = {}) {
+    const startedAt = this.db.beginSourceSync(stateKey, sourceKind);
     try {
       console.log(`Fetching RSS: ${this.safeUrl(url)}`);
       const response = await axios.get(url, this.axiosConfig);
       const parser = new xml2js.Parser({ explicitArray: false });
       const result = await parser.parseStringPromise(response.data);
-
       this.db.recordFeedSuccess(url);
 
       if (result.rss && result.rss.channel && result.rss.channel.item) {
         const items = Array.isArray(result.rss.channel.item)
           ? result.rss.channel.item
           : [result.rss.channel.item];
+        this.db.finishSourceSync(stateKey, { sourceKind, startedAt, itemsFetched: items.length });
         return items;
       }
+      this.db.finishSourceSync(stateKey, { sourceKind, startedAt, itemsFetched: 0 });
       return [];
     } catch (error) {
       console.error(`Error fetching RSS ${this.safeUrl(url)}:`, error.message);
       const httpStatus = error.response?.status || null;
-      this.db.recordFeedError(url, error.message, httpStatus);
+      this.db.failSourceSync(stateKey, { sourceKind, startedAt, errorMessage: error.message, httpStatus });
+      if (stateKey !== url) this.db.recordFeedError(url, error.message, httpStatus);
       return [];
     }
   }
@@ -306,19 +309,25 @@ class RSSParser {
     return parsed;
   }
 
-  async parseFilmsRSS() {
+  async parseFilmsRSS({ forceAll = false, defaultIntervalMinutes = 180 } = {}) {
     const rssUrl = this.db.getConfig('rss_films_url');
     if (!rssUrl || this.db.getConfig('rss_films_paused') === 'true') {
       console.log('No RSS Films URL configured');
       return [];
     }
 
+    const stateKey = 'rss:rss-main';
+    const intervalMinutes = Math.min(Math.max(
+      Number(this.db.getConfig('rss_films_sync_interval')) || Number(defaultIntervalMinutes) || 180,
+      5
+    ), 43200);
+    if (!forceAll && !this.db.isSourceDue(stateKey, intervalMinutes)) return [];
     const force = this.db.getConfig('rss_films_force') || 'auto';
-    const items = await this.fetchRSS(rssUrl);
+    const items = await this.fetchRSS(rssUrl, { stateKey });
     return this._parseItems(items, force, rssUrl);
   }
 
-  async parseAdditionalRSS() {
+  async parseAdditionalRSS({ forceAll = false, defaultIntervalMinutes = 180 } = {}) {
     let additionalUrls = [];
     try {
       const raw = this.db.getConfig('rss_additional_urls');
@@ -337,12 +346,21 @@ class RSSParser {
     for (const entry of additionalUrls) {
       const rssUrl = typeof entry === 'string' ? entry : entry.url;
       const force = typeof entry === 'string' ? 'auto' : (entry.force || 'auto');
+      const sourceId = typeof entry === 'string'
+        ? `legacy-${Buffer.from(rssUrl || '').toString('base64url').slice(0, 16)}`
+        : entry.id;
+      const stateKey = `rss:${sourceId}`;
+      const configuredInterval = typeof entry === 'object'
+        ? (Number(entry.syncIntervalMinutes) || Number(defaultIntervalMinutes) || 180)
+        : (Number(defaultIntervalMinutes) || 180);
+      const intervalMinutes = Math.min(Math.max(configuredInterval, 5), 43200);
 
       if (!rssUrl || !rssUrl.trim() || (typeof entry === 'object' && entry.paused === true)) continue;
+      if (!forceAll && !this.db.isSourceDue(stateKey, intervalMinutes)) continue;
       console.log('[RSS] Parsing additional feed:', this.safeUrl(rssUrl) + ' (force: ' + force + ')');
 
       try {
-        const items = await this.fetchRSS(rssUrl.trim());
+        const items = await this.fetchRSS(rssUrl.trim(), { stateKey });
         allParsed.push(...this._parseItems(items, force, rssUrl.trim()));
       } catch (err) {
         console.error('[RSS] Error parsing additional feed:', this.safeUrl(rssUrl), err.message);
@@ -352,13 +370,19 @@ class RSSParser {
     return allParsed;
   }
 
-  async parseAll() {
-    const filmsItems = await this.parseFilmsRSS();
-    const additionalItems = await this.parseAdditionalRSS();
-    const pastebinItems = await this.pastebinParser.parseAll();
-    const stremioItems = await this.stremioManifestParser.parseAll();
-    const newznabItems = await this.newznabParser.parseAll();
-    return { films: [...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems, ...newznabItems] };
+  async parseAll(options = {}) {
+    const defaultIntervalMinutes = Number(options.defaultIntervalMinutes)
+      || Number(this.db.getConfig('refresh_interval')) || 180;
+    const parserOptions = { ...options, defaultIntervalMinutes };
+    const filmsItems = await this.parseFilmsRSS(parserOptions);
+    const additionalItems = await this.parseAdditionalRSS(parserOptions);
+    const pastebinItems = await this.pastebinParser.parseAll(parserOptions);
+    const stremioItems = await this.stremioManifestParser.parseAll(parserOptions);
+    const newznabItems = await this.newznabParser.parseAll(parserOptions);
+    return {
+      films: [...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems, ...newznabItems],
+      pendingCursorKeys: this.newznabParser.lastPendingCursorKeys || []
+    };
   }
 }
 

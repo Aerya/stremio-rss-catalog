@@ -46,6 +46,8 @@
 | **Two separate pauses** | Freeze new catalog content independently from catalog visibility in the Stremio manifest |
 | **Nested Pastebins** | Direct pages, JSON pointers, and categorized master indexes with bounded recursion and deduplication |
 | **Stremio manifests** | Generic remote catalog discovery and content import |
+| **Dry run** | Exact media count before creating a catalog |
+| **Manifest history** | Revisions and create, rename, freeze, visibility, and delete events |
 | **Auto detection** | Category identified from release name, feed URL keywords, or TMDB/OMDb genres |
 | **Feed URL detection** | Category automatically guessed from keywords in the RSS feed URL (`concert`, `anime`, `docu`, `serie`, `film`…) |
 | **Anime** | Detected via TMDB genre 16 + Japanese origin, OVA/OAV in title, or forced per feed |
@@ -70,13 +72,15 @@
 | **Discord notifs** 🆕 NEW | Enhanced notifications with poster gallery on each sync |
 | **Apprise notifs** 🆕 NEW | Multi-service notifications via Apprise server (optional) |
 | **Notification language** 🆕 NEW | Discord/Apprise language configurable independently from the WebUI (FR/EN/DE) |
-| **Explicit auto sync** | Active sources → normalization and matching → media library → unfrozen catalogs → content served to Stremio |
+| **Explicit auto sync** | Collect due sources on their own schedules → normalize and match → unfrozen catalogs → invalidate the Stremio cache |
 | **Modern WebUI** | Sidebar, dark/light theme, multilingual FR/EN/DE |
 | **Media Library** 🆕 NEW | Redesign: poster/list view, sort, year filter (shortcuts + free input/range), inline releases, RPDB posters, persistent pagination |
 | **Overview** | Latest additions in collapsible per-category accordions (title + year + IMDB link) |
 | **Migration and repair** | Read-only analysis, SQLite backup, grouped corrections, history, and one-time versioned migrations |
-| **Sources** | Per-feed stats with custom naming |
-| **Indexer APIs** | Multiple renameable Newznab, Prowlarr, Jackett/Torznab, and NZBHydra2 sources with configurable pagination, cap, and delay |
+| **Source management** | Tabs, search, collapsible groups, complete editing, and a schedule per source |
+| **Per-source status** | Last success, next collection, duration, fetched items, consecutive errors, and cap usage |
+| **Indexer APIs** | Multiple renameable Newznab, Prowlarr, Jackett/Torznab, and NZBHydra2 sources with pagination, an incremental cursor, cap, and delay |
+| **Configuration backup** | Versioned export/import; sensitive keys and URLs are excluded unless explicitly requested |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
 | **SQLite** | Persistent data, incremental content, optimized indexes |
 | **Tag filtering** | Configurable required tags from the WebUI (FRENCH, MULTi, 1080p…) |
@@ -145,14 +149,29 @@ its UI, for example
 Adding indexers separately lets you rename them and see their origin in the
 media library.
 
-Every synchronization reads `t=caps`, then fetches `t=search` pages with
-`offset` until the configured cap **per category and synchronization** is
-reached. The default is 1,000 results per category, server-limited page sizes,
-and a 750 ms delay between pages.
+An indexer's first collection reads `t=caps`, then fetches `t=search` pages with
+`offset` until the configured cap **per category** is reached. The default is
+1,000 results per category, server-limited page sizes, and a 750 ms delay
+between pages.
+
+Later collections start at the newest page and stop at the persisted cursor or
+the end of the overlap window. The cursor is committed only after the batch was
+processed successfully, so an interruption causes a safe replay rather than
+lost items.
+
+The global frequency is the default. Each source can override it under
+**Sources**. The scheduler checks due times every minute and collects only due
+sources. Once a batch exists, catalog processing and cache invalidation happen
+immediately; there is no second delayed push to Stremio.
 
 Pastebin sources support direct content, JSON pointers, and categorized master
 indexes. Stremio manifest sources discover remote catalogs and make them
 selectable in the catalog manager.
+
+Source cards mask sensitive URLs and keys; revealing or copying them requires
+an explicit action. Configuration exports follow the same rule: secrets are
+excluded by default and require a dedicated confirmation. A SQLite backup is
+created before every import.
 
 > The `manifest.json` URL never changes. Existing catalog content is dynamic,
 > but Stremio stores the manifest in the user profile. After creating, deleting,
