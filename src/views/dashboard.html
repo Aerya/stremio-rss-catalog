@@ -568,25 +568,60 @@
       </div>
 
       <details class="card" style="margin-bottom:20px" open>
-        <summary>Guides MDBList</summary>
+        <summary>Guides externes</summary>
         <p class="text-muted" style="margin:8px 0 14px">
           Une liste sert de guide d’ordre et de sélection. Elle n’importe aucun média :
           seuls les contenus déjà indexés par Stremio RSS Catalog peuvent apparaître.
-          <a href="https://mdblist.com/" target="_blank" rel="noopener noreferrer">MDBList ↗</a>
+          <a href="https://mdblist.com/" target="_blank" rel="noopener noreferrer">MDBList ↗</a> ·
+          <a href="https://github.com/Woahai321/list-sync" target="_blank" rel="noopener noreferrer">ListSync ↗</a> ·
+          <a href="https://github.com/giuseppe99barchetta/SuggestArr" target="_blank" rel="noopener noreferrer">SuggestArr ↗</a>
         </p>
         <input id="mdblistEditId" type="hidden">
         <div class="config-grid">
+          <div class="field">
+            <label>Type de guide</label>
+            <select id="guideKind" onchange="updateGuideFields()">
+              <option value="mdblist">MDBList</option>
+              <option value="listsync">ListSync</option>
+              <option value="suggestarr">SuggestArr</option>
+            </select>
+          </div>
           <div class="field">
             <label>Nom du guide</label>
             <input id="mdblistName" type="text" placeholder="Tendances cinéma France">
           </div>
           <div class="field">
-            <label>URL de la liste ou identifiant MDBList</label>
+            <label id="guideUrlLabel">URL de la liste ou identifiant MDBList</label>
             <input id="mdblistUrl" type="url" placeholder="https://mdblist.com/lists/utilisateur/ma-liste">
           </div>
-          <div class="field">
+          <div class="field guide-field-mdblist">
             <label>Clé API MDBList</label>
             <input id="mdblistApiKey" type="password" autocomplete="new-password">
+          </div>
+          <div class="field guide-field-listsync" hidden>
+            <label>Type de liste ListSync</label>
+            <input id="guideListType" type="text" placeholder="imdb, trakt, letterboxd…">
+          </div>
+          <div class="field guide-field-listsync" hidden>
+            <label>Identifiant de liste ListSync</label>
+            <input id="guideListId" type="text" placeholder="top ou identifiant configuré">
+          </div>
+          <div class="field guide-field-suggestarr" hidden>
+            <label>Identifiant SuggestArr</label>
+            <input id="guideUsername" type="text" autocomplete="username">
+          </div>
+          <div class="field guide-field-suggestarr" hidden>
+            <label>Mot de passe SuggestArr</label>
+            <input id="guidePassword" type="password" autocomplete="new-password">
+          </div>
+          <div class="field guide-field-suggestarr" hidden>
+            <label>Statuts de recommandations</label>
+            <select id="guideStatuses" multiple size="4">
+              <option value="awaiting_approval" selected>En attente d’approbation</option>
+              <option value="queued">En file</option>
+              <option value="submitted">Envoyées</option>
+              <option value="failed">En erreur</option>
+            </select>
           </div>
           <div class="field">
             <label>Maximum d’éléments</label>

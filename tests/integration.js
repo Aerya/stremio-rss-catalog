@@ -23,6 +23,7 @@ async function main() {
   let webdavAuthReceived = false;
   let waCustomCookieReceived = false;
   let mdblistKeyReceived = false;
+  let suggestArrAuthenticated = false;
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     if (req.method === 'PROPFIND' && (req.url === '/dav/' || req.url === '/dav/Films/')) {
@@ -143,6 +144,41 @@ async function main() {
         }],
         shows: [],
         pagination: {}
+      }));
+    }
+    if (req.url.startsWith('/api/lists/imdb/top/items')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        items: [
+          { id: 1, title: 'Film Test', media_type: 'movie', year: 2026, imdb_id: 'tt0000123', tmdb_id: 123 },
+          { id: 2, title: 'Série Test', media_type: 'tv', year: 2025, imdb_id: 'tt0000456', tmdb_id: 456 }
+        ],
+        total: 2, limit: 100, has_more: false
+      }));
+    }
+    if (req.url === '/api/auth/login' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      return req.on('end', () => {
+        const credentials = JSON.parse(body || '{}');
+        res.setHeader('Content-Type', 'application/json');
+        if (credentials.username !== 'demo' || credentials.password !== 'secret') {
+          res.statusCode = 401;
+          return res.end(JSON.stringify({ error: 'Invalid credentials' }));
+        }
+        res.end(JSON.stringify({ access_token: 'suggestarr-test-token' }));
+      });
+    }
+    if (req.url.startsWith('/api/jobs/suggestions')) {
+      suggestArrAuthenticated = req.headers.authorization === 'Bearer suggestarr-test-token';
+      const requestUrl = new URL(req.url, baseUrl);
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        status: 'success',
+        items: requestUrl.searchParams.get('status') === 'submitted'
+          ? [{ tmdb_id: 789, media_type: 'movie', title: 'Film distant', release_date: '2026-03-04' }]
+          : [{ tmdb_id: 456, media_type: 'tv', title: 'Série Test', release_date: '2025-01-01' }],
+        total: 1, page: 1, pages: 1
       }));
     }
     if (req.url.startsWith('/newznab/api')) {
@@ -273,6 +309,16 @@ async function main() {
     assert.deepEqual(mdblistResult.items.map(item => item.imdb_id), [
       'tt0000456', 'tt0000123', 'tt9999999'
     ]);
+    const listSyncResult = await rssParser.mdblistGuideParser.fetchItems({
+      kind: 'listsync', url: baseUrl, listType: 'imdb', listId: 'top', maxItems: 100
+    });
+    assert.deepEqual(listSyncResult.items.map(item => item.imdb_id), ['tt0000123', 'tt0000456']);
+    const suggestArrResult = await rssParser.mdblistGuideParser.fetchItems({
+      kind: 'suggestarr', url: baseUrl, username: 'demo', password: 'secret',
+      statuses: ['awaiting_approval', 'submitted'], maxItems: 100
+    });
+    assert.equal(suggestArrAuthenticated, true);
+    assert.deepEqual(suggestArrResult.items.map(item => item.tmdb_id), [456, 789]);
     assert.equal(rssParser.safeUrl('https://example.test/rss?passkey=secret'), 'https://example.test/rss?…');
     const tmdbEnriched = rssParser.newznabParser.enrichParsedItems(
       [{ guid: 'tmdb-release', 'newznab:attr': { $: { name: 'tmdbid', value: '123' } } }],
@@ -595,6 +641,7 @@ async function main() {
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
     console.log('✓ Identifiants Kitsu/YouTubio natifs et catalogue YouTube sans conversion en film');
     console.log('✓ Guide MDBList limité aux médias locaux et ordre de liste conservé');
+    console.log('✓ Guides ListSync et SuggestArr normalisés sans importer les médias absents');
     console.log('✓ API Newznab/Torznab paginée avec types Prowlarr et Jackett');
     console.log('✓ Parcours WebDAV récursif, authentifié et filtré par extension');
     console.log('✓ Import WaCustom paginé avec reprise du parcours et identifiants IMDb directs');

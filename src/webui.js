@@ -269,7 +269,8 @@ class WebUI {
         ...(Object.hasOwn(source, 'password') ? { password: includeSecrets ? source.password : null } : {}),
         ...(Object.hasOwn(source, 'adminPassword') ? {
           adminPassword: includeSecrets ? source.adminPassword : null
-        } : {})
+        } : {}),
+        ...(Object.hasOwn(source, 'accessToken') ? { accessToken: includeSecrets ? source.accessToken : null } : {})
       });
       res.setHeader('Content-Disposition', `attachment; filename="stremio-rss-catalog-${new Date().toISOString().slice(0, 10)}.json"`);
       res.json({
@@ -375,7 +376,8 @@ class WebUI {
         this.rssParser.waCustomParser.getSources(), payload.sources.wacustom, ['url', 'adminPassword']
       )));
       this.db.setConfig('mdblist_guides', JSON.stringify(mergeSources(
-        this.rssParser.mdblistGuideParser.getSources(), payload.sources.guides, ['url', 'apiKey']
+        this.rssParser.mdblistGuideParser.getSources(), payload.sources.guides,
+        ['url', 'apiKey', 'username', 'password', 'accessToken']
       )));
       this.db.clearSourceSyncStates();
       for (const catalog of payload.catalogs) {
@@ -412,7 +414,12 @@ class WebUI {
           password: source.password || null
         } : {}),
         ...(kind === 'wacustom' ? { admin_password: source.adminPassword || null } : {}),
-        ...(kind === 'guide' ? { api_key: source.apiKey || null } : {})
+        ...(kind === 'guide' ? {
+          api_key: source.apiKey || null,
+          username: source.username || null,
+          password: source.password || null,
+          access_token: source.accessToken || null
+        } : {})
       });
     });
 
@@ -1165,9 +1172,16 @@ class WebUI {
     const mdblistForApi = source => ({
       id: source.id,
       name: source.name,
+      kind: source.kind || 'mdblist',
       url: source.url,
       paused: Boolean(source.paused),
       has_api_key: Boolean(source.apiKey),
+      has_username: Boolean(source.username),
+      has_password: Boolean(source.password),
+      has_access_token: Boolean(source.accessToken),
+      list_type: source.listType || null,
+      list_id: source.listId || null,
+      statuses: source.statuses || [],
       max_items: Number(source.maxItems) || 5000,
       sync_interval_minutes: source.syncIntervalMinutes || null,
       stats: this.db.getGuideItemStats(source.id),
@@ -1179,7 +1193,16 @@ class WebUI {
       ...(existing || {}),
       ...(body.name !== undefined ? { name: String(body.name).trim() || existing?.name || 'Guide MDBList' } : {}),
       ...(body.url !== undefined ? { url: String(body.url).trim() } : {}),
+      ...(body.kind !== undefined && ['mdblist', 'listsync', 'suggestarr'].includes(body.kind)
+        ? { kind: body.kind }
+        : {}),
       ...(body.api_key ? { apiKey: String(body.api_key).trim() } : {}),
+      ...(body.username !== undefined ? { username: String(body.username).trim() } : {}),
+      ...(body.password ? { password: String(body.password) } : {}),
+      ...(body.access_token ? { accessToken: String(body.access_token).trim() } : {}),
+      ...(body.list_type !== undefined ? { listType: String(body.list_type).trim() } : {}),
+      ...(body.list_id !== undefined ? { listId: String(body.list_id).trim() } : {}),
+      ...(Array.isArray(body.statuses) ? { statuses: body.statuses.map(String) } : {}),
       ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
       ...(body.max_items !== undefined ? {
         maxItems: Math.min(Math.max(Number(body.max_items) || 5000, 1), 50000)
@@ -1200,7 +1223,9 @@ class WebUI {
           : null;
         const source = mdblistPayload(req.body, existing);
         if (!source.url) return res.status(400).json({ error: 'Adresse de liste requise' });
-        if (!source.apiKey) return res.status(400).json({ error: 'Clé API MDBList requise' });
+        if ((source.kind || 'mdblist') === 'mdblist' && !source.apiKey) {
+          return res.status(400).json({ error: 'Clé API MDBList requise' });
+        }
         res.json(await mdblistParser.inspect(source));
       } catch (error) {
         res.status(400).json({ error: error.message });
@@ -1212,15 +1237,14 @@ class WebUI {
         const source = {
           ...mdblistPayload(req.body),
           id: crypto.randomUUID(),
+          kind: ['mdblist', 'listsync', 'suggestarr'].includes(req.body.kind) ? req.body.kind : 'mdblist',
           name: String(req.body.name || '').trim() || 'Guide MDBList',
           paused: Boolean(req.body.paused),
           maxItems: Math.min(Math.max(Number(req.body.max_items) || 5000, 1), 50000),
           syncIntervalMinutes: this.normalizeSourceInterval(req.body.sync_interval_minutes)
         };
-        if (!source.url || !source.apiKey) {
-          return res.status(400).json({ error: 'Adresse de liste et clé API requises' });
-        }
-        mdblistParser.parseListReference(source.url);
+        if (!source.url) return res.status(400).json({ error: 'Adresse requise' });
+        if (source.kind === 'mdblist') mdblistParser.parseListReference(source.url);
         const sources = mdblistParser.getSources();
         sources.push(source);
         this.db.setConfig('mdblist_guides', JSON.stringify(sources));
@@ -1245,13 +1269,20 @@ class WebUI {
       try {
         const current = sources[index];
         const next = mdblistPayload(req.body, current);
-        if (!next.url || !next.apiKey) return res.status(400).json({ error: 'Adresse et clé API requises' });
-        mdblistParser.parseListReference(next.url);
-        const connectionChanged = next.url !== current.url || next.apiKey !== current.apiKey;
+        if (!next.url) return res.status(400).json({ error: 'Adresse requise' });
+        if ((next.kind || 'mdblist') === 'mdblist') mdblistParser.parseListReference(next.url);
+        const connectionChanged = [
+          'url', 'kind', 'apiKey', 'username', 'password', 'accessToken', 'listType', 'listId'
+        ].some(field => next[field] !== current[field]);
         if (connectionChanged) await mdblistParser.inspect(next);
         sources[index] = next;
         this.db.setConfig('mdblist_guides', JSON.stringify(sources));
-        if (connectionChanged) this.db.deleteSourceSyncState(mdblistParser.sourceKey(next.id));
+        if (connectionChanged) {
+          this.db.deleteSourceSyncStates([
+            mdblistParser.sourceKey(next.id, current.kind || 'mdblist'),
+            mdblistParser.sourceKey(next.id, next.kind || 'mdblist')
+          ]);
+        }
         res.json(mdblistForApi(next));
       } catch (error) {
         res.status(400).json({ error: error.message });
@@ -1273,11 +1304,12 @@ class WebUI {
 
     this.app.delete('/api/mdblist-guides/:id', this.authMiddleware.bind(this), (req, res) => {
       const sources = mdblistParser.getSources();
+      const current = sources.find(source => source.id === req.params.id);
       const next = sources.filter(source => source.id !== req.params.id);
       if (next.length === sources.length) return res.status(404).json({ error: 'Guide introuvable' });
       this.db.setConfig('mdblist_guides', JSON.stringify(next));
       this.db.deleteGuideItems(req.params.id);
-      this.db.deleteSourceSyncState(mdblistParser.sourceKey(req.params.id));
+      this.db.deleteSourceSyncState(mdblistParser.sourceKey(req.params.id, current.kind || 'mdblist'));
       this.stremioAddon.clearCache();
       res.json({ success: true });
     });

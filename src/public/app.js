@@ -1203,7 +1203,9 @@ function renderMDBListGuides() {
   container.innerHTML = catalogManagerData.guides.map(guide => `
     <div class="manager-row source-entry">
       <div class="manager-row-main">
-        <div class="manager-row-title">${escHtml(guide.name)} ${guide.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-title">${escHtml(guide.name)} <span class="source-name-badge">${escHtml(({
+          mdblist: 'MDBList', listsync: 'ListSync', suggestarr: 'SuggestArr'
+        }[guide.kind || 'mdblist']) || guide.kind || 'MDBList')}</span> ${guide.paused ? '⏸' : '●'}</div>
         <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(guide.url))}</div>
         <div class="manager-row-meta">
           ${Number(guide.stats?.total || 0).toLocaleString()} éléments
@@ -1216,7 +1218,10 @@ function renderMDBListGuides() {
       <div class="manager-row-actions">
         <button class="btn-sm" onclick="syncMDBListGuide('${guide.id}')">Synchroniser</button>
         <button class="btn-sm" onclick="editMDBListGuide('${guide.id}')">Modifier</button>
-        ${sourceSecretActions('guide', guide.id, guide.has_api_key)}
+        <button class="btn-sm" onclick="revealSourceSecret('guide','${guide.id}',this)">Révéler l’URL</button>
+        ${guide.has_api_key ? `<button class="btn-sm" data-secret="api_key" onclick="revealSourceSecret('guide','${guide.id}',this,true)">Copier la clé</button>` : ''}
+        ${guide.has_username ? `<button class="btn-sm" data-secret="username" onclick="revealSourceSecret('guide','${guide.id}',this,true)">Copier l’utilisateur</button>` : ''}
+        ${guide.has_password ? `<button class="btn-sm" data-secret="password" onclick="revealSourceSecret('guide','${guide.id}',this,true)">Copier le mot de passe</button>` : ''}
         <button class="btn-sm" onclick="toggleMDBListGuide('${guide.id}', ${!guide.paused})">${guide.paused ? 'Reprendre' : 'Mettre en pause'}</button>
         <button class="btn-danger btn-sm" onclick="deleteMDBListGuide('${guide.id}')">Supprimer</button>
       </div>
@@ -1227,8 +1232,14 @@ function mdblistPayload() {
   return {
     source_id: document.getElementById('mdblistEditId').value || null,
     name: document.getElementById('mdblistName').value.trim(),
+    kind: document.getElementById('guideKind').value,
     url: document.getElementById('mdblistUrl').value.trim(),
     api_key: document.getElementById('mdblistApiKey').value,
+    username: document.getElementById('guideUsername').value.trim(),
+    password: document.getElementById('guidePassword').value,
+    list_type: document.getElementById('guideListType').value.trim(),
+    list_id: document.getElementById('guideListId').value.trim(),
+    statuses: [...document.getElementById('guideStatuses').selectedOptions].map(option => option.value),
     max_items: Number(document.getElementById('mdblistMaxItems').value) || 5000,
     sync_interval_minutes: document.getElementById('mdblistInterval').value || null
   };
@@ -1272,30 +1283,69 @@ async function editMDBListGuide(id) {
   if (!guide) return;
   const secrets = await (await fetch(`/api/source-secrets/guide/${id}`)).json();
   document.getElementById('mdblistEditId').value = id;
+  document.getElementById('guideKind').value = guide.kind || 'mdblist';
   document.getElementById('mdblistName').value = guide.name || '';
   document.getElementById('mdblistUrl').value = secrets.url || '';
   document.getElementById('mdblistApiKey').value = '';
   document.getElementById('mdblistApiKey').placeholder = 'Clé enregistrée — laisser vide pour conserver';
+  document.getElementById('guideUsername').value = secrets.username || '';
+  document.getElementById('guidePassword').value = '';
+  document.getElementById('guidePassword').placeholder = guide.has_password ? 'Mot de passe enregistré — laisser vide pour conserver' : '';
+  document.getElementById('guideListType').value = guide.list_type || '';
+  document.getElementById('guideListId').value = guide.list_id || '';
+  [...document.getElementById('guideStatuses').options].forEach(option => {
+    option.selected = (guide.statuses || ['awaiting_approval']).includes(option.value);
+  });
   document.getElementById('mdblistMaxItems').value = guide.max_items || 5000;
   document.getElementById('mdblistInterval').value = guide.sync_interval_minutes || '';
   document.getElementById('mdblistSubmit').textContent = 'Enregistrer';
   document.getElementById('mdblistCancel').hidden = false;
+  updateGuideFields();
 }
 window.editMDBListGuide = editMDBListGuide;
 
 function resetMDBListForm() {
   document.getElementById('mdblistEditId').value = '';
   document.getElementById('mdblistName').value = '';
+  document.getElementById('guideKind').value = 'mdblist';
   document.getElementById('mdblistUrl').value = '';
   document.getElementById('mdblistApiKey').value = '';
   document.getElementById('mdblistApiKey').placeholder = '';
+  document.getElementById('guideUsername').value = '';
+  document.getElementById('guidePassword').value = '';
+  document.getElementById('guidePassword').placeholder = '';
+  document.getElementById('guideListType').value = '';
+  document.getElementById('guideListId').value = '';
+  [...document.getElementById('guideStatuses').options].forEach((option, index) => {
+    option.selected = index === 0;
+  });
   document.getElementById('mdblistMaxItems').value = 5000;
   document.getElementById('mdblistInterval').value = '';
   document.getElementById('mdblistPreview').textContent = '';
   document.getElementById('mdblistSubmit').textContent = 'Ajouter et synchroniser';
   document.getElementById('mdblistCancel').hidden = true;
+  updateGuideFields();
 }
 window.resetMDBListForm = resetMDBListForm;
+
+function updateGuideFields() {
+  const kind = document.getElementById('guideKind')?.value || 'mdblist';
+  document.querySelectorAll('.guide-field-mdblist').forEach(node => { node.hidden = kind !== 'mdblist'; });
+  document.querySelectorAll('.guide-field-listsync').forEach(node => { node.hidden = kind !== 'listsync'; });
+  document.querySelectorAll('.guide-field-suggestarr').forEach(node => { node.hidden = kind !== 'suggestarr'; });
+  const labels = {
+    mdblist: ['URL de la liste ou identifiant MDBList', 'https://mdblist.com/lists/utilisateur/ma-liste'],
+    listsync: ['URL racine de ListSync', 'http://listsync:4222'],
+    suggestarr: ['URL racine de SuggestArr', 'http://suggestarr:5000']
+  };
+  const [label, placeholder] = labels[kind];
+  document.getElementById('guideUrlLabel').textContent = label;
+  document.getElementById('mdblistUrl').placeholder = placeholder;
+  const maxItems = document.getElementById('mdblistMaxItems');
+  maxItems.max = kind === 'listsync' ? '100' : kind === 'suggestarr' ? '5000' : '50000';
+  if (kind === 'listsync' && Number(maxItems.value) > 100) maxItems.value = 100;
+}
+window.updateGuideFields = updateGuideFields;
 
 async function syncMDBListGuide(id) {
   const response = await fetch(`/api/mdblist-guides/${id}/sync`, { method: 'POST' });
