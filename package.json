@@ -5,11 +5,11 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "test": "node tests/integration.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "stremio-addon-sdk": "^1.6.10",
     "axios": "^1.16.1",
     "xml2js": "^0.6.2",
     "better-sqlite3": "^12.10.0",

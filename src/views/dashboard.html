@@ -237,18 +237,24 @@
     <section id="section-sources" class="page-section">
       <div class="page-header">
         <h2 data-i18n="nav_sources">Sources</h2>
-        <button class="btn-sm" onclick="loadSources()">↺ Actualiser</button>
+        <button class="btn-sm" onclick="loadSourceManager()">↺ Actualiser</button>
       </div>
-      <div id="sourcesContainer" class="card">
-        <p class="text-muted" data-i18n="sync_loading">Chargement...</p>
-      </div>
-    </section>
 
-    <!-- ─── Catalogues personnalisés ──────────────────────────────── -->
-    <section id="section-catalogs" class="page-section">
-      <div class="page-header">
-        <h2>Catalogues</h2>
-        <button class="btn-sm" onclick="loadCatalogManager()">↺ Actualiser</button>
+      <div class="card" style="margin-bottom:20px">
+        <h3>Sources RSS</h3>
+        <div class="rss-row" style="margin-top:14px">
+          <input id="rssSourceName" type="text" placeholder="Nom de la source" class="rss-name-input">
+          <input id="rssSourceUrl" type="url" placeholder="https://example.net/rss..." class="flex-1">
+          <select id="rssSourceForce" class="select-catalog">
+            <option value="auto">Détection automatique</option>
+            <option value="films">Films</option><option value="series">Séries</option>
+            <option value="documentaires">Documentaires</option><option value="emissions">Émissions TV</option>
+            <option value="animés">Animés</option><option value="concerts">Concerts</option>
+            <option value="spectacles">Spectacles</option>
+          </select>
+          <button type="button" class="btn-primary" onclick="addRssSource()">Ajouter</button>
+        </div>
+        <div id="rssSourceList" style="margin-top:14px"></div>
       </div>
 
       <div class="card" style="margin-bottom:20px">
@@ -264,6 +270,34 @@
         </div>
         <div id="pastebinPreview" class="text-muted" style="margin-top:10px"></div>
         <div id="pastebinList" style="margin-top:14px"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <h3>Manifestes Stremio</h3>
+        <p class="text-muted" style="margin:8px 0 14px">
+          Importe les catalogues déclarés par un autre addon. Les paramètres sensibles de l’URL sont masqués après l’ajout.
+        </p>
+        <div class="rss-row">
+          <input id="stremioSourceName" type="text" placeholder="Nom de la source" class="rss-name-input">
+          <input id="stremioSourceUrl" type="password" autocomplete="off"
+            placeholder="https://example.net/manifest.json?..." class="flex-1">
+          <button type="button" class="btn-sm" onclick="previewStremioSource()">Prévisualiser</button>
+          <button type="button" class="btn-primary" onclick="addStremioSource()">Ajouter</button>
+        </div>
+        <div id="stremioSourcePreview" class="text-muted" style="margin-top:10px"></div>
+        <div id="stremioSourceList" style="margin-top:14px"></div>
+      </div>
+
+      <div id="sourcesContainer" class="card">
+        <p class="text-muted" data-i18n="sync_loading">Chargement...</p>
+      </div>
+    </section>
+
+    <!-- ─── Catalogues personnalisés ──────────────────────────────── -->
+    <section id="section-catalogs" class="page-section">
+      <div class="page-header">
+        <h2>Catalogues</h2>
+        <button class="btn-sm" onclick="loadCatalogManager()">↺ Actualiser</button>
       </div>
 
       <div class="card" style="margin-bottom:20px">
@@ -307,6 +341,30 @@
           <div class="field">
             <label>Mots exclus, séparés par des virgules</label>
             <input id="catalogKeywordsExclude" type="text" placeholder="CAM, TS">
+          </div>
+          <div class="field">
+            <label>Genres à inclure</label>
+            <select id="catalogGenresInclude" multiple size="5">
+              <option value="28">Action</option><option value="12">Aventure</option>
+              <option value="16">Animation</option><option value="35">Comédie</option>
+              <option value="80">Crime</option><option value="99">Documentaire</option>
+              <option value="18">Drame</option><option value="14">Fantastique</option>
+              <option value="27">Horreur</option><option value="10402">Musique</option>
+              <option value="10749">Romance</option><option value="878">Science-fiction</option>
+              <option value="53">Thriller</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Genres à exclure</label>
+            <select id="catalogGenresExclude" multiple size="5">
+              <option value="28">Action</option><option value="12">Aventure</option>
+              <option value="16">Animation</option><option value="35">Comédie</option>
+              <option value="80">Crime</option><option value="99">Documentaire</option>
+              <option value="18">Drame</option><option value="14">Fantastique</option>
+              <option value="27">Horreur</option><option value="10402">Musique</option>
+              <option value="10749">Romance</option><option value="878">Science-fiction</option>
+              <option value="53">Thriller</option>
+            </select>
           </div>
         </div>
         <div class="field" style="margin-top:14px">

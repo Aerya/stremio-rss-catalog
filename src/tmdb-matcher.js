@@ -365,7 +365,9 @@ class TMDBMatcher {
       let match = null;
       try {
         const isAnime = item.catalog_type === 'animés';
-        match = item.tmdb_id
+        match = item.direct_meta
+          ? item.direct_meta
+          : item.tmdb_id
           ? await this.fetchByTmdbId(item.tmdb_id, item.type === 'series' ? 'tv' : 'movie')
           : (isAnime ? await this.matchAnimeItem(item) : await this.matchItem(item));
       } catch (err) {
@@ -486,7 +488,7 @@ class TMDBMatcher {
           // Nouveau média
           const mediaData = {
             imdb_id: match.imdb_id,
-            tmdb_id: match.tmdb_id.toString(),
+            tmdb_id: match.tmdb_id ? match.tmdb_id.toString() : null,
             type: item.type,
             catalog_type: catalogType,
             name: match.name,
@@ -671,6 +673,8 @@ class TMDBMatcher {
         description: d.overview || null,
         genres: (d.genres || []).map(g => g.id),
         vote_average: d.vote_average || null,
+        original_language: d.original_language || null,
+        origin_country: d.origin_country || d.production_countries?.map(country => country.iso_3166_1) || [],
         media_type: mediaType
       };
     } catch (err) {

@@ -60,9 +60,12 @@
 }
 
 @media (max-width: 900px) {
-  #section-catalogs .rss-row { flex-wrap: wrap; }
+  #section-catalogs .rss-row,
+  #section-sources .rss-row { flex-wrap: wrap; }
   #section-catalogs .rss-row .rss-name-input,
-  #section-catalogs .rss-row .flex-1 {
+  #section-catalogs .rss-row .flex-1,
+  #section-sources .rss-row .rss-name-input,
+  #section-sources .rss-row .flex-1 {
     flex: 1 1 100%;
     width: 100%;
   }

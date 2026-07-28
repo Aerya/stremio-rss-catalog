@@ -145,6 +145,24 @@ class PastebinParser {
     const items = [];
     const queue = [{ url: startUrl, category: this.normalizeCategory(options.force) }];
     let truncated = false;
+    const allowedHosts = new Set([
+      new URL(startUrl).hostname.toLowerCase(),
+      ...(Array.isArray(options.allowedHosts) ? options.allowedHosts : [])
+        .map(host => String(host).trim().toLowerCase())
+        .filter(Boolean)
+    ]);
+    const queueDiscovered = (candidate) => {
+      try {
+        const parsed = new URL(candidate.url);
+        if (!['http:', 'https:'].includes(parsed.protocol) || !allowedHosts.has(parsed.hostname.toLowerCase())) {
+          pages.push({ url: candidate.url, kind: 'blocked', error: 'Hôte découvert non autorisé' });
+          return;
+        }
+        queue.push(candidate);
+      } catch {
+        pages.push({ url: candidate.url, kind: 'blocked', error: 'URL découverte invalide' });
+      }
+    };
 
     while (queue.length) {
       const node = queue.shift();
@@ -177,16 +195,31 @@ class PastebinParser {
       const pointers = this.parsePointer(content);
       if (pointers.length) {
         pages.push({ url: node.url, kind: 'pointer', count: pointers.length });
-        for (const url of pointers) queue.push({ url, category: node.category, depth: depth + 1 });
+        for (const url of pointers) queueDiscovered({ url, category: node.category, depth: depth + 1 });
         continue;
       }
 
       const refs = this.parseIndex(content, node.url, node.category);
       pages.push({ url: node.url, kind: refs.length ? 'index' : 'unknown', count: refs.length });
-      for (const ref of refs) queue.push({ ...ref, depth: depth + 1 });
+      for (const ref of refs) queueDiscovered({ ...ref, depth: depth + 1 });
     }
 
-    return { items, pages, visited: visited.size, truncated };
+    const uniqueItems = [];
+    const seenMedia = new Set();
+    for (const item of items) {
+      const key = `${item.type}:${item.tmdb_id}`;
+      if (seenMedia.has(key)) continue;
+      seenMedia.add(key);
+      uniqueItems.push(item);
+    }
+    return {
+      items: uniqueItems,
+      rawItems: items.length,
+      duplicates: items.length - uniqueItems.length,
+      pages,
+      visited: visited.size,
+      truncated
+    };
   }
 
   async parseAll() {

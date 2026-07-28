@@ -1,5 +1,3 @@
-const { addonBuilder } = require('stremio-addon-sdk');
-
 const CATALOG_MAP = {
   'useflowfr_films':               { catalogType: 'films',         typeFilter: null },
   'useflowfr_documentaires':       { catalogType: 'documentaires', typeFilter: 'movie' },
@@ -88,8 +86,6 @@ class StremioAddon {
       ]
     };
 
-    this.builder = new addonBuilder(this.manifest);
-    this.setupHandlers();
   }
 
   // Appelé par webui.js après chaque sync réussie
@@ -109,52 +105,12 @@ class StremioAddon {
     return {
       ...this.manifest,
       version: `1.1.${Math.max(0, Number(this.db.getConfig('manifest_revision')) || 0)}`,
-      catalogs: [...this.manifest.catalogs, ...customCatalogs]
+      catalogs: customCatalogs
     };
   }
 
   _cacheKey(id, skip, search) {
     return `${id}:${skip}:${search || ''}`;
-  }
-
-  setupHandlers() {
-    this.builder.defineCatalogHandler(async ({ type, id, extra }) => {
-      const entry = CATALOG_MAP[id];
-      if (!entry) return { metas: [] };
-
-      const skip = parseInt(extra?.skip) || 0;
-      const search = extra?.search || null;
-
-      // Les recherches ne sont pas cachées (requêtes trop variées, usage rare)
-      if (!search) {
-        const key = this._cacheKey(id, skip, null);
-        const cached = this._cache.get(key);
-        if (cached) {
-          console.log(`[Cache] HIT — ${id} skip=${skip}`);
-          return cached;
-        }
-      }
-
-      const { catalogType, typeFilter } = entry;
-      const fetchLimit = PAGE_SIZE + 1;
-
-      const items = search
-        ? this.db.searchMedia(catalogType, search, skip, fetchLimit, typeFilter)
-        : this.db.getMedia(catalogType, skip, fetchLimit, typeFilter);
-
-      const hasMore = items.length > PAGE_SIZE;
-      const metas = items.slice(0, PAGE_SIZE).map(item => this.itemToMetaPreview(item));
-      const response = { metas, hasMore };
-
-      if (!search) {
-        this._cache.set(this._cacheKey(id, skip, null), response);
-        console.log(`[Cache] MISS → stocké — ${id} skip=${skip} (${metas.length} items, cache size: ${this._cache.size})`);
-      } else {
-        console.log(`[Cache] SEARCH (non caché) — ${id} query="${search}" skip=${skip} → ${metas.length} items`);
-      }
-
-      return response;
-    });
   }
 
   async handleCatalog({ type, id, extra }) {
@@ -254,9 +210,6 @@ class StremioAddon {
     return meta;
   }
 
-  getInterface() {
-    return this.builder.getInterface();
-  }
 }
 
 module.exports = StremioAddon;

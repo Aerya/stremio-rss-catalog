@@ -20,7 +20,7 @@ function navigate(sectionId) {
     if (limitEl) limitEl.value = libLimit;
     loadRpdbConfig().then(() => loadLibrary()); loadLibraryCounts(); loadYearsFilter();
   }
-  if (sectionId === 'sources')  loadSources();
+  if (sectionId === 'sources')  loadSourceManager();
   if (sectionId === 'catalogs') loadCatalogManager();
   if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); }
   if (sectionId === 'failures') loadFailed();
@@ -720,6 +720,7 @@ async function loadSources() {
         <th data-i18n="sources_media">Médias</th>
         <th data-i18n="sources_last_seen">Dernier ajout</th>
         <th data-i18n="sources_errors">Erreurs</th>
+        <th>Catalogue</th>
       </tr></thead>
       <tbody>
         ${d.map(s => {
@@ -754,6 +755,7 @@ async function loadSources() {
             <td><span class="source-num">${(s.media_count || 0).toLocaleString()}</span></td>
             <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${s.last_seen ? fmtDate(s.last_seen) : '—'}</td>
             <td>${errCell}</td>
+            <td><button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(s.source_url).replace(/'/g, '%27')}','${encodeURIComponent(s.name || '').replace(/'/g, '%27')}')">Créer</button></td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -766,12 +768,30 @@ async function loadSources() {
 }
 window.loadSources = loadSources;
 
+async function createCatalogForSource(encodedUrl, encodedName) {
+  await loadCatalogManager();
+  navigate('catalogs');
+  resetCatalogForm();
+  const url = decodeURIComponent(encodedUrl);
+  const name = decodeURIComponent(encodedName);
+  document.getElementById('catalogName').value = name ? `${name} — Films` : 'Nouveau catalogue';
+  const checkbox = [...document.querySelectorAll('#catalogSourceChoices input')]
+    .find(input => input.value === url);
+  if (checkbox) checkbox.checked = true;
+  document.getElementById('catalogName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+window.createCatalogForSource = createCatalogForSource;
+
 // ═══════════════════════════ CATALOGUES ═══════════════════════════════
 
-let catalogManagerData = { catalogs: [], pastebins: [], rss: [] };
+let catalogManagerData = { catalogs: [], pastebins: [], rss: [], stremio: [] };
 
 function csvValues(id) {
   return (document.getElementById(id)?.value || '').split(',').map(v => v.trim()).filter(Boolean);
+}
+
+function selectedValues(id) {
+  return [...(document.getElementById(id)?.selectedOptions || [])].map(option => Number(option.value));
 }
 
 function catalogPayload() {
@@ -785,29 +805,25 @@ function catalogPayload() {
       year_min: document.getElementById('catalogYearMin').value || null,
       year_max: document.getElementById('catalogYearMax').value || null,
       keywords_include: csvValues('catalogKeywordsInclude'),
-      keywords_exclude: csvValues('catalogKeywordsExclude')
+      keywords_exclude: csvValues('catalogKeywordsExclude'),
+      genres_include: selectedValues('catalogGenresInclude'),
+      genres_exclude: selectedValues('catalogGenresExclude')
     }
   };
 }
 
 async function loadCatalogManager() {
   try {
-    const [catalogRes, pasteRes, configRes] = await Promise.all([
-      fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/config')
+    const [catalogRes, pasteRes, rssRes, stremioRes] = await Promise.all([
+      fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/rss-sources'), fetch('/api/stremio-sources')
     ]);
-    const [catalogs, pastebins, config] = await Promise.all([
-      catalogRes.json(), pasteRes.json(), configRes.json()
+    const [catalogs, pastebins, rss, stremio] = await Promise.all([
+      catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json()
     ]);
-    const rss = [];
-    if (config.rss_films_url) rss.push({ name: config.rss_films_name || 'Flux principal', url: config.rss_films_url, kind: 'RSS' });
-    try {
-      JSON.parse(config.rss_additional_urls || '[]').forEach(source => {
-        const value = typeof source === 'string' ? { url: source } : source;
-        if (value.url) rss.push({ name: value.name || value.url, url: value.url, kind: 'RSS' });
-      });
-    } catch {}
-    catalogManagerData = { catalogs, pastebins, rss };
+    catalogManagerData = { catalogs, pastebins, rss, stremio };
+    renderRssSources();
     renderPastebins();
+    renderStremioSources();
     renderCatalogSourceChoices();
     renderCatalogs();
   } catch (error) {
@@ -815,6 +831,65 @@ async function loadCatalogManager() {
   }
 }
 window.loadCatalogManager = loadCatalogManager;
+
+async function loadSourceManager() {
+  await Promise.all([loadCatalogManager(), loadSources()]);
+}
+window.loadSourceManager = loadSourceManager;
+
+function renderRssSources() {
+  const container = document.getElementById('rssSourceList');
+  if (!container) return;
+  if (!catalogManagerData.rss.length) {
+    container.innerHTML = '<p class="text-muted">Aucune source RSS.</p>';
+    return;
+  }
+  container.innerHTML = catalogManagerData.rss.map(source => `
+    <div class="manager-row">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'RSS')} ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta" title="${escHtml(source.url)}">${escHtml(source.url)} · ${escHtml(source.force || 'auto')}</div>
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.url).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">Catalogue</button>
+        <button class="btn-sm" onclick="toggleRssSource('${source.id}', ${!source.paused})">${source.paused ? 'Reprendre' : 'Pause'}</button>
+        <button class="btn-danger btn-sm" onclick="deleteRssSource('${source.id}')">Supprimer</button>
+      </div>
+    </div>`).join('');
+}
+
+async function addRssSource() {
+  const response = await fetch('/api/rss-sources', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: document.getElementById('rssSourceName').value,
+      url: document.getElementById('rssSourceUrl').value.trim(),
+      force: document.getElementById('rssSourceForce').value
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  document.getElementById('rssSourceName').value = '';
+  document.getElementById('rssSourceUrl').value = '';
+  await loadSourceManager();
+}
+window.addRssSource = addRssSource;
+
+async function toggleRssSource(id, paused) {
+  const response = await fetch(`/api/rss-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.toggleRssSource = toggleRssSource;
+
+async function deleteRssSource(id) {
+  if (!confirm('Supprimer cette source RSS ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/rss-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteRssSource = deleteRssSource;
 
 function renderPastebins() {
   const container = document.getElementById('pastebinList');
@@ -829,6 +904,7 @@ function renderPastebins() {
         <div class="manager-row-meta" title="${escHtml(source.url)}">${escHtml(source.url)}</div>
       </div>
       <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.url).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">Catalogue</button>
         <button class="btn-sm" onclick="togglePastebin('${source.id}', ${!source.paused})">${source.paused ? 'Reprendre' : 'Pause'}</button>
         <button class="btn-danger btn-sm" onclick="deletePastebin('${source.id}')">Supprimer</button>
       </div>
@@ -838,10 +914,16 @@ function renderPastebins() {
 function renderCatalogSourceChoices(selected = []) {
   const sources = [
     ...catalogManagerData.rss,
-    ...catalogManagerData.pastebins.map(source => ({ ...source, kind: 'Pastebin' }))
+    ...catalogManagerData.pastebins.map(source => ({ ...source, kind: 'Pastebin' })),
+    ...catalogManagerData.stremio.flatMap(source => (source.catalogs || []).map(catalog => ({
+      name: `${source.name} — ${catalog.name}`,
+      url: catalog.source_key,
+      kind: 'Catalogue Stremio',
+      paused: source.paused || catalog.enabled === false
+    })))
   ];
   const container = document.getElementById('catalogSourceChoices');
-  container.innerHTML = sources.length ? sources.map(source => `
+  container.innerHTML = sources.length ? sources.filter(source => !source.paused).map(source => `
     <label class="catalog-source-choice">
       <input type="checkbox" value="${escHtml(source.url)}" ${selected.includes(source.url) ? 'checked' : ''}>
       <span><strong>${escHtml(source.name || source.url)}</strong><br><small class="text-muted">${source.kind}</small></span>
@@ -883,7 +965,7 @@ async function previewPastebin() {
   });
   const data = await response.json();
   output.textContent = response.ok
-    ? `${data.items.toLocaleString()} médias · ${data.visited} pages · ${Object.entries(data.categories).map(([k,v]) => `${k}: ${v}`).join(' · ')}${data.truncated ? ' · aperçu limité' : ''}`
+    ? `${data.items.toLocaleString()} médias · ${data.visited} pages${data.duplicates ? ` · ${data.duplicates.toLocaleString()} doublons retirés` : ''} · ${Object.entries(data.categories).map(([k,v]) => `${k}: ${v}`).join(' · ')}${data.truncated ? ' · aperçu limité' : ''}`
     : (data.error || 'Erreur');
 }
 window.previewPastebin = previewPastebin;
@@ -919,6 +1001,76 @@ async function deletePastebin(id) {
   loadCatalogManager();
 }
 window.deletePastebin = deletePastebin;
+
+function renderStremioSources() {
+  const container = document.getElementById('stremioSourceList');
+  if (!container) return;
+  if (!catalogManagerData.stremio.length) {
+    container.innerHTML = '<p class="text-muted">Aucun manifeste Stremio.</p>';
+    return;
+  }
+  container.innerHTML = catalogManagerData.stremio.map(source => `
+    <div class="manager-row">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name)} ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta">${escHtml(source.display_url)} · ${(source.catalogs || []).length} catalogue(s)</div>
+        <div style="margin-top:6px">${(source.catalogs || []).map(catalog =>
+          `<span class="src-cat badge-${catalog.type === 'series' ? 'series' : 'films'}">${escHtml(catalog.name)}</span>`
+        ).join(' ')}</div>
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="toggleStremioSource('${source.id}', ${!source.paused})">${source.paused ? 'Reprendre' : 'Pause'}</button>
+        <button class="btn-danger btn-sm" onclick="deleteStremioSource('${source.id}')">Supprimer</button>
+      </div>
+    </div>`).join('');
+}
+
+async function previewStremioSource() {
+  const url = document.getElementById('stremioSourceUrl').value.trim();
+  const output = document.getElementById('stremioSourcePreview');
+  if (!url) return;
+  output.textContent = 'Analyse en cours…';
+  const response = await fetch('/api/stremio-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url })
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${data.name} · ${data.catalogs.length} catalogue(s) : ${data.catalogs.map(catalog => catalog.name).join(', ')}`
+    : (data.error || 'Erreur');
+}
+window.previewStremioSource = previewStremioSource;
+
+async function addStremioSource() {
+  const response = await fetch('/api/stremio-sources', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: document.getElementById('stremioSourceName').value,
+      url: document.getElementById('stremioSourceUrl').value.trim()
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  document.getElementById('stremioSourceName').value = '';
+  document.getElementById('stremioSourceUrl').value = '';
+  document.getElementById('stremioSourcePreview').textContent = '';
+  loadSourceManager();
+}
+window.addStremioSource = addStremioSource;
+
+async function toggleStremioSource(id, paused) {
+  await fetch(`/api/stremio-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  loadSourceManager();
+}
+window.toggleStremioSource = toggleStremioSource;
+
+async function deleteStremioSource(id) {
+  if (!confirm('Supprimer ce manifeste Stremio ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/stremio-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteStremioSource = deleteStremioSource;
 
 async function previewCatalog() {
   const output = document.getElementById('catalogPreview');
@@ -959,6 +1111,14 @@ function editCatalog(id) {
   document.getElementById('catalogYearMax').value = catalog.filters?.year_max || '';
   document.getElementById('catalogKeywordsInclude').value = (catalog.filters?.keywords_include || []).join(', ');
   document.getElementById('catalogKeywordsExclude').value = (catalog.filters?.keywords_exclude || []).join(', ');
+  for (const [id, values] of [
+    ['catalogGenresInclude', catalog.filters?.genres_include || []],
+    ['catalogGenresExclude', catalog.filters?.genres_exclude || []]
+  ]) {
+    [...document.getElementById(id).options].forEach(option => {
+      option.selected = values.map(Number).includes(Number(option.value));
+    });
+  }
   renderCatalogSourceChoices(catalog.source_urls);
   document.getElementById('catalogName').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -987,6 +1147,9 @@ function resetCatalogForm() {
     .forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('catalogMediaType').value = 'movie';
   document.getElementById('catalogYearMode').value = 'include';
+  for (const id of ['catalogGenresInclude', 'catalogGenresExclude']) {
+    [...document.getElementById(id).options].forEach(option => { option.selected = false; });
+  }
   document.getElementById('catalogPreview').textContent = '';
   renderCatalogSourceChoices();
 }

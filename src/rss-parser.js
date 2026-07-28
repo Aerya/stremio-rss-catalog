@@ -2,6 +2,7 @@ const axios = require('axios');
 const xml2js = require('xml2js');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const PastebinParser = require('./pastebin-parser');
+const StremioManifestParser = require('./stremio-manifest-parser');
 
 class RSSParser {
   constructor(config, db) {
@@ -9,6 +10,7 @@ class RSSParser {
     this.db = db;
     this.axiosConfig = this.getAxiosConfig();
     this.pastebinParser = new PastebinParser(db, () => this.getAxiosConfig());
+    this.stremioManifestParser = new StremioManifestParser(db, () => this.getAxiosConfig());
   }
 
   getAxiosConfig() {
@@ -291,7 +293,7 @@ class RSSParser {
 
   async parseFilmsRSS() {
     const rssUrl = this.db.getConfig('rss_films_url');
-    if (!rssUrl) {
+    if (!rssUrl || this.db.getConfig('rss_films_paused') === 'true') {
       console.log('No RSS Films URL configured');
       return [];
     }
@@ -321,7 +323,7 @@ class RSSParser {
       const rssUrl = typeof entry === 'string' ? entry : entry.url;
       const force = typeof entry === 'string' ? 'auto' : (entry.force || 'auto');
 
-      if (!rssUrl || !rssUrl.trim()) continue;
+      if (!rssUrl || !rssUrl.trim() || (typeof entry === 'object' && entry.paused === true)) continue;
       console.log('[RSS] Parsing additional feed:', rssUrl.substring(0, 50) + '... (force: ' + force + ')');
 
       try {
@@ -339,7 +341,8 @@ class RSSParser {
     const filmsItems = await this.parseFilmsRSS();
     const additionalItems = await this.parseAdditionalRSS();
     const pastebinItems = await this.pastebinParser.parseAll();
-    return { films: [...filmsItems, ...additionalItems, ...pastebinItems] };
+    const stremioItems = await this.stremioManifestParser.parseAll();
+    return { films: [...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems] };
   }
 }
 

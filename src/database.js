@@ -2,6 +2,18 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
+const DEFAULT_CATALOGS = [
+  ['useflowfr_films', 'Films', 'movie', ['films']],
+  ['useflowfr_documentaires', 'Documentaires', 'movie', ['documentaires']],
+  ['useflowfr_documentaires_series', 'Documentaires', 'series', ['documentaires']],
+  ['useflowfr_series', 'Séries', 'series', ['series']],
+  ['useflowfr_emissions', 'Émissions TV', 'series', ['emissions']],
+  ['useflowfr_animes_films', 'Animés (Films)', 'movie', ['animés']],
+  ['useflowfr_animes_series', 'Animés (Séries)', 'series', ['animés']],
+  ['useflowfr_concerts', 'Concerts', 'movie', ['concerts']],
+  ['useflowfr_spectacles', 'Spectacles', 'movie', ['spectacles']]
+];
+
 class DatabaseManager {
   constructor(dbPath) {
     const dir = path.dirname(dbPath);
@@ -142,6 +154,7 @@ class DatabaseManager {
     this._migrateV3SyncHistory();
 
     this.initDefaultConfig();
+    this.seedManagedCatalogs();
   }
 
   _migrateV3SyncHistory() {
@@ -198,8 +211,10 @@ class DatabaseManager {
       rss_films_name: '',
       rss_films_url: '',
       rss_films_force: 'auto',
+      rss_films_paused: 'false',
       rss_additional_urls: '[]',
       pastebin_sources: '[]',
+      stremio_manifest_sources: '[]',
       manifest_revision: '0',
       tmdb_api_key: '',
       tvdb_api_key: '',
@@ -238,6 +253,24 @@ class DatabaseManager {
     }
   }
 
+  seedManagedCatalogs() {
+    if (this.getConfig('managed_catalogs_seeded') === 'true') return;
+    const now = Date.now();
+    const insert = this.db.prepare(`
+      INSERT OR IGNORE INTO custom_catalogs
+        (id, name, type, enabled, source_urls, filters, created_at, updated_at)
+      VALUES (?, ?, ?, 1, '[]', ?, ?, ?)
+    `);
+    const seed = this.db.transaction(() => {
+      DEFAULT_CATALOGS.forEach(([id, name, type, catalogTypes], index) => {
+        insert.run(id, name, type, JSON.stringify({ catalog_types: catalogTypes }), now + index, now);
+      });
+      this.setConfig('managed_catalogs_seeded', 'true');
+    });
+    seed();
+    console.log('[DB] Catalogues historiques intégrés au gestionnaire');
+  }
+
   // ─── Config ───────────────────────────────────────────────────────────────
 
   getConfig(key) {
@@ -258,8 +291,8 @@ class DatabaseManager {
 
   listCustomCatalogs(includeDisabled = true) {
     const rows = includeDisabled
-      ? this.db.prepare('SELECT * FROM custom_catalogs ORDER BY created_at ASC').all()
-      : this.db.prepare('SELECT * FROM custom_catalogs WHERE enabled = 1 ORDER BY created_at ASC').all();
+      ? this.db.prepare("SELECT * FROM custom_catalogs ORDER BY CASE WHEN id LIKE 'useflowfr_%' THEN 0 ELSE 1 END, created_at ASC").all()
+      : this.db.prepare("SELECT * FROM custom_catalogs WHERE enabled = 1 ORDER BY CASE WHEN id LIKE 'useflowfr_%' THEN 0 ELSE 1 END, created_at ASC").all();
     return rows.map(row => ({
       ...row,
       enabled: Boolean(row.enabled),
@@ -337,6 +370,18 @@ class DatabaseManager {
     if (baseCatalogs.length) {
       conditions.push(`m.catalog_type IN (${baseCatalogs.map(() => '?').join(',')})`);
       params.push(...baseCatalogs);
+    }
+    for (const [key, negate] of [['genres_include', false], ['genres_exclude', true]]) {
+      const genres = Array.isArray(filters[key])
+        ? filters[key].map(Number).filter(Number.isInteger)
+        : [];
+      if (genres.length) {
+        conditions.push(`${negate ? 'NOT ' : ''}EXISTS (
+          SELECT 1 FROM json_each(COALESCE(m.genres, '[]')) genre
+          WHERE CAST(genre.value AS INTEGER) IN (${genres.map(() => '?').join(',')})
+        )`);
+        params.push(...genres);
+      }
     }
     if (search) {
       conditions.push('(m.name LIKE ? OR m.release_name LIKE ?)');
