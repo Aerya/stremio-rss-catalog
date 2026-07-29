@@ -1,0 +1,21 @@
+name: stremio-rss-catalog-demo
+
+services:
+  stremio-rss-catalog-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stremio-rss-catalog-demo
+    restart: unless-stopped
+    ports:
+      - "17975:7000"
+    volumes:
+      - ./demo-data:/data
+    environment:
+      PORT: "7000"
+      NODE_ENV: development
+      TZ: Europe/Paris
+      WEBUI_USERNAME: demo
+      WEBUI_PASSWORD: demo
+      DB_PATH: /data/addon.db
+      SESSION_SECRET: local-demo-only
