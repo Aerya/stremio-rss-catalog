@@ -54,6 +54,41 @@ Here, “available” means **discovered in a source you configured**. The addon
 does not recheck seeders, debrid cache status, or link validity on every catalog
 request, and it does not provide playback streams itself.
 
+## Example setup and statistics
+
+> The names and figures below are entirely fictional. They illustrate what the
+> WebUI may display after several synchronizations; they are neither a benchmark
+> nor a performance guarantee.
+
+For example, one installation may combine **18 RSS feeds**, **3
+Newznab/Torznab APIs**, **2 Pastebins**, **1 WebDAV folder**, and **1 Stremio
+manifest**. After deduplication and matching, its dashboard could display:
+
+| Metric | Example |
+|---|---:|
+| Releases read from sources | 286,450 |
+| Unique media identified | 74,820 |
+| Successful automatic matching | 97.8% |
+| Known or deduplicated releases | 201,140 |
+| Releases awaiting review | 1,630 |
+| Catalogs published in the manifest | 12 |
+| Last full synchronization | 8 min 42 sec |
+
+Examples of processed data:
+
+| Received data | Detection | Matching and destination |
+|---|---|---|
+| `Example.Movie.2026.ENGLISH.1080p.WEB-DL` | Movie · 2026 · 1080p · ENGLISH | IMDb/TMDB → **2026 Movies** |
+| `Example.Series.S02E04.MULTi.2160p` | Series · season 2 · episode 4 · 2160p | IMDb/TMDB → **Available Series** |
+| `Example.Artist.Live.In.Paris.2025` | Concert · 2025 | TMDB + OMDb → **Concerts** |
+| `Example.Anime.S01E08.VOSTFR.1080p` | Anime · season 1 · episode 8 | MAL/AniList/Kitsu/TMDB → **Anime** |
+
+A guide never makes media absent from the sources available. Therefore, an
+MDBList guide containing 1,000 movies may produce a **Monthly Selection**
+catalog of 386 movies when only those 386 titles exist in the local library.
+Another catalog may combine **2025 Movies**, **2026 Movies**, and **Comedies**,
+then be split again later without deleting the original catalogs.
+
 ## Features
 
 | | |

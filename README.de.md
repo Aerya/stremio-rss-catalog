@@ -56,6 +56,43 @@ aus Inhalten, die in Ihrem eigenen System tatsächlich indexiert wurden.
 prüft nicht bei jedem Katalogaufruf Seeder, Debrid-Cache oder die aktuelle
 Gültigkeit eines Links und stellt selbst keine Wiedergabe-Streams bereit.
 
+## Beispielinstallation und Statistiken
+
+> Die folgenden Namen und Zahlen sind vollständig fiktiv. Sie zeigen, was die
+> WebUI nach mehreren Synchronisierungen anzeigen könnte, und sind weder ein
+> Benchmark noch eine Leistungsgarantie.
+
+Eine Installation kann beispielsweise **18 RSS-Feeds**, **3
+Newznab-/Torznab-APIs**, **2 Pastebins**, **1 WebDAV-Ordner** und **1
+Stremio-Manifest** verbinden. Nach Deduplizierung und Abgleich könnte das
+Dashboard Folgendes anzeigen:
+
+| Kennzahl | Beispiel |
+|---|---:|
+| Aus Quellen gelesene Releases | 286.450 |
+| Erkannte eindeutige Medien | 74.820 |
+| Erfolgreicher automatischer Abgleich | 97,8 % |
+| Bekannte oder deduplizierte Releases | 201.140 |
+| Noch zu prüfende Releases | 1.630 |
+| Im Manifest veröffentlichte Kataloge | 12 |
+| Letzte vollständige Synchronisierung | 8 Min. 42 Sek. |
+
+Beispiele verarbeiteter Daten:
+
+| Empfangene Daten | Erkennung | Abgleich und Ziel |
+|---|---|---|
+| `Beispiel.Film.2026.GERMAN.1080p.WEB-DL` | Film · 2026 · 1080p · GERMAN | IMDb/TMDB → **Filme 2026** |
+| `Beispiel.Serie.S02E04.MULTi.2160p` | Serie · Staffel 2 · Folge 4 · 2160p | IMDb/TMDB → **Verfügbare Serien** |
+| `Beispiel.Kuenstler.Live.In.Berlin.2025` | Konzert · 2025 | TMDB + OMDb → **Konzerte** |
+| `Beispiel.Anime.S01E08.VOSTFR.1080p` | Anime · Staffel 1 · Folge 8 | MAL/AniList/Kitsu/TMDB → **Anime** |
+
+Eine Leitliste macht niemals Medien verfügbar, die in den Quellen fehlen. Eine
+MDBList mit 1.000 Filmen kann daher einen Katalog **Monatsauswahl** mit 386
+Filmen ergeben, wenn nur diese 386 Titel in der lokalen Mediathek vorhanden
+sind. Ein weiterer Katalog kann beispielsweise **Filme 2025**, **Filme 2026**
+und **Komödien** verbinden und später wieder getrennt werden, ohne die
+ursprünglichen Kataloge zu löschen.
+
 ## Funktionen
 
 | | |

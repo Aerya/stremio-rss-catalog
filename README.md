@@ -56,6 +56,42 @@ Ici, « disponible » signifie **repéré dans une source que vous avez configur
 L’addon ne teste pas à chaque affichage les seeders, le cache d’un débrideur ou
 la validité instantanée d’un lien, et ne fournit pas lui-même les flux de lecture.
 
+## Exemple d’installation et de statistiques
+
+> Les noms et chiffres ci-dessous sont entièrement fictifs. Ils illustrent ce
+> que la WebUI peut afficher après plusieurs synchronisations ; ils ne constituent
+> ni un benchmark ni une promesse de résultat.
+
+Une installation peut, par exemple, réunir **18 flux RSS**, **3 API
+Newznab/Torznab**, **2 Pastebins**, **1 dossier WebDAV** et **1 manifeste
+Stremio**. Après déduplication et matching, son tableau de bord pourrait afficher :
+
+| Indicateur | Exemple |
+|---|---:|
+| Releases lues depuis les sources | 286 450 |
+| Médias uniques identifiés | 74 820 |
+| Matching automatique réussi | 97,8 % |
+| Releases déjà connues ou dédupliquées | 201 140 |
+| Releases restant à vérifier | 1 630 |
+| Catalogues publiés dans le manifeste | 12 |
+| Dernière synchronisation complète | 8 min 42 s |
+
+Exemples de données traitées :
+
+| Donnée reçue | Détection | Matching et destination |
+|---|---|---|
+| `Le.Film.Exemple.2026.FRENCH.1080p.WEB-DL` | Film · 2026 · 1080p · FRENCH | IMDb/TMDB → **Films 2026** |
+| `La.Serie.Exemple.S02E04.MULTi.2160p` | Série · saison 2 · épisode 4 · 2160p | IMDb/TMDB → **Séries disponibles** |
+| `Artiste.Exemple.Live.A.Paris.2025.FRENCH` | Concert · 2025 | TMDB + OMDb → **Concerts** |
+| `Anime.Exemple.S01E08.VOSTFR.1080p` | Anime · saison 1 · épisode 8 | MAL/AniList/Kitsu/TMDB → **Animés** |
+
+Un guide ne rend jamais disponible un média absent des sources. Ainsi, une
+liste MDBList de 1 000 films peut produire un catalogue **Sélection du mois**
+de 386 films si seuls ces 386 titres existent dans la médiathèque locale.
+Un autre catalogue peut réunir, par exemple, **Films 2025**, **Films 2026** et
+**Comédies**, puis être décomposé ultérieurement sans supprimer les catalogues
+d’origine.
+
 ## Fonctionnalités
 
 | | |
