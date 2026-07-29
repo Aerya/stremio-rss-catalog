@@ -1,5 +1,6 @@
 const assert = require('assert/strict');
 const fs = require('fs');
+const crypto = require('crypto');
 const http = require('http');
 const os = require('os');
 const path = require('path');
@@ -12,10 +13,23 @@ const RSSParser = require('../src/rss-parser');
 const WebUI = require('../src/webui');
 const WaCustomParser = require('../src/wacustom-parser');
 const MediaServerParser = require('../src/media-server-parser');
+const StreamFusionParser = require('../src/streamfusion-parser');
 
 const header = 'CAT;TMDB;TITLE;SAISON;GROUPES;CAST;DIRECTOR;NETWORK;YEAR;GENRES;RES;URLS=https://alldebrid.com/f/';
 const movieRow = "film;123;Film Test;;[];[];[];[];2026;[28];['MULTI - 1080p'];['abc']";
 const seriesRow = "serie;456;Série Test;1;[];[];[];[];2025;[18];MULTI - 1080p;1:'def'";
+
+function streamFusionToken(secret, value) {
+  const key = crypto.createHash('sha256').update(`sf-peer-cache-v1:${secret}`).digest();
+  const iv = Buffer.alloc(16, 7);
+  const cipher = crypto.createCipheriv('aes-128-cbc', key.subarray(16), iv);
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(value)), cipher.final()]);
+  const timestamp = Buffer.alloc(8);
+  timestamp.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 1000)));
+  const signed = Buffer.concat([Buffer.from([0x80]), timestamp, iv, encrypted]);
+  const signature = crypto.createHmac('sha256', key.subarray(0, 16)).update(signed).digest();
+  return Buffer.concat([signed, signature]).toString('base64url');
+}
 
 async function main() {
   let baseUrl;
@@ -26,6 +40,7 @@ async function main() {
   let mdblistKeyReceived = false;
   let suggestArrAuthenticated = false;
   let agregarrKeyReceived = false;
+  let streamFusionAuthenticated = false;
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     if (req.method === 'PROPFIND' && (req.url === '/dav/' || req.url === '/dav/Films/')) {
@@ -247,6 +262,45 @@ async function main() {
           missingCount: 0
         }
       }));
+    }
+    if (req.url === '/streamfusion/api/peer/private/export' && req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => { body += chunk; });
+      return req.on('end', () => {
+        const secret = 'streamfusion-test-secret';
+        const bodyHash = crypto.createHash('sha256').update(body).digest();
+        const message = Buffer.concat([Buffer.from(`${req.headers['x-peer-timestamp']}.`), bodyHash]);
+        const expected = crypto.createHmac('sha256', secret).update(message).digest('hex');
+        streamFusionAuthenticated =
+          req.headers['x-peer-key-id'] === 'streamfusion-test-key'
+          && req.headers['x-peer-signature'] === expected;
+        const request = JSON.parse(body);
+        const rows = [
+          {
+            info_hash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            raw_title: 'Film StreamFusion 2026 FRENCH 1080p', size: 1000,
+            type: 'movie', imdb_id: 'tt0000940', tmdb_id: 940,
+            parsed_data: { title: 'Film StreamFusion', year: 2026, resolution: '1080p' },
+            created_at: 1
+          },
+          {
+            info_hash: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+            raw_title: 'Série StreamFusion S01E01 2025 FRENCH', size: 2000,
+            type: 'series', imdb_id: 'tt0000941', tmdb_id: 941,
+            parsed_data: { title: 'Série StreamFusion', year: 2025, season: 1 },
+            created_at: 2
+          }
+        ];
+        const start = request.cursor ? rows.findIndex(row => row.info_hash === request.cursor) + 1 : 0;
+        const items = rows.slice(start, start + request.limit);
+        const nextCursor = start + items.length < rows.length ? items.at(-1).info_hash : null;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+          payload: streamFusionToken(secret, {
+            items, next_cursor: nextCursor, count: items.length
+          })
+        }));
+      });
     }
     if (req.url.startsWith('/newznab/api')) {
       const requestUrl = new URL(req.url, baseUrl);
@@ -559,6 +613,36 @@ async function main() {
     );
     const waCustomMatch = await matcher.matchBatch([...waCustomFirst, ...waCustomSecond]);
     assert.equal(waCustomMatch.matched, 2);
+
+    const streamFusionParser = new StreamFusionParser(db, () => ({ timeout: 2000 }));
+    const streamFusionSource = {
+      id: 'streamfusion-test',
+      name: 'StreamFusion de test',
+      url: `${baseUrl}/streamfusion`,
+      keyId: 'streamfusion-test-key',
+      secret: 'streamfusion-test-secret',
+      maxItemsPerSync: 1,
+      pageSize: 1,
+      requestDelayMs: 0,
+      useProxy: false
+    };
+    const streamFusionInspection = await streamFusionParser.inspect(streamFusionSource);
+    assert.equal(streamFusionInspection.has_more, true);
+    const streamFusionFirst = await streamFusionParser.fetchSource(streamFusionSource);
+    assert.equal(streamFusionFirst.length, 1);
+    assert.equal(streamFusionFirst[0].direct_meta.imdb_id, 'tt0000940');
+    assert.equal(streamFusionFirst[0].source_url, 'streamfusion:streamfusion-test');
+    assert.equal(streamFusionAuthenticated, true);
+    assert.equal(db.commitPendingSourceCursors(['streamfusion:streamfusion-test']), 1);
+    const streamFusionSecond = await streamFusionParser.fetchSource(streamFusionSource);
+    assert.equal(streamFusionSecond.length, 1);
+    assert.equal(streamFusionSecond[0].direct_meta.imdb_id, 'tt0000941');
+    assert.equal(db.commitPendingSourceCursors(['streamfusion:streamfusion-test']), 1);
+    assert.equal(
+      db.getSourceSyncState('streamfusion:streamfusion-test').cursor.committed.backfill_complete,
+      true
+    );
+    console.log('✓ Import StreamFusion chiffré, signé, paginé et incrémental via l’API Peer');
 
     const newznabSource = {
       id: 'newznab-test',

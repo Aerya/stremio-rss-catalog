@@ -32,7 +32,7 @@
 
 ---
 
-> Ein selbst gehostetes Stremio-Addon, das Kataloge aus Inhalten Ihrer eigenen **BitTorrent-, Usenet- oder sonstigen Indexer** erstellt. Die Katalogquellen sollen den Quellen entsprechen, die Ihre Streaming-Addons tatsächlich verwenden. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaCustom und Stremio-Manifeste lassen sich kombinieren.
+> Ein selbst gehostetes Stremio-Addon, das Kataloge aus Inhalten Ihrer eigenen **BitTorrent-, Usenet- oder sonstigen Indexer** erstellt. Die Katalogquellen sollen den Quellen entsprechen, die Ihre Streaming-Addons tatsächlich verwenden. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaStream/WaCustom, StreamFusion und Stremio-Manifeste lassen sich kombinieren.
 
 ---
 
@@ -41,7 +41,7 @@
 | | |
 |---|---|
 | **Verwaltete Kataloge** | Die 9 bisherigen Kataloge werden mit ihren vorhandenen Inhalten in die Verwaltung übernommen; beliebig viele eigene Kataloge können ergänzt werden |
-| **Gemischte Quellen** | Ein Katalog kann RSS, Pastebin, WebDAV, Plex, Jellyfin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaStream/WaCustom und aus Stremio-Manifesten importierte Quellen kombinieren |
+| **Gemischte Quellen** | Ein Katalog kann RSS, Pastebin, WebDAV, Plex, Jellyfin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaStream/WaCustom, StreamFusion und aus Stremio-Manifesten importierte Quellen kombinieren |
 | **Plex und Jellyfin direkt** | Bibliothekserkennung, Auswahl von Plex-Sammlungen, paginierter Film-/Serienimport und Erhalt der IMDb-/TMDB-IDs |
 | **WebDAV-Ordner** | Authentifizierter rekursiver Scan mit konfigurierbaren Erweiterungen, Tiefe und Obergrenze; Dateinamen speisen Kataloge und [Davio](https://github.com/arvida42/davio) kann die Wiedergabe in Stremio übernehmen |
 | **Eigene Filter** | Ein- oder ausgeschlossene Jahre, Jahresbereiche, Genres, Schlüsselwörter und Quellenauswahl |
@@ -87,6 +87,7 @@
 | **Status pro Quelle** | Letzter Erfolg, nächste Sammlung, Dauer, gelesene Elemente, aufeinanderfolgende Fehler und Nutzung der Obergrenze |
 | **Indexer-APIs** | Mehrere umbenennbare Newznab-, Prowlarr-, Jackett/Torznab- und NZBHydra2-Quellen mit Pagination, inkrementellem Cursor, Obergrenze und Verzögerung |
 | **WaStream/WaCustom** | Mehrere umbenennbare Instanzen; paginierter WASource-Import mit IMDb/TMDB, fortsetzbarer Erfassung, eigener Frequenz, Pause und Obergrenze |
+| **StreamFusion Reborn** | Mehrere umbenennbare Instanzen; signierter und verschlüsselter Import des privaten Caches über die offizielle Peer-API mit Pagination und inkrementellem Cursor |
 | **Konfigurationssicherung** | Versionierter Export/Import; sensible Schlüssel und URLs nur auf ausdrücklichen Wunsch |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + integrierter Verbindungstest |
 | **SQLite** | Persistente Daten, inkrementelle Inhalte, optimierte Indizes |

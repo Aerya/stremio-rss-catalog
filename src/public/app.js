@@ -844,16 +844,17 @@ function catalogPayload() {
 
 async function loadCatalogManager() {
   try {
-    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes, waCustomRes, mediaServerRes, guideRes] = await Promise.all([
+    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes, waCustomRes, mediaServerRes, streamFusionRes, guideRes] = await Promise.all([
       fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/rss-sources'),
       fetch('/api/stremio-sources'), fetch('/api/newznab-sources'), fetch('/api/webdav-sources'),
-      fetch('/api/wacustom-sources'), fetch('/api/media-server-sources'), fetch('/api/mdblist-guides')
+      fetch('/api/wacustom-sources'), fetch('/api/media-server-sources'),
+      fetch('/api/streamfusion-sources'), fetch('/api/mdblist-guides')
     ]);
-    const [catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, guides] = await Promise.all([
+    const [catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, streamfusion, guides] = await Promise.all([
       catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json(), newznabRes.json(),
-      webdavRes.json(), waCustomRes.json(), mediaServerRes.json(), guideRes.json()
+      webdavRes.json(), waCustomRes.json(), mediaServerRes.json(), streamFusionRes.json(), guideRes.json()
     ]);
-    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, guides };
+    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, streamfusion, guides };
     renderRssSources();
     renderPastebins();
     renderNewznabSources();
@@ -861,6 +862,7 @@ async function loadCatalogManager() {
     renderWebdavSources();
     renderWaCustomSources();
     renderMediaServerSources();
+    renderStreamFusionSources();
     renderMDBListGuides();
     renderCatalogGuideChoices();
     renderCatalogSourceChoices();
@@ -968,6 +970,7 @@ function updateSourceGroupCounts() {
     pastebinGroupCount: catalogManagerData.pastebins.length,
     webdavGroupCount: catalogManagerData.webdav.length,
     mediaserverGroupCount: (catalogManagerData.mediaServers || []).length,
+    streamfusionGroupCount: (catalogManagerData.streamfusion || []).length,
     wacustomGroupCount: catalogManagerData.wacustom.length,
     indexerGroupCount: catalogManagerData.newznab.length,
     stremioGroupCount: catalogManagerData.stremio.length
@@ -1023,7 +1026,7 @@ async function importConfiguration() {
     ? (includeSecrets ? '\nLes secrets présents seront importés.' : '\nLes secrets présents resteront exclus.')
     : '';
   if (!confirm(
-    `Import valide : ${counts.rss} RSS, ${counts.pastebin} Pastebin, ${counts.webdav || 0} WebDAV, ${counts.wacustom || 0} WaCustom, ${counts.indexers} indexeurs, ${counts.stremio} manifestes et ${counts.catalogs} catalogues.${secretWarning}\n\nUne sauvegarde SQLite sera créée avant application. Continuer ?`
+    `Import valide : ${counts.rss} RSS, ${counts.pastebin} Pastebin, ${counts.webdav || 0} WebDAV, ${counts.wacustom || 0} WaStream/WaCustom, ${counts.media_servers || 0} Plex/Jellyfin, ${counts.streamfusion || 0} StreamFusion, ${counts.indexers} indexeurs, ${counts.stremio} manifestes et ${counts.catalogs} catalogues.${secretWarning}\n\nUne sauvegarde SQLite sera créée avant application. Continuer ?`
   )) return;
   const response = await fetch('/api/config/import', {
     method: 'POST',
@@ -1167,6 +1170,12 @@ function renderCatalogSourceChoices(selected = []) {
       name: source.name,
       url: source.source_key,
       kind: source.kind === 'plex' ? 'Bibliothèque Plex' : 'Bibliothèque Jellyfin',
+      paused: source.paused
+    })),
+    ...(catalogManagerData.streamfusion || []).map(source => ({
+      name: source.name,
+      url: source.source_key,
+      kind: 'Cache privé StreamFusion',
       paused: source.paused
     })),
     ...catalogManagerData.newznab.flatMap(source => (source.catalogs || []).map(catalog => ({
@@ -1830,6 +1839,133 @@ async function deleteMediaServerSource(id) {
   loadSourceManager();
 }
 window.deleteMediaServerSource = deleteMediaServerSource;
+
+function streamFusionPayload() {
+  return {
+    source_id: document.getElementById('streamFusionEditId').value || null,
+    name: document.getElementById('streamFusionName').value.trim(),
+    url: document.getElementById('streamFusionUrl').value.trim(),
+    key_id: document.getElementById('streamFusionKeyId').value,
+    secret: document.getElementById('streamFusionSecret').value,
+    max_items_per_sync: Number(document.getElementById('streamFusionMaxItems').value) || 20000,
+    page_size: Number(document.getElementById('streamFusionPageSize').value) || 1000,
+    request_delay_ms: Number(document.getElementById('streamFusionDelay').value) || 0,
+    sync_interval_minutes: document.getElementById('streamFusionInterval').value || null,
+    use_proxy: document.getElementById('streamFusionUseProxy').checked
+  };
+}
+
+function renderStreamFusionSources() {
+  const container = document.getElementById('streamFusionList');
+  if (!container) return;
+  const sources = catalogManagerData.streamfusion || [];
+  if (!sources.length) {
+    container.innerHTML = '<p class="text-muted">Aucune instance StreamFusion configurée.</p>';
+    return;
+  }
+  container.innerHTML = sources.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} streamfusion`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'StreamFusion')} <span class="source-name-badge">StreamFusion</span> ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">cache privé · plafond ${Number(source.max_items_per_sync).toLocaleString()} · pages de ${Number(source.page_size).toLocaleString()} ${source.use_proxy ? '· proxy global' : '· connexion directe'}</div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key)}','${encodeURIComponent(source.name || '')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editStreamFusionSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="revealSourceSecret('streamfusion','${source.id}',this)">Révéler l’URL</button>
+        <button class="btn-sm" data-secret="key_id" onclick="revealSourceSecret('streamfusion','${source.id}',this,true)">Copier le Key ID</button>
+        <button class="btn-sm" data-secret="secret" onclick="revealSourceSecret('streamfusion','${source.id}',this,true)">Copier le secret</button>
+        <button class="btn-sm" onclick="toggleStreamFusionSource('${source.id}',${!source.paused})">${source.paused ? 'Reprendre' : 'Mettre en pause'}</button>
+        <button class="btn-danger btn-sm" onclick="deleteStreamFusionSource('${source.id}')">Supprimer</button>
+      </div>
+    </div>`).join('');
+}
+
+async function previewStreamFusionSource() {
+  const output = document.getElementById('streamFusionPreview');
+  output.textContent = 'Authentification et lecture de l’export privé…';
+  const response = await fetch('/api/streamfusion-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(streamFusionPayload())
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `✓ API Peer valide · ${data.items} élément test lu${data.has_more ? ' · davantage disponible' : ''}`
+    : `✗ ${data.error || 'Test impossible'}`;
+}
+window.previewStreamFusionSource = previewStreamFusionSource;
+
+async function saveStreamFusionSource() {
+  const id = document.getElementById('streamFusionEditId').value;
+  const response = await fetch(id ? `/api/streamfusion-sources/${id}` : '/api/streamfusion-sources', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(streamFusionPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Enregistrement impossible');
+  resetStreamFusionForm();
+  await loadSourceManager();
+}
+window.saveStreamFusionSource = saveStreamFusionSource;
+
+async function editStreamFusionSource(id) {
+  const source = (catalogManagerData.streamfusion || []).find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/streamfusion/${id}`)).json();
+  document.getElementById('streamFusionEditId').value = id;
+  document.getElementById('streamFusionName').value = source.name || '';
+  document.getElementById('streamFusionUrl').value = secrets.url || '';
+  document.getElementById('streamFusionKeyId').value = '';
+  document.getElementById('streamFusionKeyId').placeholder = source.has_key_id ? 'Laisser vide pour conserver' : '';
+  document.getElementById('streamFusionSecret').value = '';
+  document.getElementById('streamFusionSecret').placeholder = source.has_secret ? 'Laisser vide pour conserver' : '';
+  document.getElementById('streamFusionMaxItems').value = source.max_items_per_sync || 20000;
+  document.getElementById('streamFusionPageSize').value = source.page_size || 1000;
+  document.getElementById('streamFusionDelay').value = source.request_delay_ms ?? 100;
+  document.getElementById('streamFusionInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('streamFusionUseProxy').checked = source.use_proxy;
+  document.getElementById('streamFusionSubmit').textContent = 'Enregistrer';
+  document.getElementById('streamFusionCancel').hidden = false;
+}
+window.editStreamFusionSource = editStreamFusionSource;
+
+function resetStreamFusionForm() {
+  document.getElementById('streamFusionEditId').value = '';
+  document.getElementById('streamFusionName').value = '';
+  document.getElementById('streamFusionUrl').value = '';
+  document.getElementById('streamFusionKeyId').value = '';
+  document.getElementById('streamFusionKeyId').placeholder = '';
+  document.getElementById('streamFusionSecret').value = '';
+  document.getElementById('streamFusionSecret').placeholder = '';
+  document.getElementById('streamFusionMaxItems').value = 20000;
+  document.getElementById('streamFusionPageSize').value = 1000;
+  document.getElementById('streamFusionDelay').value = 100;
+  document.getElementById('streamFusionInterval').value = '';
+  document.getElementById('streamFusionUseProxy').checked = false;
+  document.getElementById('streamFusionPreview').textContent = '';
+  document.getElementById('streamFusionSubmit').textContent = 'Ajouter';
+  document.getElementById('streamFusionCancel').hidden = true;
+}
+window.resetStreamFusionForm = resetStreamFusionForm;
+
+async function toggleStreamFusionSource(id, paused) {
+  const response = await fetch(`/api/streamfusion-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Modification impossible');
+  await loadSourceManager();
+}
+window.toggleStreamFusionSource = toggleStreamFusionSource;
+
+async function deleteStreamFusionSource(id) {
+  if (!confirm('Supprimer cette source StreamFusion ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/streamfusion-sources/${id}`, { method: 'DELETE' });
+  await loadSourceManager();
+}
+window.deleteStreamFusionSource = deleteStreamFusionSource;
 
 function waCustomPayload() {
   return {

@@ -351,6 +351,7 @@ class DatabaseManager {
       newznab_sources: '[]',
       wacustom_sources: '[]',
       media_server_sources: '[]',
+      streamfusion_sources: '[]',
       mdblist_guides: '[]',
       manifest_revision: '0',
       tmdb_api_key: '',

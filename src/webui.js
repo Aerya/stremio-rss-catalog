@@ -218,6 +218,7 @@ class WebUI {
       delete config.webdav_sources;
       delete config.wacustom_sources;
       delete config.media_server_sources;
+      delete config.streamfusion_sources;
       delete config.mdblist_guides;
       delete config.stremio_metadata_sources;
       res.json(config);
@@ -259,7 +260,7 @@ class WebUI {
         'rss_films_name', 'rss_films_url', 'rss_films_force',
         'rss_films_paused', 'rss_films_sync_interval', 'rss_additional_urls',
         'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources', 'webdav_sources',
-        'wacustom_sources', 'media_server_sources', 'mdblist_guides',
+        'wacustom_sources', 'media_server_sources', 'streamfusion_sources', 'mdblist_guides',
         'stremio_metadata_sources'
       ]);
       const config = Object.fromEntries(Object.entries(this.db.getAllConfig())
@@ -274,7 +275,9 @@ class WebUI {
         ...(Object.hasOwn(source, 'adminPassword') ? {
           adminPassword: includeSecrets ? source.adminPassword : null
         } : {}),
-        ...(Object.hasOwn(source, 'accessToken') ? { accessToken: includeSecrets ? source.accessToken : null } : {})
+        ...(Object.hasOwn(source, 'accessToken') ? { accessToken: includeSecrets ? source.accessToken : null } : {}),
+        ...(Object.hasOwn(source, 'keyId') ? { keyId: includeSecrets ? source.keyId : null } : {}),
+        ...(Object.hasOwn(source, 'secret') ? { secret: includeSecrets ? source.secret : null } : {})
       });
       res.setHeader('Content-Disposition', `attachment; filename="stremio-rss-catalog-${new Date().toISOString().slice(0, 10)}.json"`);
       res.json({
@@ -291,6 +294,7 @@ class WebUI {
           webdav: this.rssParser.webdavParser.getSources().map(redactUrl),
           wacustom: this.rssParser.waCustomParser.getSources().map(redactUrl),
           media_servers: this.rssParser.mediaServerParser.getSources().map(redactUrl),
+          streamfusion: this.rssParser.streamFusionParser.getSources().map(redactUrl),
           metadata_providers: this.tmdbMatcher.stremioMetadata.getSources().map(redactUrl),
           guides: this.rssParser.mdblistGuideParser.getSources().map(redactUrl)
         },
@@ -325,6 +329,7 @@ class WebUI {
             webdav: payload.sources.webdav?.length || 0,
             wacustom: payload.sources.wacustom?.length || 0,
             media_servers: payload.sources.media_servers?.length || 0,
+            streamfusion: payload.sources.streamfusion?.length || 0,
             metadata_providers: payload.sources.metadata_providers?.length || 0,
             guides: payload.sources.guides?.length || 0,
             catalogs: payload.catalogs.length
@@ -387,6 +392,9 @@ class WebUI {
       this.db.setConfig('media_server_sources', JSON.stringify(mergeSources(
         this.rssParser.mediaServerParser.getSources(), payload.sources.media_servers, ['url', 'apiKey']
       )));
+      this.db.setConfig('streamfusion_sources', JSON.stringify(mergeSources(
+        this.rssParser.streamFusionParser.getSources(), payload.sources.streamfusion, ['url', 'keyId', 'secret']
+      )));
       this.db.setConfig('stremio_metadata_sources', JSON.stringify(mergeSources(
         this.tmdbMatcher.stremioMetadata.getSources(), payload.sources.metadata_providers, ['url']
       )));
@@ -419,6 +427,7 @@ class WebUI {
       if (kind === 'webdav') source = this.rssParser.webdavParser.getSources().find(item => item.id === id);
       if (kind === 'wacustom') source = this.rssParser.waCustomParser.getSources().find(item => item.id === id);
       if (kind === 'media-server') source = this.rssParser.mediaServerParser.getSources().find(item => item.id === id);
+      if (kind === 'streamfusion') source = this.rssParser.streamFusionParser.getSources().find(item => item.id === id);
       if (kind === 'metadata') source = this.tmdbMatcher.stremioMetadata.getSources().find(item => item.id === id);
       if (kind === 'guide') source = this.rssParser.mdblistGuideParser.getSources().find(item => item.id === id);
       if (!source) return res.status(404).json({ error: 'Source introuvable' });
@@ -432,6 +441,10 @@ class WebUI {
         } : {}),
         ...(kind === 'wacustom' ? { admin_password: source.adminPassword || null } : {}),
         ...(kind === 'media-server' ? { api_key: source.apiKey || null } : {}),
+        ...(kind === 'streamfusion' ? {
+          key_id: source.keyId || null,
+          secret: source.secret || null
+        } : {}),
         ...(kind === 'guide' ? {
           api_key: source.apiKey || null,
           username: source.username || null,
@@ -1286,6 +1299,102 @@ class WebUI {
       res.json({ success: true });
     });
 
+    // ─── Sources StreamFusion ─────────────────────────────────────────────
+    const streamFusionParser = this.rssParser.streamFusionParser;
+    const streamFusionForApi = source => ({
+      id: source.id,
+      name: source.name,
+      url: source.url,
+      paused: Boolean(source.paused),
+      has_key_id: Boolean(source.keyId),
+      has_secret: Boolean(source.secret),
+      max_items_per_sync: Number(source.maxItemsPerSync) || 20000,
+      page_size: Number(source.pageSize) || 1000,
+      request_delay_ms: Number(source.requestDelayMs) || 100,
+      sync_interval_minutes: source.syncIntervalMinutes || null,
+      use_proxy: Boolean(source.useProxy),
+      source_key: streamFusionParser.sourceKey(source.id),
+      runtime: this.getSourceRuntime(streamFusionParser.sourceKey(source.id), source.syncIntervalMinutes)
+    });
+    const streamFusionPayload = (body, existing = null) => ({
+      ...(existing || {}),
+      ...(body.name !== undefined ? { name: String(body.name).trim() || existing?.name || 'StreamFusion' } : {}),
+      ...(body.url !== undefined ? { url: streamFusionParser.baseUrl(body.url) } : {}),
+      ...(String(body.key_id || '').trim() ? { keyId: String(body.key_id).trim() } : {}),
+      ...(String(body.secret || '').trim() ? { secret: String(body.secret).trim() } : {}),
+      ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
+      ...(body.use_proxy !== undefined ? { useProxy: Boolean(body.use_proxy) } : {}),
+      ...(body.max_items_per_sync !== undefined ? {
+        maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 20000, 1), 100000)
+      } : {}),
+      ...(body.page_size !== undefined ? {
+        pageSize: Math.min(Math.max(Number(body.page_size) || 1000, 1), 2000)
+      } : {}),
+      ...(body.request_delay_ms !== undefined ? {
+        requestDelayMs: Math.min(Math.max(Number(body.request_delay_ms) || 100, 0), 10000)
+      } : {}),
+      ...(body.sync_interval_minutes !== undefined ? {
+        syncIntervalMinutes: this.normalizeSourceInterval(body.sync_interval_minutes)
+      } : {})
+    });
+
+    this.app.get('/api/streamfusion-sources', this.authMiddleware.bind(this), (req, res) => {
+      res.json(streamFusionParser.getSources().map(streamFusionForApi));
+    });
+
+    this.app.post('/api/streamfusion-sources/preview', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const existing = req.body.source_id
+          ? streamFusionParser.getSources().find(source => source.id === req.body.source_id)
+          : null;
+        res.json(await streamFusionParser.inspect(streamFusionPayload(req.body, existing)));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/streamfusion-sources', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const source = streamFusionPayload(req.body);
+        if (!source.keyId || !source.secret) return res.status(400).json({ error: 'Peer Key ID et secret requis' });
+        await streamFusionParser.inspect(source);
+        source.id = crypto.randomUUID();
+        const sources = streamFusionParser.getSources();
+        sources.push(source);
+        this.db.setConfig('streamfusion_sources', JSON.stringify(sources));
+        res.status(201).json(streamFusionForApi(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.put('/api/streamfusion-sources/:id', this.authMiddleware.bind(this), async (req, res) => {
+      const sources = streamFusionParser.getSources();
+      const index = sources.findIndex(source => source.id === req.params.id);
+      if (index < 0) return res.status(404).json({ error: 'Source introuvable' });
+      try {
+        const current = sources[index];
+        const next = streamFusionPayload(req.body, current);
+        const connectionChanged = ['url', 'keyId', 'secret'].some(field => next[field] !== current[field]);
+        if (connectionChanged) await streamFusionParser.inspect(next);
+        sources[index] = next;
+        this.db.setConfig('streamfusion_sources', JSON.stringify(sources));
+        if (connectionChanged) this.db.deleteSourceSyncState(streamFusionParser.sourceKey(next.id));
+        res.json(streamFusionForApi(next));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.delete('/api/streamfusion-sources/:id', this.authMiddleware.bind(this), (req, res) => {
+      const sources = streamFusionParser.getSources();
+      const next = sources.filter(source => source.id !== req.params.id);
+      if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
+      this.db.setConfig('streamfusion_sources', JSON.stringify(next));
+      this.db.deleteSourceSyncState(streamFusionParser.sourceKey(req.params.id));
+      res.json({ success: true });
+    });
+
     // ─── Services d'identification Stremio ────────────────────────────────
     const metadataService = this.tmdbMatcher.stremioMetadata;
     const metadataForApi = source => ({
@@ -1722,8 +1831,9 @@ class WebUI {
       const hasWebdav = this.rssParser.webdavParser.getSources().some(source => !source.paused);
       const hasWaCustom = this.rssParser.waCustomParser.getSources().some(source => !source.paused);
       const hasMediaServer = this.rssParser.mediaServerParser.getSources().some(source => !source.paused);
+      const hasStreamFusion = this.rssParser.streamFusionParser.getSources().some(source => !source.paused);
       const hasRss = this.getRssSources().some(source => !source.paused);
-      if (!hasRss && !hasPastebin && !hasStremio && !hasNewznab && !hasWebdav && !hasWaCustom && !hasMediaServer) {
+      if (!hasRss && !hasPastebin && !hasStremio && !hasNewznab && !hasWebdav && !hasWaCustom && !hasMediaServer && !hasStreamFusion) {
         return res.status(400).json({ error: 'Au moins une source active est requise' });
       }
       if ((hasRss || hasPastebin || hasNewznab || hasWebdav) && !tmdbKey) {
@@ -2285,6 +2395,9 @@ class WebUI {
     this.rssParser.mediaServerParser.getSources().forEach(source => {
       nameMap[this.rssParser.mediaServerParser.sourceKey(source.id)] =
         source.name || (source.kind === 'plex' ? 'Plex' : 'Jellyfin');
+    });
+    this.rssParser.streamFusionParser.getSources().forEach(source => {
+      nameMap[this.rssParser.streamFusionParser.sourceKey(source.id)] = source.name || 'StreamFusion';
     });
     return nameMap;
   }

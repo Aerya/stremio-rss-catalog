@@ -258,7 +258,8 @@
           <button class="source-tab" data-source-tab="webdav" onclick="selectSourceTab('webdav')">WebDAV</button>
           <button class="source-tab" data-source-tab="mediaserver" onclick="selectSourceTab('mediaserver')">Plex/Jellyfin</button>
           <button class="source-tab" data-source-tab="indexer" onclick="selectSourceTab('indexer')">Indexeurs</button>
-          <button class="source-tab" data-source-tab="wacustom" onclick="selectSourceTab('wacustom')">WaCustom</button>
+          <button class="source-tab" data-source-tab="wacustom" onclick="selectSourceTab('wacustom')">WaStream/WaCustom</button>
+          <button class="source-tab" data-source-tab="streamfusion" onclick="selectSourceTab('streamfusion')">StreamFusion</button>
           <button class="source-tab" data-source-tab="stremio" onclick="selectSourceTab('stremio')">Stremio</button>
           <button class="source-tab" data-source-tab="diagnostics" onclick="selectSourceTab('diagnostics')">Diagnostics</button>
         </div>
@@ -566,6 +567,43 @@
         </div>
         <div id="wacustomPreview" class="text-muted" style="margin-top:10px"></div>
         <div id="wacustomList" style="margin-top:14px"></div>
+      </details>
+
+      <details class="card source-group" data-source-group="streamfusion">
+        <summary><span>Instances StreamFusion</span> <span class="source-group-count" id="streamfusionGroupCount"></span></summary>
+        <p class="text-muted" style="margin:8px 0 14px">
+          Importe le cache privé par l’API Peer officielle, sans accès direct à PostgreSQL ou
+          Meilisearch. Seuls les torrents possédant déjà un identifiant IMDb ou TMDB alimentent
+          les catalogues. Le cache public n’est pas énumérable par cette API.
+        </p>
+        <p class="source-project-links">
+          Projet :
+          <a href="https://github.com/LimeHubs/stream-fusion-reborn" target="_blank" rel="noopener noreferrer">StreamFusion Reborn ↗</a>
+          · créez une Peer Key dans son interface d’administration.
+        </p>
+        <input id="streamFusionEditId" type="hidden">
+        <div class="config-grid">
+          <div class="field"><label>Nom de l’instance</label><input id="streamFusionName" type="text" placeholder="Mon StreamFusion"></div>
+          <div class="field"><label>URL de l’instance</label><input id="streamFusionUrl" type="password" autocomplete="off" placeholder="https://streamfusion.example.net"></div>
+          <div class="field"><label>Peer Key ID</label><input id="streamFusionKeyId" type="password" autocomplete="new-password"></div>
+          <div class="field"><label>Secret de la Peer Key</label><input id="streamFusionSecret" type="password" autocomplete="new-password"></div>
+          <div class="field"><label>Maximum par collecte</label><input id="streamFusionMaxItems" type="number" min="1" max="100000" value="20000"></div>
+          <div class="field"><label>Taille d’une page</label><input id="streamFusionPageSize" type="number" min="1" max="2000" value="1000"></div>
+          <div class="field"><label>Délai entre les pages (ms)</label><input id="streamFusionDelay" type="number" min="0" max="10000" value="100"></div>
+          <div class="field"><label>Fréquence de collecte (min)</label><input id="streamFusionInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale"></div>
+          <div class="field"><label class="check-inline"><input id="streamFusionUseProxy" type="checkbox"> Utiliser le proxy global</label></div>
+        </div>
+        <div class="integration-cat-hint" style="margin-top:12px">
+          Première collecte paginée, puis reprise incrémentale avec le timestamp et le curseur
+          fournis par StreamFusion. Le curseur n’est validé qu’après le traitement réussi des médias.
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button type="button" class="btn-sm" onclick="previewStreamFusionSource()">Tester</button>
+          <button type="button" class="btn-primary" id="streamFusionSubmit" onclick="saveStreamFusionSource()">Ajouter</button>
+          <button type="button" class="btn-sm" id="streamFusionCancel" onclick="resetStreamFusionForm()" hidden>Annuler</button>
+        </div>
+        <div id="streamFusionPreview" class="text-muted" style="margin-top:10px"></div>
+        <div id="streamFusionList" style="margin-top:14px"></div>
       </details>
 
       <details class="card source-group" data-source-group="stremio">
