@@ -3705,13 +3705,15 @@ async function loadConfig() {
     ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
      'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
      'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
-     'proxy_password', 'refresh_interval', 'discord_webhook_url',
+     'proxy_password', 'refresh_interval', 'image_cache_ttl_hours', 'image_cache_max_mb',
+     'availability_missing_scans', 'availability_expiration_days', 'discord_webhook_url',
      'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
       const el = document.getElementById(k);
       if (el) el.value = cfg[k] || '';
     });
 
-    ['rpdb_enabled', 'postersplus_enabled', 'proxy_enabled', 'auto_refresh_enabled',
+    ['rpdb_enabled', 'postersplus_enabled', 'image_cache_enabled', 'proxy_enabled', 'auto_refresh_enabled',
+     'availability_enabled',
      'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
      'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled',
      'kitsu_enabled'].forEach(k => {
@@ -3732,13 +3734,15 @@ async function saveConfig(e) {
   ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
    'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
    'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
-   'proxy_password', 'refresh_interval', 'discord_webhook_url',
+   'proxy_password', 'refresh_interval', 'image_cache_ttl_hours', 'image_cache_max_mb',
+   'availability_missing_scans', 'availability_expiration_days', 'discord_webhook_url',
    'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
     const el = document.getElementById(k);
     if (el) cfg[k] = el.value;
   });
 
-  ['rpdb_enabled', 'postersplus_enabled', 'proxy_enabled', 'auto_refresh_enabled',
+  ['rpdb_enabled', 'postersplus_enabled', 'image_cache_enabled', 'proxy_enabled', 'auto_refresh_enabled',
+   'availability_enabled',
    'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
    'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled',
    'kitsu_enabled'].forEach(k => {

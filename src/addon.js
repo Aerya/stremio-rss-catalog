@@ -11,10 +11,12 @@ const CATALOG_MAP = {
 };
 
 const PAGE_SIZE = 100;
+const ImageCacheService = require('./services/imageCacheService');
 
 class StremioAddon {
   constructor(db) {
     this.db = db;
+    this.imageCache = new ImageCacheService(db);
     // Cache invalidé à chaque sync. Clé : "id:skip:search". Pas de TTL — le contenu
     // ne change qu'à chaque sync. Les recherches ne sont pas mises en cache (trop variées).
     this._cache = new Map();
@@ -163,7 +165,18 @@ class StremioAddon {
     return this._cache.has(this._cacheKey(id, skip, null));
   }
 
-  async handleCatalog({ type, id, extra }) {
+  applyImageCache(response, baseUrl = null) {
+    if (!response?.metas || !baseUrl || !this.imageCache.isEnabled()) return response;
+    return {
+      ...response,
+      metas: response.metas.map(meta => ({
+        ...meta,
+        poster: meta.poster ? this.imageCache.register(meta.poster, baseUrl) : meta.poster
+      }))
+    };
+  }
+
+  async handleCatalog({ type, id, extra, baseUrl = null }) {
     try {
       const custom = this.db.getCustomCatalog(id);
       if (custom) {
@@ -171,14 +184,16 @@ class StremioAddon {
         const skip = parseInt(extra?.skip) || 0;
         const search = extra?.search || null;
         const key = this._cacheKey(id, skip, search);
-        if (!search && this._cache.has(key)) return this._cache.get(key);
+        if (!search && this._cache.has(key)) {
+          return this.applyImageCache(this._cache.get(key), baseUrl);
+        }
         const items = this.db.getCustomCatalogMedia(custom, skip, PAGE_SIZE + 1, search);
         const response = {
           metas: items.slice(0, PAGE_SIZE).map(item => this.itemToMetaPreview(item)),
           hasMore: items.length > PAGE_SIZE
         };
         if (!search) this._cache.set(key, response);
-        return response;
+        return this.applyImageCache(response, baseUrl);
       }
 
       const entry = CATALOG_MAP[id];
@@ -190,7 +205,7 @@ class StremioAddon {
       if (!search) {
         const key = this._cacheKey(id, skip, null);
         const cached = this._cache.get(key);
-        if (cached) return cached;
+        if (cached) return this.applyImageCache(cached, baseUrl);
       }
 
       const { catalogType, typeFilter } = entry;
@@ -208,7 +223,7 @@ class StremioAddon {
         this._cache.set(this._cacheKey(id, skip, null), response);
       }
 
-      return response;
+      return this.applyImageCache(response, baseUrl);
     } catch (error) {
       console.error('Error in catalog handler:', error);
       return { metas: [] };

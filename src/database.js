@@ -2,6 +2,9 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
+const SCHEMA_VERSION = 6;
+const SCHEMA_BACKUP_RETENTION = 10;
+
 const DEFAULT_CATALOGS = [
   ['useflowfr_films', 'Films', 'movie', ['films']],
   ['useflowfr_documentaires', 'Documentaires', 'movie', ['documentaires']],
@@ -23,6 +26,7 @@ class DatabaseManager {
     }
 
     this.db = new Database(dbPath);
+    this.prepareSchemaMigration();
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('synchronous = NORMAL');
     this.db.pragma('foreign_keys = ON');
@@ -30,6 +34,38 @@ class DatabaseManager {
     this.initTables();
     this.upgradeLegacySourceLimits();
     this.upgradeSourceLimitsV3();
+  }
+
+  prepareSchemaMigration() {
+    const currentVersion = Number(this.db.pragma('user_version', { simple: true })) || 0;
+    if (currentVersion > SCHEMA_VERSION) {
+      throw new Error(
+        `Base de données plus récente que cette version de l'addon (${currentVersion} > ${SCHEMA_VERSION})`
+      );
+    }
+    const hasUserTables = this.db.prepare(`
+      SELECT 1 FROM sqlite_master
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+      LIMIT 1
+    `).get();
+    if (hasUserTables && currentVersion < SCHEMA_VERSION) {
+      const dir = path.join(path.dirname(this.dbPath), 'backups');
+      fs.mkdirSync(dir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const destination = path.join(
+        dir,
+        `${stamp}-before-schema-v${currentVersion}-to-v${SCHEMA_VERSION}.db`
+      );
+      this.db.prepare('VACUUM INTO ?').run(destination);
+      const backups = fs.readdirSync(dir)
+        .filter(name => /-before-schema-v\d+-to-v\d+\.db$/.test(name))
+        .sort()
+        .reverse();
+      for (const stale of backups.slice(SCHEMA_BACKUP_RETENTION)) {
+        fs.unlinkSync(path.join(dir, stale));
+      }
+      console.log(`[DB] Sauvegarde avant migration : ${destination}`);
+    }
   }
 
   initTables() {
@@ -295,6 +331,20 @@ class DatabaseManager {
         ON release_parse_cache(parsed_at);
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS image_cache_entries (
+        cache_key TEXT PRIMARY KEY,
+        source_url TEXT NOT NULL,
+        content_type TEXT,
+        file_size INTEGER NOT NULL DEFAULT 0,
+        fetched_at INTEGER,
+        accessed_at INTEGER NOT NULL,
+        last_error TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_image_cache_accessed
+        ON image_cache_entries(accessed_at);
+    `);
+
     // Migration depuis l'ancien schéma catalog_items si nécessaire
     const alreadyMigrated = this.db.prepare("SELECT value FROM config WHERE key = 'schema_v2_migrated'").get();
     if (!alreadyMigrated) {
@@ -309,9 +359,12 @@ class DatabaseManager {
     this._migrateManagedCatalogPauses();
     this._migrateCatalogMediaTypes();
     this._migrateMediaEnrichment();
+    this._migrateAvailability();
+    this._migrateMatchAudit();
 
     this.initDefaultConfig();
     this.seedManagedCatalogs();
+    this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
 
   _migrateV3SyncHistory() {
@@ -343,6 +396,54 @@ class DatabaseManager {
     if (!cols.includes('keywords')) {
       this.db.prepare("ALTER TABLE media ADD COLUMN keywords TEXT").run();
       console.log('[DB] Migration médias : mots-clés ajoutés');
+    }
+  }
+
+  _migrateAvailability() {
+    const mediaCols = this.db.prepare("PRAGMA table_info(media)").all().map(c => c.name);
+    const releaseCols = this.db.prepare("PRAGMA table_info(releases)").all().map(c => c.name);
+    const mediaMigrations = [
+      ['last_seen_at', 'INTEGER'],
+      ['availability_hidden', 'INTEGER NOT NULL DEFAULT 0'],
+      ['availability_hidden_at', 'INTEGER']
+    ];
+    const releaseMigrations = [
+      ['last_seen_at', 'INTEGER'],
+      ['last_scan_token', 'TEXT'],
+      ['missing_scan_count', 'INTEGER NOT NULL DEFAULT 0'],
+      ['availability_hidden', 'INTEGER NOT NULL DEFAULT 0'],
+      ['availability_hidden_at', 'INTEGER']
+    ];
+    for (const [column, definition] of mediaMigrations) {
+      if (!mediaCols.includes(column)) this.db.prepare(`ALTER TABLE media ADD COLUMN ${column} ${definition}`).run();
+    }
+    for (const [column, definition] of releaseMigrations) {
+      if (!releaseCols.includes(column)) this.db.prepare(`ALTER TABLE releases ADD COLUMN ${column} ${definition}`).run();
+    }
+    this.db.exec(`
+      UPDATE releases SET last_seen_at = COALESCE(last_seen_at, added_at);
+      UPDATE media SET last_seen_at = COALESCE(
+        last_seen_at,
+        (SELECT MAX(COALESCE(r.last_seen_at, r.added_at)) FROM releases r WHERE r.media_imdb_id = media.imdb_id),
+        updated_at,
+        first_seen_at
+      );
+      CREATE INDEX IF NOT EXISTS idx_releases_availability
+        ON releases(availability_hidden, missing_scan_count, last_seen_at);
+      CREATE INDEX IF NOT EXISTS idx_media_availability
+        ON media(availability_hidden, last_seen_at);
+    `);
+  }
+
+  _migrateMatchAudit() {
+    const cols = this.db.prepare("PRAGMA table_info(media)").all().map(c => c.name);
+    const migrations = [
+      ['match_confidence', 'REAL'],
+      ['match_provider', 'TEXT'],
+      ['match_reasons', 'TEXT']
+    ];
+    for (const [column, definition] of migrations) {
+      if (!cols.includes(column)) this.db.prepare(`ALTER TABLE media ADD COLUMN ${column} ${definition}`).run();
     }
   }
 
@@ -453,6 +554,12 @@ class DatabaseManager {
       rpdb_api_key: '',
       postersplus_enabled: 'false',
       postersplus_url_template: '',
+      image_cache_enabled: 'false',
+      image_cache_ttl_hours: '168',
+      image_cache_max_mb: '1024',
+      availability_enabled: 'false',
+      availability_missing_scans: '3',
+      availability_expiration_days: '0',
       required_tags: 'FRENCH,MULTi,TRUEFRENCH,VOF,VFF,VFI,VFQ',
       prowlarr_url: '',
       prowlarr_apikey: '',
@@ -763,7 +870,7 @@ class DatabaseManager {
     const visited = new Set(visitedCatalogIds);
     if (catalogId) visited.add(catalogId);
     const animeCatalog = String(catalog.type).toLowerCase() === 'anime';
-    const conditions = [animeCatalog
+    const conditions = ['m.availability_hidden = 0', animeCatalog
       ? `(m.catalog_type = 'animés' OR EXISTS (
           SELECT 1 FROM media_identities anime_identity
           WHERE anime_identity.media_imdb_id = m.imdb_id
@@ -935,8 +1042,10 @@ class DatabaseManager {
     try {
       this.db.prepare(`
         INSERT INTO media
-          (imdb_id, tmdb_id, type, catalog_type, name, year, poster, background, description, genres, keywords, vote_average, release_name, first_seen_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (imdb_id, tmdb_id, type, catalog_type, name, year, poster, background, description,
+           genres, keywords, vote_average, release_name, first_seen_at, updated_at, last_seen_at,
+           availability_hidden, availability_hidden_at, match_confidence, match_provider, match_reasons)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?)
         ON CONFLICT(imdb_id) DO UPDATE SET
           poster       = excluded.poster,
           background   = excluded.background,
@@ -945,6 +1054,12 @@ class DatabaseManager {
           keywords     = excluded.keywords,
           vote_average = excluded.vote_average,
           release_name = excluded.release_name,
+          last_seen_at  = MAX(COALESCE(media.last_seen_at, 0), COALESCE(excluded.last_seen_at, 0)),
+          availability_hidden = 0,
+          availability_hidden_at = NULL,
+          match_confidence = COALESCE(excluded.match_confidence, media.match_confidence),
+          match_provider = COALESCE(excluded.match_provider, media.match_provider),
+          match_reasons = COALESCE(excluded.match_reasons, media.match_reasons),
           updated_at   = excluded.updated_at
       `).run(
         item.imdb_id,
@@ -961,7 +1076,11 @@ class DatabaseManager {
         item.vote_average || null,
         item.release_name || null,
         item.first_seen_at || now,
-        now
+        now,
+        item.last_seen_at || now,
+        item.match_confidence ?? null,
+        item.match_provider || null,
+        item.match_reasons ? JSON.stringify(item.match_reasons) : null
       );
       return true;
     } catch (err) {
@@ -974,6 +1093,7 @@ class DatabaseManager {
     const row = this.db.prepare('SELECT * FROM media WHERE imdb_id = ?').get(imdbId);
     if (row && row.genres) row.genres = JSON.parse(row.genres);
     if (row && row.keywords) row.keywords = JSON.parse(row.keywords);
+    if (row && row.match_reasons) row.match_reasons = JSON.parse(row.match_reasons);
     return row;
   }
 
@@ -1018,6 +1138,59 @@ class DatabaseManager {
     })(entries);
   }
 
+  registerImageCacheEntry(cacheKey, sourceUrl) {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO image_cache_entries (cache_key, source_url, accessed_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(cache_key) DO UPDATE SET
+        source_url = excluded.source_url,
+        accessed_at = excluded.accessed_at
+    `).run(cacheKey, sourceUrl, now);
+    return this.getImageCacheEntry(cacheKey);
+  }
+
+  getImageCacheEntry(cacheKey) {
+    return this.db.prepare(
+      'SELECT * FROM image_cache_entries WHERE cache_key = ?'
+    ).get(cacheKey) || null;
+  }
+
+  updateImageCacheEntry(cacheKey, data = {}) {
+    this.db.prepare(`
+      UPDATE image_cache_entries
+      SET content_type = ?, file_size = ?, fetched_at = ?, accessed_at = ?, last_error = ?
+      WHERE cache_key = ?
+    `).run(
+      data.contentType || null,
+      Number(data.fileSize) || 0,
+      data.fetchedAt || null,
+      data.accessedAt || Date.now(),
+      data.lastError || null,
+      cacheKey
+    );
+  }
+
+  touchImageCacheEntry(cacheKey) {
+    this.db.prepare(
+      'UPDATE image_cache_entries SET accessed_at = ? WHERE cache_key = ?'
+    ).run(Date.now(), cacheKey);
+  }
+
+  listImageCacheEntries() {
+    return this.db.prepare(
+      'SELECT * FROM image_cache_entries ORDER BY accessed_at ASC'
+    ).all();
+  }
+
+  deleteImageCacheEntries(cacheKeys) {
+    const keys = [...new Set((cacheKeys || []).filter(Boolean))];
+    if (!keys.length) return 0;
+    return this.db.prepare(
+      `DELETE FROM image_cache_entries WHERE cache_key IN (${keys.map(() => '?').join(',')})`
+    ).run(...keys).changes;
+  }
+
   linkMediaIdentity(mediaId, externalId, namespace = null) {
     if (!mediaId || !externalId) return false;
     const value = String(externalId);
@@ -1044,6 +1217,8 @@ class DatabaseManager {
       LIMIT 1
     `).get(String(inferredNamespace).toLowerCase(), value);
     if (row?.genres) row.genres = JSON.parse(row.genres);
+    if (row?.keywords) row.keywords = JSON.parse(row.keywords);
+    if (row?.match_reasons) row.match_reasons = JSON.parse(row.match_reasons);
     return row || null;
   }
 
@@ -1062,6 +1237,7 @@ class DatabaseManager {
       : this.db.prepare('SELECT * FROM media WHERE tmdb_id = ? LIMIT 1').get(String(tmdbId));
     if (row && row.genres) row.genres = JSON.parse(row.genres);
     if (row && row.keywords) row.keywords = JSON.parse(row.keywords);
+    if (row && row.match_reasons) row.match_reasons = JSON.parse(row.match_reasons);
     return row;
   }
 
@@ -1069,7 +1245,7 @@ class DatabaseManager {
     if (typeFilter) {
       const rows = this.db.prepare(`
         SELECT * FROM media
-        WHERE catalog_type = ? AND type = ?
+        WHERE catalog_type = ? AND type = ? AND availability_hidden = 0
         ORDER BY first_seen_at DESC
         LIMIT ? OFFSET ?
       `).all(catalogType, typeFilter, Number(limit), Number(skip));
@@ -1081,7 +1257,7 @@ class DatabaseManager {
     }
     const rows = this.db.prepare(`
       SELECT * FROM media
-      WHERE catalog_type = ?
+      WHERE catalog_type = ? AND availability_hidden = 0
       ORDER BY first_seen_at DESC
       LIMIT ? OFFSET ?
     `).all(catalogType, Number(limit), Number(skip));
@@ -1094,10 +1270,14 @@ class DatabaseManager {
 
   getMediaCount(catalogType, typeFilter = null) {
     if (typeFilter) {
-      const row = this.db.prepare('SELECT COUNT(*) as count FROM media WHERE catalog_type = ? AND type = ?').get(catalogType, typeFilter);
+      const row = this.db.prepare(
+        'SELECT COUNT(*) as count FROM media WHERE catalog_type = ? AND type = ? AND availability_hidden = 0'
+      ).get(catalogType, typeFilter);
       return row ? row.count : 0;
     }
-    const row = this.db.prepare('SELECT COUNT(*) as count FROM media WHERE catalog_type = ?').get(catalogType);
+    const row = this.db.prepare(
+      'SELECT COUNT(*) as count FROM media WHERE catalog_type = ? AND availability_hidden = 0'
+    ).get(catalogType);
     return row ? row.count : 0;
   }
 
@@ -1106,7 +1286,8 @@ class DatabaseManager {
     if (typeFilter) {
       const rows = this.db.prepare(`
         SELECT * FROM media
-        WHERE catalog_type = ? AND type = ? AND (name LIKE ? OR release_name LIKE ?)
+        WHERE catalog_type = ? AND type = ? AND availability_hidden = 0
+          AND (name LIKE ? OR release_name LIKE ?)
         ORDER BY first_seen_at DESC
         LIMIT ? OFFSET ?
       `).all(catalogType, typeFilter, term, term, Number(limit), Number(skip));
@@ -1118,7 +1299,8 @@ class DatabaseManager {
     }
     const rows = this.db.prepare(`
       SELECT * FROM media
-      WHERE catalog_type = ? AND (name LIKE ? OR release_name LIKE ?)
+      WHERE catalog_type = ? AND availability_hidden = 0
+        AND (name LIKE ? OR release_name LIKE ?)
       ORDER BY first_seen_at DESC
       LIMIT ? OFFSET ?
     `).all(catalogType, term, term, Number(limit), Number(skip));
@@ -1132,7 +1314,7 @@ class DatabaseManager {
   getRecentMediaAdditions(catalogType, limit = 5) {
     const rows = this.db.prepare(`
       SELECT * FROM media
-      WHERE catalog_type = ?
+      WHERE catalog_type = ? AND availability_hidden = 0
       ORDER BY first_seen_at DESC
       LIMIT ?
     `).all(catalogType, limit);
@@ -1147,10 +1329,18 @@ class DatabaseManager {
 
   addRelease(release) {
     try {
+      const now = release.last_seen_at || Date.now();
       this.db.prepare(`
-        INSERT OR IGNORE INTO releases
-          (media_imdb_id, release_name, indexer_rlz_id, source_url, quality, hash, added_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO releases
+          (media_imdb_id, release_name, indexer_rlz_id, source_url, quality, hash, added_at,
+           last_seen_at, last_scan_token, missing_scan_count, availability_hidden, availability_hidden_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL)
+        ON CONFLICT(indexer_rlz_id) DO UPDATE SET
+          last_seen_at = excluded.last_seen_at,
+          last_scan_token = COALESCE(excluded.last_scan_token, releases.last_scan_token),
+          missing_scan_count = 0,
+          availability_hidden = 0,
+          availability_hidden_at = NULL
       `).run(
         release.media_imdb_id,
         release.release_name,
@@ -1158,8 +1348,17 @@ class DatabaseManager {
         release.source_url || null,
         release.quality || null,
         release.hash || null,
-        release.added_at || Date.now()
+        release.added_at || now,
+        now,
+        release.scan_token || null
       );
+      this.db.prepare(`
+        UPDATE media
+        SET last_seen_at = MAX(COALESCE(last_seen_at, 0), ?),
+            availability_hidden = 0,
+            availability_hidden_at = NULL
+        WHERE imdb_id = ?
+      `).run(now, release.media_imdb_id);
       return true;
     } catch (err) {
       console.error('[DB] addRelease error:', err.message);
@@ -1174,6 +1373,111 @@ class DatabaseManager {
   hasReleaseByHash(hash) {
     if (!hash) return false;
     return !!this.db.prepare('SELECT id FROM releases WHERE hash = ?').get(hash);
+  }
+
+  markReleaseSeenByIndexer(indexerRlzId, scanToken = null, seenAt = Date.now()) {
+    const row = this.db.prepare(
+      'SELECT media_imdb_id FROM releases WHERE indexer_rlz_id = ?'
+    ).get(indexerRlzId);
+    if (!row) return false;
+    this.db.prepare(`
+      UPDATE releases
+      SET last_seen_at = ?, last_scan_token = COALESCE(?, last_scan_token),
+          missing_scan_count = 0, availability_hidden = 0, availability_hidden_at = NULL
+      WHERE indexer_rlz_id = ?
+    `).run(seenAt, scanToken, indexerRlzId);
+    this.db.prepare(`
+      UPDATE media SET last_seen_at = MAX(COALESCE(last_seen_at, 0), ?),
+        availability_hidden = 0, availability_hidden_at = NULL
+      WHERE imdb_id = ?
+    `).run(seenAt, row.media_imdb_id);
+    return true;
+  }
+
+  markReleaseSeenByHash(hash, scanToken = null, seenAt = Date.now()) {
+    if (!hash) return false;
+    const rows = this.db.prepare(
+      'SELECT DISTINCT media_imdb_id FROM releases WHERE hash = ?'
+    ).all(hash);
+    if (!rows.length) return false;
+    this.db.prepare(`
+      UPDATE releases
+      SET last_seen_at = ?, last_scan_token = COALESCE(?, last_scan_token),
+          missing_scan_count = 0, availability_hidden = 0, availability_hidden_at = NULL
+      WHERE hash = ?
+    `).run(seenAt, scanToken, hash);
+    const updateMedia = this.db.prepare(`
+      UPDATE media SET last_seen_at = MAX(COALESCE(last_seen_at, 0), ?),
+        availability_hidden = 0, availability_hidden_at = NULL
+      WHERE imdb_id = ?
+    `);
+    for (const row of rows) updateMedia.run(seenAt, row.media_imdb_id);
+    return true;
+  }
+
+  beginAvailabilityScan() {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  finalizeAvailabilityScan(
+    scanToken,
+    { missingScans = 3, expirationDays = 0, sourceUrls = [] } = {}
+  ) {
+    if (!scanToken) return { releasesHidden: 0, mediaHidden: 0, mediaRestored: 0 };
+    const sources = [...new Set((sourceUrls || []).map(String).filter(Boolean))];
+    if (!sources.length) return { releasesHidden: 0, mediaHidden: 0, mediaRestored: 0 };
+    const threshold = Math.min(Math.max(Number(missingScans) || 3, 1), 100);
+    const expiryDays = Math.min(Math.max(Number(expirationDays) || 0, 0), 36500);
+    const now = Date.now();
+    const cutoff = expiryDays > 0 ? now - expiryDays * 86400000 : null;
+    return this.db.transaction(() => {
+      this.db.prepare(`
+        UPDATE releases
+        SET missing_scan_count = missing_scan_count + 1
+        WHERE COALESCE(last_scan_token, '') <> ?
+          AND availability_hidden = 0
+          AND source_url IN (${sources.map(() => '?').join(',')})
+      `).run(scanToken, ...sources);
+      const hiddenByScans = this.db.prepare(`
+        UPDATE releases
+        SET availability_hidden = 1, availability_hidden_at = ?
+        WHERE availability_hidden = 0 AND missing_scan_count >= ?
+          AND source_url IN (${sources.map(() => '?').join(',')})
+      `).run(now, threshold, ...sources).changes;
+      const hiddenByExpiry = cutoff
+        ? this.db.prepare(`
+            UPDATE releases
+            SET availability_hidden = 1, availability_hidden_at = ?
+            WHERE availability_hidden = 0 AND COALESCE(last_seen_at, added_at) < ?
+              AND source_url IN (${sources.map(() => '?').join(',')})
+          `).run(now, cutoff, ...sources).changes
+        : 0;
+      const restored = this.db.prepare(`
+        UPDATE media
+        SET availability_hidden = 0, availability_hidden_at = NULL,
+            last_seen_at = COALESCE((
+              SELECT MAX(r.last_seen_at) FROM releases r
+              WHERE r.media_imdb_id = media.imdb_id AND r.availability_hidden = 0
+            ), last_seen_at)
+        WHERE availability_hidden = 1 AND EXISTS (
+          SELECT 1 FROM releases r
+          WHERE r.media_imdb_id = media.imdb_id AND r.availability_hidden = 0
+        )
+      `).run().changes;
+      const hiddenMedia = this.db.prepare(`
+        UPDATE media
+        SET availability_hidden = 1, availability_hidden_at = ?
+        WHERE availability_hidden = 0 AND NOT EXISTS (
+          SELECT 1 FROM releases r
+          WHERE r.media_imdb_id = media.imdb_id AND r.availability_hidden = 0
+        )
+      `).run(now).changes;
+      return {
+        releasesHidden: hiddenByScans + hiddenByExpiry,
+        mediaHidden: hiddenMedia,
+        mediaRestored: restored
+      };
+    })();
   }
 
   // Pour les séries : vérifie si un show est déjà indexé (par nom TMDB)
@@ -1375,6 +1679,7 @@ class DatabaseManager {
         ...r,
         genres: r.genres ? JSON.parse(r.genres) : [],
         keywords: r.keywords ? JSON.parse(r.keywords) : [],
+        match_reasons: r.match_reasons ? JSON.parse(r.match_reasons) : [],
         release_names: r.release_names_raw ? r.release_names_raw.split('|||') : [],
         source_urls: r.source_urls_raw ? JSON.parse(r.source_urls_raw) : []
       })),

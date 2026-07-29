@@ -26,6 +26,8 @@ const seriesRow = "serie;456;Série Test;1;[];[];[];[];2025;[18];MULTI - 1080p;1
 
 function verifyPublishedSchemaUpgrade() {
   const dbPath = path.join(os.tmpdir(), `stremio-rss-legacy-${process.pid}.db`);
+  const backupDir = path.join(path.dirname(dbPath), 'backups');
+  const backupsBefore = new Set(fs.existsSync(backupDir) ? fs.readdirSync(backupDir) : []);
   const legacy = new SQLite(dbPath);
   legacy.exec(`
     CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -116,6 +118,9 @@ function verifyPublishedSchemaUpgrade() {
 
   const upgraded = new DatabaseManager(dbPath);
   try {
+    const createdBackups = fs.readdirSync(backupDir).filter(name => !backupsBefore.has(name));
+    assert.ok(createdBackups.some(name => /before-schema-v0-to-v6\.db$/.test(name)));
+    assert.equal(upgraded.db.pragma('user_version', { simple: true }), 6);
     assert.equal(upgraded.getConfig('tmdb_api_key'), 'legacy-key');
     assert.equal(upgraded.getMediaByImdbId('tt7654321').name, 'Média existant');
     assert.equal(upgraded.db.prepare('SELECT COUNT(*) AS total FROM releases').get().total, 1);
@@ -196,7 +201,7 @@ function signedCometNetTorrent(identity, fields) {
 
 async function main() {
   verifyPublishedSchemaUpgrade();
-  console.log('✓ Mise à niveau du schéma publié sans perte de données ni de configuration');
+    console.log('✓ Mise à niveau du schéma publié sans perte de données ni de configuration');
   let baseUrl;
   let catalogRequestKeptSecret = false;
   let newznabKeyReceived = false;
@@ -246,6 +251,10 @@ async function main() {
     if (req.url === '/pointer') {
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify({ pasteMasterIndexUrl: `${baseUrl}/master` }));
+    }
+    if (req.url === '/image-source.png') {
+      res.setHeader('Content-Type', 'image/png');
+      return res.end(Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
     }
     if (req.url === '/master') return res.end('#FILMS\nmovie\n#SERIES\nseries\n');
     if (req.url === '/movie') return res.end(`${header}\n${movieRow}\n`);
@@ -697,6 +706,13 @@ async function main() {
     assert.equal(pttParsed[0].type, 'series');
     assert.equal(pttParsed[0].year, '2015');
     assert.equal(pttParsed[0].parsed_release.resolution, '1080p');
+    const legacyEpisode = pttRssParser.parseReleaseName(
+      'Emission.Speciale.2x03.FRENCH.HDTV.2026'
+    );
+    assert.equal(legacyEpisode.cleanName, 'Emission Speciale');
+    assert.equal(legacyEpisode.isSeries, true);
+    assert.equal(legacyEpisode.year, '2026');
+    assert.equal(legacyEpisode.typeConfidence, 'high');
     console.log('✓ Parsing PTT structuré avec repli historique');
 
     const rankedMovie = await matcher.searchMovie('Spectacle Test', '2026');
@@ -736,8 +752,9 @@ async function main() {
         indexer_rlz_id: 'tmdb-ranked-emission',
         cleanName: 'Le Talk Test',
         year: '2026',
-        catalog_type: 'series',
-        type: 'series',
+        catalog_type: 'films',
+        type: 'movie',
+        type_confidence: 'low',
         source_force: 'auto',
         source_url: 'rss:test'
       }
@@ -748,6 +765,40 @@ async function main() {
     assert.deepEqual(db.getMediaByImdbId('tt0999902').keywords, ['stand-up comedy']);
     console.log('✓ Classification TMDB par détails, type et mots-clés');
     db.db.prepare("DELETE FROM media WHERE imdb_id IN ('tt0999902', 'tt0999903')").run();
+
+    db.addMedia({
+      imdb_id: 'tt0999910', type: 'movie', catalog_type: 'films',
+      name: 'Disponibilité Test', year: '2026', genres: [], keywords: [],
+      release_name: 'Disponibilite.Test.2026'
+    });
+    db.addRelease({
+      media_imdb_id: 'tt0999910',
+      release_name: 'Disponibilite.Test.2026',
+      indexer_rlz_id: 'availability-release',
+      source_url: 'inventory:test',
+      scan_token: 'scan-initial'
+    });
+    db.finalizeAvailabilityScan('scan-missing-1', {
+      missingScans: 2, sourceUrls: ['inventory:test']
+    });
+    assert.equal(db.getMediaByImdbId('tt0999910').availability_hidden, 0);
+    const hiddenAvailability = db.finalizeAvailabilityScan('scan-missing-2', {
+      missingScans: 2, sourceUrls: ['inventory:test']
+    });
+    assert.equal(hiddenAvailability.mediaHidden, 1);
+    assert.equal(db.getMediaByImdbId('tt0999910').availability_hidden, 1);
+    assert.ok(!db.getMedia('films', 0, 100).some(item => item.imdb_id === 'tt0999910'));
+    db.addRelease({
+      media_imdb_id: 'tt0999910',
+      release_name: 'Disponibilite.Test.2026',
+      indexer_rlz_id: 'availability-release',
+      source_url: 'inventory:test',
+      scan_token: 'scan-returned'
+    });
+    assert.equal(db.getMediaByImdbId('tt0999910').availability_hidden, 0);
+    db.db.prepare("DELETE FROM media WHERE imdb_id = 'tt0999910'").run();
+    console.log('✓ Fraîcheur, masquage après scans absents et restauration');
+
     const originalOmdbConfigured = matcher.omdb.isConfigured;
     const originalOmdbFetch = matcher.omdb.fetch;
     let directExistingOmdbCalls = 0;
@@ -1322,6 +1373,24 @@ async function main() {
     assert.equal(db.countCustomCatalogMedia(guidedCatalog), 2);
 
     const addon = new StremioAddon(db);
+    db.setConfig('image_cache_enabled', 'true');
+    db.setConfig('image_cache_ttl_hours', '24');
+    db.setConfig('image_cache_max_mb', '10');
+    const proxiedPoster = addon.applyImageCache({
+      metas: [{ id: 'tt-image', poster: `${baseUrl}/image-source.png` }]
+    }, 'http://catalog.local').metas[0].poster;
+    assert.match(proxiedPoster, /^http:\/\/catalog\.local\/image-cache\/[a-f0-9]{64}$/);
+    const imageCacheKey = proxiedPoster.split('/').pop();
+    await addon.imageCache.fetch(imageCacheKey, `${baseUrl}/image-source.png`);
+    const imageCacheEntry = db.getImageCacheEntry(imageCacheKey);
+    assert.equal(imageCacheEntry.content_type, 'image/png');
+    assert.ok(imageCacheEntry.file_size > 0);
+    assert.ok(fs.existsSync(addon.imageCache.filePath(imageCacheKey)));
+    fs.unlinkSync(addon.imageCache.filePath(imageCacheKey));
+    db.deleteImageCacheEntries([imageCacheKey]);
+    db.setConfig('image_cache_enabled', 'false');
+    console.log('✓ Proxy/cache local des fichiers d’affiches');
+
     db.setConfig('manifest_revision', '1');
     const manifest = addon.getManifest();
     assert.ok(manifest.catalogs.some(item => item.id === 'useflowfr_films'));

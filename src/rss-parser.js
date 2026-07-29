@@ -216,7 +216,8 @@ class RSSParser {
       isAnime: false,
       isEmission: false,
       isConcert: false,
-      isSpectacle: false
+      isSpectacle: false,
+      typeConfidence: 'low'
     };
 
     // Documentaires
@@ -234,6 +235,7 @@ class RSSParser {
     if (/\b(TALKSHOW|TALK[\.\-]SHOW|VARIET[EÉ]|EMISSION|[EÉ]MISSION)\b/i.test(title)) {
       info.isEmission = true;
       info.isSeries   = true;
+      info.typeConfidence = 'high';
     }
 
     // Concerts / Live
@@ -247,8 +249,14 @@ class RSSParser {
     }
 
     // Séries (pattern S01E01, Saison X, Season X)
-    if (/\bS\d{2}(E\d{2,3})?\b/i.test(title) || /\b(Saison|Season)\s*\d+\b/i.test(title)) {
+    if (
+      /\bS\d{1,3}(?:[\s._-]*E\d{1,4})?\b/i.test(title)
+      || /\b\d{1,3}x\d{1,4}\b/i.test(title)
+      || /\b(Saison|Season)\s*\d+\b/i.test(title)
+      || /\b(?:Episode|Épisode|Ep)\s*\d+\b/i.test(title)
+    ) {
       info.isSeries = true;
+      info.typeConfidence = 'high';
     }
 
     if (structured && !structured._error) {
@@ -256,10 +264,11 @@ class RSSParser {
       info.isSeries = info.isSeries
         || (Array.isArray(structured.seasons) && structured.seasons.length > 0)
         || (Array.isArray(structured.episodes) && structured.episodes.length > 0);
+      if (info.isSeries) info.typeConfidence = 'high';
       if (Number.isInteger(structured.year)) info.year = String(structured.year);
     }
 
-    const yearMatch = title.match(/[.\s](19\d{2}|20\d{2})[.\s]/);
+    const yearMatch = title.match(/(?:^|[.\s_([])(19\d{2}|20\d{2})(?=$|[.\s_\])])/);
     if (!info.year && yearMatch) {
       info.year = yearMatch[1];
     }
@@ -276,8 +285,10 @@ class RSSParser {
 
     if (info.isSeries) {
       cleanName = cleanName
-        .replace(/\s+S\d{2}(E\d{2,3}(-E?\d{2,3})?)?.*/i, '')
+        .replace(/\s+S\d{1,3}(E\d{1,4}(-E?\d{1,4})?)?.*/i, '')
+        .replace(/\s+\d{1,3}x\d{1,4}.*/i, '')
         .replace(/\s+(Saison|Season)\s*\d+.*/i, '')
+        .replace(/\s+(?:Episode|Épisode|Ep)\s*\d+.*/i, '')
         .trim();
     }
 
@@ -289,7 +300,14 @@ class RSSParser {
     const structuredTitle = typeof structured?.title === 'string'
       ? structured.title.replace(/\s+/g, ' ').trim()
       : '';
-    if (structuredTitle && structuredTitle.length >= 2) cleanName = structuredTitle;
+    if (
+      structuredTitle
+      && structuredTitle.length >= 2
+      && /[\p{L}\p{N}]/u.test(structuredTitle)
+      && !/^(?:season|saison|episode|unknown)$/i.test(structuredTitle)
+    ) {
+      cleanName = structuredTitle;
+    }
 
     info.cleanName = cleanName;
     info.structured = structured && !structured._error ? structured : null;
@@ -356,9 +374,14 @@ class RSSParser {
         pubDate: item.pubDate,
         source_url: sourceUrl,
         source_force: force,
-        quality: this.extractQuality(item.title),
+        quality: [
+          info.structured?.resolution,
+          info.structured?.quality,
+          this.extractQuality(item.title)
+        ].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(' ') || null,
         hash: this.extractHash(item),
-        parsed_release: info.structured
+        parsed_release: info.structured,
+        type_confidence: info.typeConfidence
       });
     }
     return parsed;

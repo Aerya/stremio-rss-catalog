@@ -245,7 +245,10 @@ class WebUI {
           this.db.getConfig('rpdb_enabled'),
           this.db.getConfig('rpdb_api_key'),
           this.db.getConfig('postersplus_enabled'),
-          this.db.getConfig('postersplus_url_template')
+          this.db.getConfig('postersplus_url_template'),
+          this.db.getConfig('image_cache_enabled'),
+          this.db.getConfig('image_cache_ttl_hours'),
+          this.db.getConfig('image_cache_max_mb')
         ].join('\n');
         for (const [key, value] of Object.entries(config)) {
           this.db.setConfig(key, value);
@@ -259,7 +262,10 @@ class WebUI {
           this.db.getConfig('rpdb_enabled'),
           this.db.getConfig('rpdb_api_key'),
           this.db.getConfig('postersplus_enabled'),
-          this.db.getConfig('postersplus_url_template')
+          this.db.getConfig('postersplus_url_template'),
+          this.db.getConfig('image_cache_enabled'),
+          this.db.getConfig('image_cache_ttl_hours'),
+          this.db.getConfig('image_cache_max_mb')
         ].join('\n');
         if (posterConfigAfter !== posterConfigBefore) this.stremioAddon.clearCache();
         this.startAutoRefresh();
@@ -2559,14 +2565,23 @@ class WebUI {
       res.json(this.stremioAddon.getManifest());
     });
 
+    this.app.get('/image-cache/:key', async (req, res) => {
+      await this.stremioAddon.imageCache.serve(req.params.key, res);
+    });
+
     this.app.get('/catalog/:type/:id.json', async (req, res) => {
       try {
         const startedAt = process.hrtime.bigint();
         const cached = this.stremioAddon.isCatalogCached(req.params.id, req.query);
+        const protocol = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+        const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+        const configuredBaseUrl = String(process.env.ADDON_BASE_URL || '').trim().replace(/\/+$/, '');
+        const requestBaseUrl = configuredBaseUrl || `${protocol}://${host}`;
         const result = await this.stremioAddon.handleCatalog({
           type: req.params.type,
           id: req.params.id,
-          extra: req.query
+          extra: req.query,
+          baseUrl: requestBaseUrl
         });
         const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
         const cacheSeconds = Math.min(
@@ -2913,6 +2928,11 @@ class WebUI {
   async runSync({ forceAll = false } = {}) {
     let syncId = null;
     const startTime = Date.now();
+    const availabilityEnabled = forceAll
+      && this.db.getConfig('availability_enabled') === 'true';
+    const availabilityScanToken = availabilityEnabled
+      ? this.db.beginAvailabilityScan()
+      : null;
     const notifLang = this.db.getConfig('notification_language') || 'fr';
     const catalogsBefore = {
       films:          this.db.getMediaCount('films'),
@@ -2933,7 +2953,10 @@ class WebUI {
       await this.processSourceHealthAlerts();
       console.log('Sources récupérées - Éléments: ' + rssData.films.length);
 
-      const allItems = [...rssData.films];
+      const allItems = [...rssData.films].map(item => ({
+        ...item,
+        availability_scan_token: availabilityScanToken
+      }));
       if (allItems.length === 0) {
         if (rssData.guides?.updated) {
           this.stremioAddon.clearCache();
@@ -2962,6 +2985,14 @@ class WebUI {
         this.syncStatus.alreadyInDb = progress.alreadyInDb || 0;
       });
 
+      const availability = availabilityScanToken
+        ? this.db.finalizeAvailabilityScan(availabilityScanToken, {
+            missingScans: Number(this.db.getConfig('availability_missing_scans')) || 3,
+            expirationDays: Number(this.db.getConfig('availability_expiration_days')) || 0,
+            sourceUrls: allItems.map(item => item.source_url)
+          })
+        : { releasesHidden: 0, mediaHidden: 0, mediaRestored: 0 };
+
       const catalogsAfter = {
         films:         this.db.getMediaCount('films'),
         documentaires: this.db.getMediaCount('documentaires'),
@@ -2972,13 +3003,13 @@ class WebUI {
         spectacles:    this.db.getMediaCount('spectacles')
       };
 
-      const filmsAdded         = catalogsAfter.films         - catalogsBefore.films;
-      const documentairesAdded = catalogsAfter.documentaires - catalogsBefore.documentaires;
-      const seriesAdded        = catalogsAfter.series        - catalogsBefore.series;
-      const emissionsAdded     = catalogsAfter.emissions     - catalogsBefore.emissions;
-      const animesAdded        = catalogsAfter.animes        - catalogsBefore.animes;
-      const concertsAdded      = catalogsAfter.concerts      - catalogsBefore.concerts;
-      const spectaclesAdded    = catalogsAfter.spectacles    - catalogsBefore.spectacles;
+      const filmsAdded         = Math.max(0, catalogsAfter.films         - catalogsBefore.films);
+      const documentairesAdded = Math.max(0, catalogsAfter.documentaires - catalogsBefore.documentaires);
+      const seriesAdded        = Math.max(0, catalogsAfter.series        - catalogsBefore.series);
+      const emissionsAdded     = Math.max(0, catalogsAfter.emissions     - catalogsBefore.emissions);
+      const animesAdded        = Math.max(0, catalogsAfter.animes        - catalogsBefore.animes);
+      const concertsAdded      = Math.max(0, catalogsAfter.concerts      - catalogsBefore.concerts);
+      const spectaclesAdded    = Math.max(0, catalogsAfter.spectacles    - catalogsBefore.spectacles);
 
       this.db.updateSyncHistory(syncId, {
         matched_items:        result.matched,
@@ -3005,8 +3036,12 @@ class WebUI {
       this.syncStatus.animesAdded        = animesAdded;
       this.syncStatus.concertsAdded      = concertsAdded;
       this.syncStatus.spectaclesAdded    = spectaclesAdded;
+      this.syncStatus.availability       = availability;
 
       console.log('Sync completed:', result);
+      if (availability.mediaHidden || availability.mediaRestored) {
+        console.log('[Disponibilité] Mise à jour :', availability);
+      }
       this.stremioAddon.clearCache();
       this.db.setConfig('last_catalog_refresh', String(Date.now()));
       this.db.commitPendingSourceCursors(rssData.pendingCursorKeys);

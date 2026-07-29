@@ -56,6 +56,15 @@ function normalizeMatchTitle(value) {
     .trim();
 }
 
+function matchTitleVariants(value) {
+  const normalized = normalizeMatchTitle(value);
+  const withoutArticle = normalized.replace(
+    /^(?:the|a|an|le|la|les|l|un|une|des|der|die|das|ein|eine|el|los|las|il|lo|i)\s+/,
+    ''
+  );
+  return [...new Set([normalized, withoutArticle].filter(Boolean))];
+}
+
 function levenshteinRatio(left, right) {
   if (left === right) return 1;
   if (!left || !right) return 0;
@@ -83,6 +92,17 @@ function tokenDice(left, right) {
   let common = 0;
   for (const token of leftTokens) if (rightTokens.has(token)) common++;
   return (2 * common) / (leftTokens.size + rightTokens.size);
+}
+
+function parseStoredReasons(value) {
+  if (Array.isArray(value)) return value;
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 class TMDBMatcher {
@@ -174,16 +194,19 @@ class TMDBMatcher {
   }
 
   scoreCandidate(candidate, expectedTitle, expectedYear, mediaType) {
-    const expected = normalizeMatchTitle(expectedTitle);
+    const expectedVariants = matchTitleVariants(expectedTitle);
     const candidateTitles = [
       candidate.title, candidate.name, candidate.original_title, candidate.original_name
-    ].map(normalizeMatchTitle).filter(Boolean);
-    const titleSimilarity = candidateTitles.reduce((best, candidateTitle) => Math.max(
-      best,
-      levenshteinRatio(expected, candidateTitle),
-      tokenDice(expected, candidateTitle)
+    ].flatMap(matchTitleVariants).filter(Boolean);
+    const titleSimilarity = expectedVariants.reduce((outerBest, expected) => Math.max(
+      outerBest,
+      candidateTitles.reduce((best, candidateTitle) => Math.max(
+        best,
+        levenshteinRatio(expected, candidateTitle),
+        tokenDice(expected, candidateTitle)
+      ), 0)
     ), 0);
-    const exactTitle = candidateTitles.includes(expected);
+    const exactTitle = expectedVariants.some(expected => candidateTitles.includes(expected));
     const candidateYear = String(candidate.release_date || candidate.first_air_date || '').slice(0, 4);
     const requestedYear = /^\d{4}$/.test(String(expectedYear || '')) ? Number(expectedYear) : null;
     const actualYear = /^\d{4}$/.test(candidateYear) ? Number(candidateYear) : null;
@@ -240,6 +263,7 @@ class TMDBMatcher {
       if (!detailed) return null;
       detailed.match_confidence = Math.round(best.score * 10) / 10;
       detailed.match_reasons = best.reasons;
+      detailed.match_provider = 'tmdb';
       return detailed;
     } catch (error) {
       console.error(`[TMDB] Error searching ${mediaType} "${title}":`, error.message);
@@ -272,6 +296,26 @@ class TMDBMatcher {
 
     // Titre simplifié : on garde seulement les 3 premiers mots pour les titres longs
     const simplifiedName = item.cleanName.split(' ').slice(0, 3).join(' ');
+
+    if (
+      item.source_force === 'auto'
+      && item.type_confidence === 'low'
+      && item.cleanName
+    ) {
+      const [movieCandidate, tvCandidate] = await Promise.all([
+        this.searchMovie(item.cleanName, item.year, 'fr-FR', item.cleanName, item.year),
+        this.searchTVShow(item.cleanName, item.year, 'fr-FR', item.cleanName, item.year)
+      ]);
+      const candidates = [movieCandidate, tvCandidate].filter(Boolean)
+        .sort((left, right) => (right.match_confidence || 0) - (left.match_confidence || 0));
+      if (candidates[0]) {
+        candidates[0].match_reasons = [
+          ...(candidates[0].match_reasons || []),
+          'type film/série comparé automatiquement'
+        ];
+        return candidates[0];
+      }
+    }
 
     const attempts = [
       // 1. Exact + année, français
@@ -469,6 +513,10 @@ class TMDBMatcher {
 
       // 1. Dédup par release exacte (indexer_rlz_id)
       if (this.db.hasRelease(item.indexer_rlz_id)) {
+        this.db.markReleaseSeenByIndexer(
+          item.indexer_rlz_id,
+          item.availability_scan_token || null
+        );
         alreadyInDb++;
         matched++;
         if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
@@ -477,6 +525,7 @@ class TMDBMatcher {
 
       // 1b. Dédup par hash (quand disponible) — même torrent depuis un feed différent
       if (item.hash && this.db.hasReleaseByHash(item.hash)) {
+        this.db.markReleaseSeenByHash(item.hash, item.availability_scan_token || null);
         alreadyInDb++;
         matched++;
         console.log(`[TMDB] ↩ Doublon hash détecté : ${item.cleanName} (${item.hash})`);
@@ -495,7 +544,8 @@ class TMDBMatcher {
             indexer_rlz_id: item.indexer_rlz_id,
             source_url: item.source_url || null,
             quality: item.quality || null,
-            hash: item.hash || null
+            hash: item.hash || null,
+            scan_token: item.availability_scan_token || null
           });
           alreadyInDb++;
           matched++;
@@ -522,7 +572,8 @@ class TMDBMatcher {
             indexer_rlz_id: item.indexer_rlz_id,
             source_url: item.source_url || null,
             quality: item.quality || null,
-            hash: item.hash || null
+            hash: item.hash || null,
+            scan_token: item.availability_scan_token || null
           });
           this.linkDirectIdentities(item, existingDirect.imdb_id);
           alreadyInDb++;
@@ -550,6 +601,22 @@ class TMDBMatcher {
 
       if (match && match.imdb_id) {
         let catalogType = item.catalog_type;
+        const resolvedType = match.media_type === 'tv'
+          ? 'series'
+          : match.media_type === 'movie'
+          ? 'movie'
+          : item.type;
+        if (
+          item.source_force === 'auto'
+          && item.type_confidence === 'low'
+          && resolvedType !== item.type
+        ) {
+          item.type = resolvedType;
+          if (catalogType === 'films' || catalogType === 'series') {
+            catalogType = resolvedType === 'series' ? 'series' : 'films';
+          }
+          console.log(`[Matching] Type corrigé automatiquement : ${item.cleanName} → ${resolvedType}`);
+        }
 
         // ── Appel OMDb (concerts & spectacles) ──────────────────────────────
         // On appelle OMDb uniquement si la clé est configurée et que le média
@@ -671,6 +738,9 @@ class TMDBMatcher {
             genres: match.genres?.length ? match.genres : existingMedia.genres,
             keywords: match.keywords?.length ? match.keywords : existingMedia.keywords,
             vote_average: match.vote_average || existingMedia.vote_average,
+            match_confidence: match.match_confidence ?? existingMedia.match_confidence,
+            match_provider: match.match_provider || existingMedia.match_provider,
+            match_reasons: match.match_reasons || parseStoredReasons(existingMedia.match_reasons),
             release_name: item.release_name
           });
           // Média déjà connu : on ajoute juste la nouvelle release
@@ -680,7 +750,8 @@ class TMDBMatcher {
             indexer_rlz_id: item.indexer_rlz_id,
             source_url: item.source_url || null,
             quality: item.quality || null,
-            hash: item.hash || null
+            hash: item.hash || null,
+            scan_token: item.availability_scan_token || null
           });
           this.linkDirectIdentities(item, mediaId);
           matched++;
@@ -701,6 +772,9 @@ class TMDBMatcher {
             genres: match.genres,
             keywords: match.keywords || [],
             vote_average: match.vote_average,
+            match_confidence: match.match_confidence ?? null,
+            match_provider: match.match_provider || (item.direct_meta ? 'source-directe' : null),
+            match_reasons: match.match_reasons || [],
             release_name: item.release_name
           };
 
@@ -712,7 +786,8 @@ class TMDBMatcher {
               indexer_rlz_id: item.indexer_rlz_id,
               source_url: item.source_url || null,
               quality: item.quality || null,
-              hash: item.hash || null
+              hash: item.hash || null,
+              scan_token: item.availability_scan_token || null
             });
             this.linkDirectIdentities(item, match.imdb_id);
             matched++;
@@ -750,7 +825,8 @@ class TMDBMatcher {
               indexer_rlz_id: item.indexer_rlz_id,
               source_url: item.source_url || null,
               quality: item.quality || null,
-              hash: item.hash || null
+              hash: item.hash || null,
+              scan_token: item.availability_scan_token || null
             });
             matched++;
             alreadyInDb++;
@@ -768,6 +844,9 @@ class TMDBMatcher {
               genres: [],
               keywords: [],
               vote_average: null,
+              match_confidence: null,
+              match_provider: 'tvdb',
+              match_reasons: ['fallback TVDB'],
               release_name: item.release_name
             };
             const mediaSaved = this.db.addMedia(mediaData);
@@ -778,7 +857,8 @@ class TMDBMatcher {
                 indexer_rlz_id: item.indexer_rlz_id,
                 source_url: item.source_url || null,
                 quality: item.quality || null,
-                hash: item.hash || null
+                hash: item.hash || null,
+                scan_token: item.availability_scan_token || null
               });
               matched++;
               results.push(mediaData);
@@ -884,7 +964,8 @@ class TMDBMatcher {
         original_language: d.original_language || null,
         origin_country: d.origin_country || d.production_countries?.map(country => country.iso_3166_1) || [],
         tv_type: endpoint === 'tv' ? d.type || null : null,
-        media_type: mediaType
+        media_type: mediaType,
+        match_provider: 'tmdb'
       };
     } catch (err) {
       console.error(`[TMDB] fetchByTmdbId error for ${mediaType}/${tmdbId}:`, err.message);
