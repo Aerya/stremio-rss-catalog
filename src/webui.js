@@ -219,6 +219,7 @@ class WebUI {
       delete config.wacustom_sources;
       delete config.media_server_sources;
       delete config.mdblist_guides;
+      delete config.stremio_metadata_sources;
       res.json(config);
     });
 
@@ -258,7 +259,8 @@ class WebUI {
         'rss_films_name', 'rss_films_url', 'rss_films_force',
         'rss_films_paused', 'rss_films_sync_interval', 'rss_additional_urls',
         'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources', 'webdav_sources',
-        'wacustom_sources', 'media_server_sources', 'mdblist_guides'
+        'wacustom_sources', 'media_server_sources', 'mdblist_guides',
+        'stremio_metadata_sources'
       ]);
       const config = Object.fromEntries(Object.entries(this.db.getAllConfig())
         .filter(([key]) => !excludedConfigKeys.has(key))
@@ -289,6 +291,7 @@ class WebUI {
           webdav: this.rssParser.webdavParser.getSources().map(redactUrl),
           wacustom: this.rssParser.waCustomParser.getSources().map(redactUrl),
           media_servers: this.rssParser.mediaServerParser.getSources().map(redactUrl),
+          metadata_providers: this.tmdbMatcher.stremioMetadata.getSources().map(redactUrl),
           guides: this.rssParser.mdblistGuideParser.getSources().map(redactUrl)
         },
         catalogs: this.db.listCustomCatalogs().map(catalog => ({
@@ -322,6 +325,7 @@ class WebUI {
             webdav: payload.sources.webdav?.length || 0,
             wacustom: payload.sources.wacustom?.length || 0,
             media_servers: payload.sources.media_servers?.length || 0,
+            metadata_providers: payload.sources.metadata_providers?.length || 0,
             guides: payload.sources.guides?.length || 0,
             catalogs: payload.catalogs.length
           }
@@ -331,6 +335,7 @@ class WebUI {
       const backupPath = await this.db.createMaintenanceBackup('before-config-import');
       const secretConfigKeys = new Set([
         'tmdb_api_key', 'tvdb_api_key', 'omdb_api_key', 'mal_client_id',
+        'stremio_metadata_manifest_url',
         'rpdb_api_key', 'proxy_username', 'proxy_password',
         'proxy_host', 'proxy_port', 'discord_webhook_url',
         'apprise_server_url', 'apprise_urls',
@@ -382,6 +387,9 @@ class WebUI {
       this.db.setConfig('media_server_sources', JSON.stringify(mergeSources(
         this.rssParser.mediaServerParser.getSources(), payload.sources.media_servers, ['url', 'apiKey']
       )));
+      this.db.setConfig('stremio_metadata_sources', JSON.stringify(mergeSources(
+        this.tmdbMatcher.stremioMetadata.getSources(), payload.sources.metadata_providers, ['url']
+      )));
       this.db.setConfig('mdblist_guides', JSON.stringify(mergeSources(
         this.rssParser.mdblistGuideParser.getSources(), payload.sources.guides,
         ['url', 'apiKey', 'username', 'password', 'accessToken']
@@ -411,6 +419,7 @@ class WebUI {
       if (kind === 'webdav') source = this.rssParser.webdavParser.getSources().find(item => item.id === id);
       if (kind === 'wacustom') source = this.rssParser.waCustomParser.getSources().find(item => item.id === id);
       if (kind === 'media-server') source = this.rssParser.mediaServerParser.getSources().find(item => item.id === id);
+      if (kind === 'metadata') source = this.tmdbMatcher.stremioMetadata.getSources().find(item => item.id === id);
       if (kind === 'guide') source = this.rssParser.mdblistGuideParser.getSources().find(item => item.id === id);
       if (!source) return res.status(404).json({ error: 'Source introuvable' });
       res.setHeader('Cache-Control', 'no-store');
@@ -1274,6 +1283,83 @@ class WebUI {
       if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
       this.db.setConfig('media_server_sources', JSON.stringify(next));
       this.db.deleteSourceSyncState(mediaServerParser.sourceKey(req.params.id));
+      res.json({ success: true });
+    });
+
+    // ─── Services d'identification Stremio ────────────────────────────────
+    const metadataService = this.tmdbMatcher.stremioMetadata;
+    const metadataForApi = source => ({
+      id: source.id,
+      name: source.name,
+      url: source.url,
+      priority: Number(source.priority) || 100,
+      paused: Boolean(source.paused),
+      use_proxy: source.useProxy !== false
+    });
+    const saveMetadataSources = sources => {
+      this.db.setConfig('stremio_metadata_sources', JSON.stringify(sources));
+      this.db.setConfig('stremio_metadata_enabled', sources.some(source => !source.paused) ? 'true' : 'false');
+      metadataService.manifestCache.clear();
+    };
+    const metadataPayload = (body, existing = null) => metadataService.normalizeSource({
+      ...(existing || {}),
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(body.url !== undefined ? { url: body.url } : {}),
+      ...(body.priority !== undefined ? { priority: body.priority } : {}),
+      ...(body.paused !== undefined ? { paused: body.paused } : {}),
+      ...(body.use_proxy !== undefined ? { useProxy: Boolean(body.use_proxy) } : {})
+    });
+
+    this.app.get('/api/metadata-providers', this.authMiddleware.bind(this), (req, res) => {
+      res.json(metadataService.getSources().map(metadataForApi));
+    });
+
+    this.app.post('/api/metadata-providers/preview', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const existing = req.body.source_id
+          ? metadataService.getSources().find(source => source.id === req.body.source_id)
+          : null;
+        res.json(await metadataService.inspect(metadataPayload(req.body, existing)));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/metadata-providers', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const source = metadataPayload(req.body);
+        const inspection = await metadataService.inspect(source);
+        if (!String(req.body.name || '').trim()) source.name = inspection.name;
+        const sources = metadataService.getSources().filter(item => item.id !== 'legacy');
+        sources.push(source);
+        saveMetadataSources(sources);
+        res.status(201).json(metadataForApi(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.put('/api/metadata-providers/:id', this.authMiddleware.bind(this), async (req, res) => {
+      const sources = metadataService.getSources();
+      const index = sources.findIndex(source => source.id === req.params.id);
+      if (index < 0) return res.status(404).json({ error: 'Service introuvable' });
+      try {
+        const current = sources[index];
+        const next = metadataPayload(req.body, current);
+        if (next.url !== current.url) await metadataService.inspect(next);
+        sources[index] = next;
+        saveMetadataSources(sources);
+        res.json(metadataForApi(next));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.delete('/api/metadata-providers/:id', this.authMiddleware.bind(this), (req, res) => {
+      const sources = metadataService.getSources();
+      const next = sources.filter(source => source.id !== req.params.id);
+      if (next.length === sources.length) return res.status(404).json({ error: 'Service introuvable' });
+      saveMetadataSources(next);
       res.json({ success: true });
     });
 

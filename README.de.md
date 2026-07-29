@@ -58,7 +58,7 @@
 | **MAL** | MyAnimeList API v2 — EN-Titel-Normalisierer für besseren TMDB-Abgleich bei Anime (optional, kostenloser Schlüssel) |
 | **AniList** 🆕 NEW | AniList GraphQL-API — ergänzender Titel-Normalisierer (Romaji + Originaltitel) + Anime-Deduplizierung, vollständig kostenlos und anonym, keine Registrierung erforderlich |
 | **Kitsu** | Nativer Anime-Fallback ohne Schlüssel: Erkannte Inhalte bleiben mit ihrer `kitsu:`-ID indexierbar, auch wenn TMDB keinen Treffer hat |
-| **Stremio-Metadaten-Addon** | Konfigurierbarer Fallback über eine `manifest.json` mit Suchkatalogen, zum Beispiel [AIOMetadata](https://github.com/cedya77/aiometadata) |
+| **Stremio-Metadaten-Addons** | Mehrere umbenennbare, priorisierte, testbare und pausierbare Fallbacks über `manifest.json`-Dateien mit Suchkatalogen, zum Beispiel [AIOMetadata](https://github.com/cedya77/aiometadata) |
 | **Konzerte** 🆕 NEW | Via TMDB-Genre 10402 (Music) + OMDb-Bestätigung, ohne narrative Genres (Drama, Action…) |
 | **Aufführungen** 🆕 NEW | Via Titel-Schlüsselwörter (Stand-up, One Man Show, Theater, Zirkus…) + OMDb-Bestätigung |
 | **OMDb** | OMDb-API nach jedem TMDB-Match abgefragt, um Konzert- und Aufführungsklassifizierung zu bestätigen |
@@ -273,7 +273,7 @@ RSS-Release
 
 **Anime-Identifizierung (MAL + AniList + Kitsu):**
 
-MAL, AniList und Kitsu liefern kanonische Titel vor der TMDB-Suche. Wenn TMDB keinen Treffer liefert, wird ein konfiguriertes Stremio-Metadaten-Addon abgefragt und anschließend die native Kitsu-, MAL- oder AniList-ID erhalten. Für die vollständige Detailseite muss das passende Metadaten-Addon ebenfalls in Stremio installiert sein.
+MAL, AniList und Kitsu liefern kanonische Titel vor der TMDB-Suche. Wenn TMDB keinen Treffer liefert, werden konfigurierte Stremio-Metadaten-Addons nach Priorität abgefragt und anschließend die native Kitsu-, MAL- oder AniList-ID erhalten. Für die vollständige Detailseite muss das passende Metadaten-Addon ebenfalls in Stremio installiert sein.
 
 **TMDB — 5 Versuche der Reihe nach (Nicht-Anime):**
 1. Genauer Titel + Jahr, Französisch

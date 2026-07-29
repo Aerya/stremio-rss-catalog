@@ -932,26 +932,34 @@
             </small>
           </div>
           <div class="field">
-            <div class="toggle-row" style="margin-bottom:4px">
-              <label class="toggle-switch">
-                <input type="checkbox" id="stremio_metadata_enabled" name="stremio_metadata_enabled">
-                <span class="slider"></span>
-              </label>
-              <label for="stremio_metadata_enabled" data-i18n="config_stremio_metadata_enable">
-                Utiliser un addon Stremio de métadonnées comme fallback
-              </label>
-            </div>
             <label>
-              <span data-i18n="config_stremio_metadata_url">URL de son manifest.json configuré</span>
+              Addons Stremio de métadonnées en fallback
               <a href="https://github.com/cedya77/aiometadata" target="_blank" class="label-link">AIOMetadata ↗</a>
             </label>
-            <input type="password" id="stremio_metadata_manifest_url"
-              name="stremio_metadata_manifest_url"
-              placeholder="https://metadata.exemple.fr/stremio/utilisateur/manifest.json"
-              autocomplete="off">
-            <small data-i18n="config_stremio_metadata_hint">
-              Le service est interrogé uniquement après échec des identifiants directs et de TMDB. Compatible avec les addons exposant des catalogues de recherche Stremio.
+            <small class="field-hint">
+              Vous pouvez en ajouter plusieurs et choisir leur priorité. Ils sont interrogés dans l’ordre
+              après les identifiants directs et TMDB. Seuls les manifestes proposant une recherche
+              Films/Séries sont acceptés.
             </small>
+            <input id="metadataProviderEditId" type="hidden">
+            <div class="source-grid" style="margin-top:10px">
+              <input id="metadataProviderName" type="text" placeholder="Nom du service">
+              <input id="metadataProviderUrl" type="password"
+                placeholder="https://metadata.exemple.fr/utilisateur/manifest.json"
+                autocomplete="off">
+              <input id="metadataProviderPriority" type="number" min="1" max="9999" value="100"
+                title="Priorité : le nombre le plus bas est interrogé en premier">
+              <label class="check-inline">
+                <input id="metadataProviderUseProxy" type="checkbox" checked> Proxy global
+              </label>
+              <button type="button" class="btn-sm" onclick="previewMetadataProvider()">Tester</button>
+              <button type="button" class="btn-primary" id="metadataProviderSubmit"
+                onclick="saveMetadataProvider()">Ajouter</button>
+              <button type="button" class="btn-sm" id="metadataProviderCancel"
+                onclick="resetMetadataProviderForm()" hidden>Annuler</button>
+            </div>
+            <div id="metadataProviderPreview" class="source-preview"></div>
+            <div id="metadataProviderList" class="source-list"></div>
           </div>
           <div class="field">
             <label>

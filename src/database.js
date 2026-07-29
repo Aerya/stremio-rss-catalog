@@ -381,6 +381,7 @@ class DatabaseManager {
       kitsu_enabled: 'true',
       stremio_metadata_enabled: 'false',
       stremio_metadata_manifest_url: '',
+      stremio_metadata_sources: '[]',
       apprise_enabled: 'false',
       apprise_server_url: '',
       apprise_urls: '',

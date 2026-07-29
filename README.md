@@ -58,7 +58,7 @@
 | **MAL** | MyAnimeList API v2 — normalisateur de titre EN pour améliorer le match TMDB des animés (optionnel, clé gratuite) |
 | **AniList** 🆕 NEW | API GraphQL AniList — normalisateur complémentaire (titres romaji + natifs) + déduplication animés, entièrement gratuit et anonyme, sans inscription |
 | **Kitsu** | Fallback anime natif sans clé : un contenu reconnu reste indexable avec son identifiant `kitsu:` même s'il n'existe pas dans TMDB |
-| **Addon de métadonnées Stremio** | Fallback configurable via un `manifest.json` doté de catalogues de recherche, par exemple [AIOMetadata](https://github.com/cedya77/aiometadata) |
+| **Addons de métadonnées Stremio** | Plusieurs fallbacks renommables, ordonnables, testables et désactivables via leur `manifest.json` de recherche, par exemple [AIOMetadata](https://github.com/cedya77/aiometadata) |
 | **Concerts** 🆕 NEW | Détectés via TMDB genre 10402 (Music) + confirmation OMDb, sans genres narratifs (Drama, Action…) |
 | **Spectacles** 🆕 NEW | Détectés via mots-clés titre (Stand-up, One Man Show, Théâtre, Cirque…) + confirmation OMDb |
 | **OMDb** | API OMDb interrogée après chaque match TMDB pour confirmer la classification concerts et spectacles |
@@ -289,7 +289,7 @@ Release RSS
 
 **Identification des animés (MAL + AniList + Kitsu) :**
 
-MAL, AniList et Kitsu sont combinés pour obtenir les titres canoniques avant de chercher sur TMDB. Si TMDB échoue, un addon Stremio de métadonnées configuré est interrogé, puis l'identifiant anime natif Kitsu, MAL ou AniList est conservé. L'addon de métadonnées correspondant doit aussi être installé dans Stremio pour afficher la fiche complète.
+MAL, AniList et Kitsu sont combinés pour obtenir les titres canoniques avant de chercher sur TMDB. Si TMDB échoue, les addons Stremio de métadonnées configurés sont interrogés par ordre de priorité, puis l'identifiant anime natif Kitsu, MAL ou AniList est conservé. L'addon de métadonnées correspondant doit aussi être installé dans Stremio pour afficher la fiche complète.
 
 **TMDB — 5 tentatives dans l'ordre (hors animés) :**
 1. Titre exact + année, français

@@ -3096,6 +3096,135 @@ window.addRssField = function (value, force, name) {
 
 // ═══════════════════════════ INTEGRATIONS ══════════════════════════════
 
+let metadataProviders = [];
+
+function metadataProviderPayload() {
+  return {
+    source_id: document.getElementById('metadataProviderEditId').value || null,
+    name: document.getElementById('metadataProviderName').value.trim(),
+    url: document.getElementById('metadataProviderUrl').value.trim(),
+    priority: Number(document.getElementById('metadataProviderPriority').value) || 100,
+    use_proxy: document.getElementById('metadataProviderUseProxy').checked
+  };
+}
+
+async function loadMetadataProviders() {
+  const container = document.getElementById('metadataProviderList');
+  if (!container) return;
+  try {
+    const response = await fetch('/api/metadata-providers');
+    metadataProviders = await response.json();
+    if (!metadataProviders.length) {
+      container.innerHTML = '<p class="text-muted">Aucun addon de métadonnées configuré.</p>';
+      return;
+    }
+    container.innerHTML = metadataProviders.map(source => `
+      <div class="manager-row">
+        <div class="manager-row-main">
+          <div class="manager-row-title">${escHtml(source.name)} <span class="source-name-badge">priorité ${source.priority}</span> ${source.paused ? '⏸' : '●'}</div>
+          <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+          <div class="manager-row-meta">${source.use_proxy ? 'proxy global' : 'connexion directe'}</div>
+        </div>
+        <div class="manager-row-actions">
+          <button type="button" class="btn-sm" onclick="editMetadataProvider('${source.id}')">Modifier</button>
+          <button type="button" class="btn-sm" onclick="revealSourceSecret('metadata','${source.id}',this)">Révéler l’URL</button>
+          <button type="button" class="btn-sm" onclick="testMetadataProvider('${source.id}')">Tester</button>
+          <button type="button" class="btn-sm" onclick="toggleMetadataProvider('${source.id}',${!source.paused})">${source.paused ? 'Reprendre' : 'Mettre en pause'}</button>
+          <button type="button" class="btn-danger btn-sm" onclick="deleteMetadataProvider('${source.id}')">Supprimer</button>
+        </div>
+      </div>`).join('');
+  } catch (error) {
+    container.innerHTML = `<p class="config-msg err">${escHtml(error.message)}</p>`;
+  }
+}
+
+async function previewMetadataProvider(payload = metadataProviderPayload()) {
+  const output = document.getElementById('metadataProviderPreview');
+  output.textContent = 'Lecture du manifeste et détection des catalogues de recherche…';
+  const response = await fetch('/api/metadata-providers/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `✓ ${data.name} — ${data.catalogs.length} catalogue(s) de recherche : ${data.catalogs.map(catalog => `${catalog.name} (${catalog.type})`).join(', ')}`
+    : `✗ ${data.error || 'Test impossible'}`;
+  return response.ok;
+}
+window.previewMetadataProvider = previewMetadataProvider;
+
+async function saveMetadataProvider() {
+  const id = document.getElementById('metadataProviderEditId').value;
+  const response = await fetch(id ? `/api/metadata-providers/${id}` : '/api/metadata-providers', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(metadataProviderPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Enregistrement impossible');
+  resetMetadataProviderForm();
+  await loadMetadataProviders();
+}
+window.saveMetadataProvider = saveMetadataProvider;
+
+async function editMetadataProvider(id) {
+  const source = metadataProviders.find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/metadata/${id}`)).json();
+  document.getElementById('metadataProviderEditId').value = id;
+  document.getElementById('metadataProviderName').value = source.name || '';
+  document.getElementById('metadataProviderUrl').value = secrets.url || '';
+  document.getElementById('metadataProviderPriority').value = source.priority || 100;
+  document.getElementById('metadataProviderUseProxy').checked = source.use_proxy;
+  document.getElementById('metadataProviderSubmit').textContent = 'Enregistrer';
+  document.getElementById('metadataProviderCancel').hidden = false;
+}
+window.editMetadataProvider = editMetadataProvider;
+
+function resetMetadataProviderForm() {
+  document.getElementById('metadataProviderEditId').value = '';
+  document.getElementById('metadataProviderName').value = '';
+  document.getElementById('metadataProviderUrl').value = '';
+  document.getElementById('metadataProviderPriority').value = 100;
+  document.getElementById('metadataProviderUseProxy').checked = true;
+  document.getElementById('metadataProviderPreview').textContent = '';
+  document.getElementById('metadataProviderSubmit').textContent = 'Ajouter';
+  document.getElementById('metadataProviderCancel').hidden = true;
+}
+window.resetMetadataProviderForm = resetMetadataProviderForm;
+
+async function testMetadataProvider(id) {
+  const source = metadataProviders.find(item => item.id === id);
+  const secrets = await (await fetch(`/api/source-secrets/metadata/${id}`)).json();
+  await previewMetadataProvider({
+    source_id: id,
+    name: source.name,
+    url: secrets.url,
+    priority: source.priority,
+    use_proxy: source.use_proxy
+  });
+}
+window.testMetadataProvider = testMetadataProvider;
+
+async function toggleMetadataProvider(id, paused) {
+  const response = await fetch(`/api/metadata-providers/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Modification impossible');
+  await loadMetadataProviders();
+}
+window.toggleMetadataProvider = toggleMetadataProvider;
+
+async function deleteMetadataProvider(id) {
+  if (!confirm('Supprimer cet addon de métadonnées ?')) return;
+  await fetch(`/api/metadata-providers/${id}`, { method: 'DELETE' });
+  await loadMetadataProviders();
+}
+window.deleteMetadataProvider = deleteMetadataProvider;
+
 window.addProwlarrFeed = function (force) {
   const url = (document.getElementById('prowlarr_url')?.value || '').trim().replace(/\/$/, '');
   const key = (document.getElementById('prowlarr_apikey')?.value || '').trim();
@@ -3120,7 +3249,7 @@ async function loadConfig() {
     const cfg = await r.json();
 
     ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
-     'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'stremio_metadata_manifest_url',
+     'mal_client_id', 'rpdb_api_key', 'omdb_api_key',
      'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
      'proxy_password', 'refresh_interval', 'discord_webhook_url',
      'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
@@ -3131,10 +3260,11 @@ async function loadConfig() {
     ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
      'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
      'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled',
-     'kitsu_enabled', 'stremio_metadata_enabled'].forEach(k => {
+     'kitsu_enabled'].forEach(k => {
       const el = document.getElementById(k);
       if (el) el.checked = cfg[k] === 'true';
     });
+    await loadMetadataProviders();
 
   } catch (e) { console.error('loadConfig', e); }
 }
@@ -3146,7 +3276,7 @@ async function saveConfig(e) {
 
   const cfg = {};
   ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
-   'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'stremio_metadata_manifest_url',
+   'mal_client_id', 'rpdb_api_key', 'omdb_api_key',
    'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
    'proxy_password', 'refresh_interval', 'discord_webhook_url',
    'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
@@ -3157,7 +3287,7 @@ async function saveConfig(e) {
   ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
    'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
    'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled',
-   'kitsu_enabled', 'stremio_metadata_enabled'].forEach(k => {
+   'kitsu_enabled'].forEach(k => {
     const el = document.getElementById(k);
     if (el) cfg[k] = el.checked ? 'true' : 'false';
   });

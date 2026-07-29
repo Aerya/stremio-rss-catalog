@@ -139,6 +139,20 @@ async function main() {
         }]
       }));
     }
+    if (req.url.startsWith('/metadata-empty/manifest.json')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        id: 'test.metadata.empty', version: '1.0.0', name: 'Métadonnées vides',
+        catalogs: [{
+          type: 'movie', id: 'search.movie', name: 'Recherche films',
+          extra: [{ name: 'search', isRequired: true }]
+        }]
+      }));
+    }
+    if (req.url.startsWith('/metadata-empty/catalog/movie/search.movie/')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({ metas: [] }));
+    }
     if (req.url.startsWith('/mdblist/items')) {
       const requestUrl = new URL(req.url, baseUrl);
       mdblistKeyReceived = requestUrl.searchParams.get('apikey') === 'mdblist-test-key';
@@ -371,6 +385,27 @@ async function main() {
       cleanName: 'Film Fallback', year: '2026', type: 'movie'
     });
     assert.equal(metadataMatch.imdb_id, 'tt0000999');
+    db.setConfig('stremio_metadata_sources', JSON.stringify([
+      {
+        id: 'metadata-empty', name: 'Vide', url: `${baseUrl}/metadata-empty/manifest.json`,
+        priority: 10, paused: false, useProxy: false
+      },
+      {
+        id: 'metadata-good', name: 'Second service', url: `${baseUrl}/metadata/manifest.json?token=test`,
+        priority: 20, paused: false, useProxy: false
+      }
+    ]));
+    const multipleMetadata = new (require('../src/services/stremioMetadataService'))(
+      db, () => ({ timeout: 2000 })
+    );
+    const metadataInspection = await multipleMetadata.inspect(multipleMetadata.getSources()[1]);
+    assert.equal(metadataInspection.catalogs.length, 1);
+    const multipleMetadataMatch = await multipleMetadata.search({
+      cleanName: 'Film Fallback', year: '2026', type: 'movie'
+    });
+    assert.equal(multipleMetadataMatch.imdb_id, 'tt0000999');
+    assert.equal(multipleMetadataMatch.identification_provider, 'Second service');
+    console.log('✓ Plusieurs addons de métadonnées ordonnés, testables et désactivables');
 
     const mediaServerParser = new MediaServerParser(db, () => ({ timeout: 2000 }));
     const plexSource = {

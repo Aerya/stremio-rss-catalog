@@ -58,7 +58,7 @@
 | **MAL** | MyAnimeList API v2 — EN title normalizer to improve TMDB matching for anime (optional, free key) |
 | **AniList** 🆕 NEW | AniList GraphQL API — complementary title normalizer (romaji + native titles) + anime dedup, fully free and anonymous, no sign-up required |
 | **Kitsu** | Keyless native anime fallback: recognized content remains indexable with its `kitsu:` identifier even when TMDB has no match |
-| **Stremio metadata addon** | Configurable fallback through a search-enabled `manifest.json`, for example [AIOMetadata](https://github.com/cedya77/aiometadata) |
+| **Stremio metadata addons** | Multiple renameable, ordered, testable, and pausable fallbacks through search-enabled `manifest.json` files, such as [AIOMetadata](https://github.com/cedya77/aiometadata) |
 | **Concerts** 🆕 NEW | Detected via TMDB genre 10402 (Music) + OMDb confirmation, without narrative genres (Drama, Action…) |
 | **Live Shows** 🆕 NEW | Detected via title keywords (Stand-up, One Man Show, Theatre, Circus…) + OMDb confirmation |
 | **OMDb** | OMDb API queried after each TMDB match to confirm concert and live show classification |
@@ -271,7 +271,7 @@ RSS Release
 
 **Anime identification (MAL + AniList + Kitsu):**
 
-MAL, AniList, and Kitsu provide canonical titles before TMDB is searched. If TMDB fails, a configured Stremio metadata addon is queried, then the native Kitsu, MAL, or AniList identifier is preserved. The corresponding metadata addon must also be installed in Stremio to display the full metadata page.
+MAL, AniList, and Kitsu provide canonical titles before TMDB is searched. If TMDB fails, configured Stremio metadata addons are queried by priority, then the native Kitsu, MAL, or AniList identifier is preserved. The corresponding metadata addon must also be installed in Stremio to display the full metadata page.
 
 **TMDB — 5 attempts in order (non-anime):**
 1. Exact title + year, French
