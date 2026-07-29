@@ -307,13 +307,15 @@
         </div>
         <label class="check-inline" style="margin-top:10px">
           <input id="pastebinAssumeRequiredTags" type="checkbox" checked>
-          Considérer le contenu de ce Pastebin comme déjà conforme aux tags requis
+          <span data-i18n="sources_pastebin_assume_tags">Considérer le contenu de ce Pastebin comme déjà conforme aux tags requis</span>
         </label>
-        <div class="integration-cat-hint" style="margin-top:8px">
+        <div class="integration-cat-hint" style="margin-top:8px" data-i18n="sources_pastebin_assume_tags_help">
           À activer lorsque le Pastebin contient uniquement des médias dans la langue souhaitée,
           mais que ses titres ne portent pas eux-mêmes les marqueurs FRENCH, MULTi, VFF, etc.
           Désactivé, chaque titre doit correspondre à au moins un tag requis.
-          <br><strong>Profondeur maximale</strong> : nombre de niveaux de renvois suivis depuis
+        </div>
+        <div class="integration-cat-hint" style="margin-top:8px" data-i18n="sources_pastebin_depth_help">
+          Profondeur maximale : nombre de niveaux de renvois suivis depuis
           l’adresse saisie. 0 lit uniquement cette adresse ; 1 suit ses liens directs ; 5 convient
           aux index maîtres qui renvoient vers des catégories puis vers les listes de contenus.
           Le maximum de pages limite séparément le nombre total d’adresses lues.
@@ -681,10 +683,10 @@
       </details>
 
       <details class="card source-group" data-source-group="all" open>
-        <summary>Alertes d’indisponibilité et journal</summary>
+        <summary data-i18n="sources_alerts_summary">Alertes d’indisponibilité et journal</summary>
         <div class="source-alert-settings">
-          <h3>Alertes d’indisponibilité</h3>
-          <p class="text-muted">
+          <h3 data-i18n="sources_alerts_title">Alertes d’indisponibilité</h3>
+          <p class="text-muted" data-i18n="sources_alerts_desc">
             Une alerte est conservée ici puis envoyée par Discord et/ou Apprise si ces canaux sont activés.
             Le seuil correspond au nombre d’échecs de collecte consécutifs. Une notification de
             rétablissement est envoyée après une panne signalée.
@@ -692,18 +694,18 @@
           <div class="config-grid">
             <label class="toggle-row">
               <input id="sourceAlertsEnabled" type="checkbox">
-              <span>Activer les alertes par source</span>
+              <span data-i18n="sources_alerts_enable">Activer les alertes par source</span>
             </label>
             <div class="field">
-              <label for="sourceAlertDefaultThreshold">Seuil par défaut</label>
+              <label for="sourceAlertDefaultThreshold" data-i18n="sources_alerts_default">Seuil par défaut</label>
               <input id="sourceAlertDefaultThreshold" type="number" min="1" max="100" value="3">
             </div>
           </div>
           <div id="sourceAlertThresholdList" style="margin-top:12px"></div>
-          <button type="button" class="btn-primary" onclick="saveSourceAlerts()" style="margin-top:12px">
+          <button type="button" class="btn-primary" onclick="saveSourceAlerts()" style="margin-top:12px" data-i18n="sources_alerts_save">
             Enregistrer les seuils
           </button>
-          <h3 style="margin-top:20px">Journal des alertes</h3>
+          <h3 style="margin-top:20px" data-i18n="sources_alerts_log">Journal des alertes</h3>
           <div id="sourceAlertHistory"><p class="text-muted">Chargement...</p></div>
         </div>
       </details>

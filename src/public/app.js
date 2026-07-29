@@ -919,7 +919,7 @@ async function loadSourceAlerts() {
           return `<label class="source-alert-threshold-row">
             <span>
               <strong>${escHtml(source.name)}</strong>
-              <small>${escHtml(source.kind)} · ${source.paused ? 'en pause' : `${failures} échec(s) consécutif(s)`}</small>
+              <small>${escHtml(source.kind)} · ${source.paused ? t('sources_alerts_paused') : `${failures} ${t('sources_alerts_failures')}`}</small>
             </span>
             <input type="number" min="1" max="100"
               data-source-alert-key="${escHtml(source.source_key)}"
@@ -928,7 +928,7 @@ async function loadSourceAlerts() {
               title="Vide : utiliser le seuil par défaut (${config.default_threshold})">
           </label>`;
         }).join('')}</div>`
-      : '<p class="text-muted">Aucune source configurée.</p>';
+      : `<p class="text-muted">${t('sources_alerts_no_source')}</p>`;
 
     historyContainer.innerHTML = history.length
       ? `<div class="source-alert-history">${history.map(entry => {
@@ -942,14 +942,14 @@ async function loadSourceAlerts() {
             <span>
               <strong>${escHtml(entry.source_name || entry.source_key)}</strong>
               <small>${fmtDate(entry.created_at)} · ${escHtml(entry.message || '')}</small>
-              <small>Canaux : ${channels.map(escHtml).join(', ') || 'WebUI'}</small>
+              <small>${t('sources_alerts_channels')} : ${channels.map(escHtml).join(', ') || 'WebUI'}</small>
             </span>
           </div>`;
         }).join('')}</div>`
-      : '<p class="text-muted">Aucune alerte enregistrée.</p>';
+      : `<p class="text-muted">${t('sources_alerts_none')}</p>`;
   } catch (error) {
     thresholdList.innerHTML = `<p class="source-runtime-error">${escHtml(error.message)}</p>`;
-    historyContainer.innerHTML = '<p class="text-muted">Historique indisponible.</p>';
+    historyContainer.innerHTML = `<p class="text-muted">${t('sources_alerts_unavailable')}</p>`;
   }
 }
 window.loadSourceAlerts = loadSourceAlerts;
