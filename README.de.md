@@ -127,13 +127,7 @@ stellt selbst keine Streams bereit.
 
 ## Screenshots
 
-| | |
-|---|---|
-| ![Mediathek](screens/Mediatheque.png) | ![Übersicht](screens/Vue.d.Ensemble.png) |
-| ![Konfiguration](screens/Configuration.png) | ![Fehler](screens/Echecs.png) |
-| ![Quellen](screens/Sources.png) | ![Synchronisierung](screens/Synchronisation.png) |
-
-![Discord-Benachrichtigung](screens/DiscordNotif.png)
+Screenshots der neuen Oberfläche folgen in Kürze.
 
 ---
 

@@ -128,13 +128,7 @@ lecture, et ne fournit pas lui-même de streams.
 
 ## Captures d'écran
 
-| | |
-|---|---|
-| ![Médiathèque](screens/Mediatheque.png) | ![Vue d'ensemble](screens/Vue.d.Ensemble.png) |
-| ![Configuration](screens/Configuration.png) | ![Échecs](screens/Echecs.png) |
-| ![Sources](screens/Sources.png) | ![Synchronisation](screens/Synchronisation.png) |
-
-![Notification Discord](screens/DiscordNotif.png)
+Captures de la nouvelle interface à venir.
 
 ---
 

@@ -125,13 +125,7 @@ does not provide streams itself.
 
 ## Screenshots
 
-| | |
-|---|---|
-| ![Media Library](screens/Mediatheque.png) | ![Overview](screens/Vue.d.Ensemble.png) |
-| ![Configuration](screens/Configuration.png) | ![Failures](screens/Echecs.png) |
-| ![Sources](screens/Sources.png) | ![Sync](screens/Synchronisation.png) |
-
-![Discord notification](screens/DiscordNotif.png)
+Screenshots of the new interface are coming soon.
 
 ---
 
