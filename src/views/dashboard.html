@@ -256,6 +256,7 @@
           <button class="source-tab" data-source-tab="rss" onclick="selectSourceTab('rss')">RSS</button>
           <button class="source-tab" data-source-tab="pastebin" onclick="selectSourceTab('pastebin')">Pastebin</button>
           <button class="source-tab" data-source-tab="webdav" onclick="selectSourceTab('webdav')">WebDAV</button>
+          <button class="source-tab" data-source-tab="mediaserver" onclick="selectSourceTab('mediaserver')">Plex/Jellyfin</button>
           <button class="source-tab" data-source-tab="indexer" onclick="selectSourceTab('indexer')">Indexeurs</button>
           <button class="source-tab" data-source-tab="wacustom" onclick="selectSourceTab('wacustom')">WaCustom</button>
           <button class="source-tab" data-source-tab="stremio" onclick="selectSourceTab('stremio')">Stremio</button>
@@ -383,6 +384,61 @@
         <div id="webdavList" style="margin-top:14px"></div>
       </details>
 
+      <details class="card source-group" data-source-group="mediaserver">
+        <summary><span>Bibliothèques Plex/Jellyfin</span> <span class="source-group-count" id="mediaserverGroupCount"></span></summary>
+        <p class="text-muted" style="margin:8px 0 14px">
+          Importe directement les films et séries réellement présents dans des bibliothèques ou collections.
+          <a href="https://www.plex.tv/" target="_blank" rel="noopener noreferrer">Plex ↗</a>
+          · <a href="https://github.com/jellyfin/jellyfin" target="_blank" rel="noopener noreferrer">Jellyfin ↗</a>
+          · lecture Stremio possible avec
+          <a href="https://github.com/vanchaxy/plexio" target="_blank" rel="noopener noreferrer">Plexio ↗</a>
+          ou <a href="https://github.com/akarazniewicz/stremio-jellyfin" target="_blank" rel="noopener noreferrer">Stremio Jellyfin ↗</a>.
+        </p>
+        <input id="mediaServerEditId" type="hidden">
+        <div class="config-grid">
+          <div class="field">
+            <label>Type</label>
+            <select id="mediaServerKind"><option value="plex">Plex</option><option value="jellyfin">Jellyfin</option></select>
+          </div>
+          <div class="field">
+            <label>Nom</label>
+            <input id="mediaServerName" type="text" placeholder="Serveur familial">
+          </div>
+          <div class="field">
+            <label>URL du serveur</label>
+            <input id="mediaServerUrl" type="password" autocomplete="off" placeholder="http://plex:32400">
+          </div>
+          <div class="field">
+            <label>Jeton API</label>
+            <input id="mediaServerApiKey" type="password" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label>Maximum par collecte</label>
+            <input id="mediaServerMaxItems" type="number" min="1" max="100000" value="20000">
+          </div>
+          <div class="field">
+            <label>Page</label>
+            <input id="mediaServerPageSize" type="number" min="10" max="1000" value="500">
+          </div>
+          <div class="field">
+            <label>Fréquence de collecte (min)</label>
+            <input id="mediaServerInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale">
+          </div>
+          <div class="field">
+            <label><input id="mediaServerUseProxy" type="checkbox"> Utiliser le proxy global</label>
+            <small>Désactivé par défaut pour les serveurs locaux.</small>
+          </div>
+        </div>
+        <div id="mediaServerTargets" class="catalog-source-choices" style="margin-top:12px"></div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button type="button" class="btn-sm" onclick="previewMediaServerSource()">Détecter les bibliothèques</button>
+          <button type="button" class="btn-primary" id="mediaServerSubmit" onclick="saveMediaServerSource()">Ajouter</button>
+          <button type="button" class="btn-sm" id="mediaServerCancel" onclick="resetMediaServerForm()" hidden>Annuler</button>
+        </div>
+        <div id="mediaServerPreview" class="text-muted" style="margin-top:10px"></div>
+        <div id="mediaServerList" style="margin-top:14px"></div>
+      </details>
+
       <details class="card source-group" data-source-group="indexer">
         <summary><span data-i18n="sources_newznab_title">API d’indexeurs type Prowlarr, Newznab direct…</span> <span class="source-group-count" id="indexerGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_newznab_desc">
@@ -459,12 +515,14 @@
       <details class="card source-group" data-source-group="wacustom">
         <summary><span>Instances WaStream/WaCustom</span> <span class="source-group-count" id="wacustomGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px">
-          Indexe les contenus WASource d’une instance WaCustom via son API administrateur paginée.
+          Indexe les contenus WASource d’une instance WaStream ou WaCustom via leur API administrateur paginée.
           Les liens de lecture ne sont pas copiés : seuls les identifiants, titres, types et années
           nécessaires aux catalogues sont importés.
         </p>
         <p class="source-project-links">
-          Projet : <a href="https://github.com/dydy13014/wacustom" target="_blank" rel="noopener noreferrer">WaCustom ↗</a>
+          Projets :
+          <a href="https://gitlab.com/10ho/wastream" target="_blank" rel="noopener noreferrer">WaStream ↗</a>
+          · <a href="https://github.com/dydy13014/wacustom" target="_blank" rel="noopener noreferrer">WaCustom ↗</a>
         </p>
         <input id="wacustomEditId" type="hidden">
         <div class="config-grid">

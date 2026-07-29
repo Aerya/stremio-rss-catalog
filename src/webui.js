@@ -217,6 +217,7 @@ class WebUI {
       delete config.newznab_sources;
       delete config.webdav_sources;
       delete config.wacustom_sources;
+      delete config.media_server_sources;
       delete config.mdblist_guides;
       res.json(config);
     });
@@ -257,7 +258,7 @@ class WebUI {
         'rss_films_name', 'rss_films_url', 'rss_films_force',
         'rss_films_paused', 'rss_films_sync_interval', 'rss_additional_urls',
         'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources', 'webdav_sources',
-        'wacustom_sources', 'mdblist_guides'
+        'wacustom_sources', 'media_server_sources', 'mdblist_guides'
       ]);
       const config = Object.fromEntries(Object.entries(this.db.getAllConfig())
         .filter(([key]) => !excludedConfigKeys.has(key))
@@ -287,6 +288,7 @@ class WebUI {
           indexers: this.rssParser.newznabParser.getSources().map(redactUrl),
           webdav: this.rssParser.webdavParser.getSources().map(redactUrl),
           wacustom: this.rssParser.waCustomParser.getSources().map(redactUrl),
+          media_servers: this.rssParser.mediaServerParser.getSources().map(redactUrl),
           guides: this.rssParser.mdblistGuideParser.getSources().map(redactUrl)
         },
         catalogs: this.db.listCustomCatalogs().map(catalog => ({
@@ -319,6 +321,7 @@ class WebUI {
             indexers: payload.sources.indexers?.length || 0,
             webdav: payload.sources.webdav?.length || 0,
             wacustom: payload.sources.wacustom?.length || 0,
+            media_servers: payload.sources.media_servers?.length || 0,
             guides: payload.sources.guides?.length || 0,
             catalogs: payload.catalogs.length
           }
@@ -376,6 +379,9 @@ class WebUI {
       this.db.setConfig('wacustom_sources', JSON.stringify(mergeSources(
         this.rssParser.waCustomParser.getSources(), payload.sources.wacustom, ['url', 'adminPassword']
       )));
+      this.db.setConfig('media_server_sources', JSON.stringify(mergeSources(
+        this.rssParser.mediaServerParser.getSources(), payload.sources.media_servers, ['url', 'apiKey']
+      )));
       this.db.setConfig('mdblist_guides', JSON.stringify(mergeSources(
         this.rssParser.mdblistGuideParser.getSources(), payload.sources.guides,
         ['url', 'apiKey', 'username', 'password', 'accessToken']
@@ -404,6 +410,7 @@ class WebUI {
       if (kind === 'indexer') source = this.rssParser.newznabParser.getSources().find(item => item.id === id);
       if (kind === 'webdav') source = this.rssParser.webdavParser.getSources().find(item => item.id === id);
       if (kind === 'wacustom') source = this.rssParser.waCustomParser.getSources().find(item => item.id === id);
+      if (kind === 'media-server') source = this.rssParser.mediaServerParser.getSources().find(item => item.id === id);
       if (kind === 'guide') source = this.rssParser.mdblistGuideParser.getSources().find(item => item.id === id);
       if (!source) return res.status(404).json({ error: 'Source introuvable' });
       res.setHeader('Cache-Control', 'no-store');
@@ -415,6 +422,7 @@ class WebUI {
           password: source.password || null
         } : {}),
         ...(kind === 'wacustom' ? { admin_password: source.adminPassword || null } : {}),
+        ...(kind === 'media-server' ? { api_key: source.apiKey || null } : {}),
         ...(kind === 'guide' ? {
           api_key: source.apiKey || null,
           username: source.username || null,
@@ -1168,6 +1176,107 @@ class WebUI {
       res.json({ success: true });
     });
 
+    // ─── Sources Plex / Jellyfin ───────────────────────────────────────────
+    const mediaServerParser = this.rssParser.mediaServerParser;
+    const mediaServerForApi = source => ({
+      id: source.id,
+      name: source.name,
+      kind: source.kind,
+      url: source.url,
+      paused: Boolean(source.paused),
+      has_api_key: Boolean(source.apiKey),
+      targets: source.targets || [],
+      target_labels: source.targetLabels || [],
+      max_items: Number(source.maxItems) || 20000,
+      page_size: Number(source.pageSize) || 500,
+      sync_interval_minutes: source.syncIntervalMinutes || null,
+      use_proxy: Boolean(source.useProxy),
+      source_key: mediaServerParser.sourceKey(source.id),
+      runtime: this.getSourceRuntime(mediaServerParser.sourceKey(source.id), source.syncIntervalMinutes)
+    });
+    const mediaServerPayload = (body, existing = null) => ({
+      ...(existing || {}),
+      ...(body.name !== undefined ? { name: String(body.name).trim() || existing?.name || 'Serveur multimédia' } : {}),
+      ...(body.kind !== undefined ? { kind: body.kind } : {}),
+      ...(body.url !== undefined ? { url: mediaServerParser.baseUrl(body.url) } : {}),
+      ...(String(body.api_key || '').trim() ? { apiKey: String(body.api_key).trim() } : {}),
+      ...(body.targets !== undefined ? { targets: Array.isArray(body.targets) ? body.targets.filter(Boolean) : [] } : {}),
+      ...(body.target_labels !== undefined ? { targetLabels: Array.isArray(body.target_labels) ? body.target_labels : [] } : {}),
+      ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
+      ...(body.use_proxy !== undefined ? { useProxy: Boolean(body.use_proxy) } : {}),
+      ...(body.max_items !== undefined ? { maxItems: Math.min(Math.max(Number(body.max_items) || 20000, 1), 100000) } : {}),
+      ...(body.page_size !== undefined ? { pageSize: Math.min(Math.max(Number(body.page_size) || 500, 10), 1000) } : {}),
+      ...(body.sync_interval_minutes !== undefined ? {
+        syncIntervalMinutes: this.normalizeSourceInterval(body.sync_interval_minutes)
+      } : {})
+    });
+
+    this.app.get('/api/media-server-sources', this.authMiddleware.bind(this), (req, res) => {
+      res.json(mediaServerParser.getSources().map(mediaServerForApi));
+    });
+
+    this.app.post('/api/media-server-sources/preview', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const existing = req.body.source_id
+          ? mediaServerParser.getSources().find(source => source.id === req.body.source_id)
+          : null;
+        const source = mediaServerPayload(req.body, existing);
+        if (!['plex', 'jellyfin'].includes(source.kind)) return res.status(400).json({ error: 'Type invalide' });
+        if (!/^https?:\/\//i.test(source.url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        if (!source.apiKey) return res.status(400).json({ error: 'Jeton API requis' });
+        res.json(await mediaServerParser.inspect(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/media-server-sources', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const source = mediaServerPayload(req.body);
+        if (!['plex', 'jellyfin'].includes(source.kind)) return res.status(400).json({ error: 'Type invalide' });
+        if (!/^https?:\/\//i.test(source.url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
+        if (!source.apiKey) return res.status(400).json({ error: 'Jeton API requis' });
+        const inspection = await mediaServerParser.inspect(source);
+        source.id = crypto.randomUUID();
+        source.name ||= inspection.server;
+        source.targets ||= inspection.targets.map(target => target.id);
+        source.targetLabels = inspection.targets.filter(target => source.targets.includes(target.id));
+        const sources = mediaServerParser.getSources();
+        sources.push(source);
+        this.db.setConfig('media_server_sources', JSON.stringify(sources));
+        res.status(201).json(mediaServerForApi(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.put('/api/media-server-sources/:id', this.authMiddleware.bind(this), async (req, res) => {
+      const sources = mediaServerParser.getSources();
+      const index = sources.findIndex(source => source.id === req.params.id);
+      if (index < 0) return res.status(404).json({ error: 'Source introuvable' });
+      try {
+        const current = sources[index];
+        const next = mediaServerPayload(req.body, current);
+        const connectionChanged = next.kind !== current.kind || next.url !== current.url || next.apiKey !== current.apiKey;
+        if (connectionChanged) await mediaServerParser.inspect(next);
+        sources[index] = next;
+        this.db.setConfig('media_server_sources', JSON.stringify(sources));
+        if (connectionChanged) this.db.deleteSourceSyncState(mediaServerParser.sourceKey(next.id));
+        res.json(mediaServerForApi(next));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.delete('/api/media-server-sources/:id', this.authMiddleware.bind(this), (req, res) => {
+      const sources = mediaServerParser.getSources();
+      const next = sources.filter(source => source.id !== req.params.id);
+      if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
+      this.db.setConfig('media_server_sources', JSON.stringify(next));
+      this.db.deleteSourceSyncState(mediaServerParser.sourceKey(req.params.id));
+      res.json({ success: true });
+    });
+
     // ─── Guides MDBList ───────────────────────────────────────────────────
     const mdblistParser = this.rssParser.mdblistGuideParser;
     const mdblistForApi = source => ({
@@ -1526,8 +1635,9 @@ class WebUI {
       const hasNewznab = this.rssParser.newznabParser.getSources().some(source => !source.paused);
       const hasWebdav = this.rssParser.webdavParser.getSources().some(source => !source.paused);
       const hasWaCustom = this.rssParser.waCustomParser.getSources().some(source => !source.paused);
+      const hasMediaServer = this.rssParser.mediaServerParser.getSources().some(source => !source.paused);
       const hasRss = this.getRssSources().some(source => !source.paused);
-      if (!hasRss && !hasPastebin && !hasStremio && !hasNewznab && !hasWebdav && !hasWaCustom) {
+      if (!hasRss && !hasPastebin && !hasStremio && !hasNewznab && !hasWebdav && !hasWaCustom && !hasMediaServer) {
         return res.status(400).json({ error: 'Au moins une source active est requise' });
       }
       if ((hasRss || hasPastebin || hasNewznab || hasWebdav) && !tmdbKey) {
@@ -2085,6 +2195,10 @@ class WebUI {
     });
     this.rssParser.waCustomParser.getSources().forEach(source => {
       nameMap[this.rssParser.waCustomParser.sourceKey(source.id)] = source.name || 'WaCustom';
+    });
+    this.rssParser.mediaServerParser.getSources().forEach(source => {
+      nameMap[this.rssParser.mediaServerParser.sourceKey(source.id)] =
+        source.name || (source.kind === 'plex' ? 'Plex' : 'Jellyfin');
     });
     return nameMap;
   }

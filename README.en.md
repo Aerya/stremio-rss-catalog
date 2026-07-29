@@ -41,7 +41,8 @@
 | | |
 |---|---|
 | **Managed catalogs** | The 9 historical catalogs are migrated into the manager with their existing content preserved; create any number of custom catalogs |
-| **Mixed sources** | A catalog may combine RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaCustom, and catalogs imported from Stremio manifests |
+| **Mixed sources** | A catalog may combine RSS, Pastebin, WebDAV, Plex, Jellyfin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaStream/WaCustom, and catalogs imported from Stremio manifests |
+| **Direct Plex and Jellyfin** | Library discovery, Plex collection selection, paginated movie/series imports, and preserved IMDb/TMDB identifiers |
 | **WebDAV folders** | Authenticated recursive scan with configurable extensions, depth, and cap; filenames feed catalogs and [Davio](https://github.com/arvida42/davio) can handle playback in Stremio |
 | **Custom filters** | Included or excluded years, year ranges, included/excluded genres and keywords, and source selection |
 | **Two separate pauses** | Freeze new catalog content independently from catalog visibility in the Stremio manifest |
@@ -85,7 +86,7 @@
 | **Source management** | Tabs, search, collapsible groups, complete editing, and a schedule per source |
 | **Per-source status** | Last success, next collection, duration, fetched items, consecutive errors, and cap usage |
 | **Indexer APIs** | Multiple renameable Newznab, Prowlarr, Jackett/Torznab, and NZBHydra2 sources with pagination, an incremental cursor, cap, and delay |
-| **WaCustom** | Multiple renameable instances; paginated WASource content import with IMDb/TMDB IDs, resumable traversal, per-source frequency, pause, and cap |
+| **WaStream/WaCustom** | Multiple renameable instances; paginated WASource content import with IMDb/TMDB IDs, resumable traversal, per-source frequency, pause, and cap |
 | **Configuration backup** | Versioned export/import; sensitive keys and URLs are excluded unless explicitly requested |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
 | **SQLite** | Persistent data, incremental content, optimized indexes |

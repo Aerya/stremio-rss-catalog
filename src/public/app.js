@@ -812,7 +812,7 @@ window.createCatalogForSource = createCatalogForSource;
 // ═══════════════════════════ CATALOGUES ═══════════════════════════════
 
 let catalogManagerData = {
-  catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [], webdav: [], wacustom: [], guides: []
+  catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [], webdav: [], wacustom: [], mediaServers: [], guides: []
 };
 
 function csvValues(id) {
@@ -844,22 +844,23 @@ function catalogPayload() {
 
 async function loadCatalogManager() {
   try {
-    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes, waCustomRes, guideRes] = await Promise.all([
+    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes, waCustomRes, mediaServerRes, guideRes] = await Promise.all([
       fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/rss-sources'),
       fetch('/api/stremio-sources'), fetch('/api/newznab-sources'), fetch('/api/webdav-sources'),
-      fetch('/api/wacustom-sources'), fetch('/api/mdblist-guides')
+      fetch('/api/wacustom-sources'), fetch('/api/media-server-sources'), fetch('/api/mdblist-guides')
     ]);
-    const [catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, guides] = await Promise.all([
+    const [catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, guides] = await Promise.all([
       catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json(), newznabRes.json(),
-      webdavRes.json(), waCustomRes.json(), guideRes.json()
+      webdavRes.json(), waCustomRes.json(), mediaServerRes.json(), guideRes.json()
     ]);
-    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, guides };
+    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, guides };
     renderRssSources();
     renderPastebins();
     renderNewznabSources();
     renderStremioSources();
     renderWebdavSources();
     renderWaCustomSources();
+    renderMediaServerSources();
     renderMDBListGuides();
     renderCatalogGuideChoices();
     renderCatalogSourceChoices();
@@ -966,6 +967,7 @@ function updateSourceGroupCounts() {
     rssGroupCount: catalogManagerData.rss.length,
     pastebinGroupCount: catalogManagerData.pastebins.length,
     webdavGroupCount: catalogManagerData.webdav.length,
+    mediaserverGroupCount: (catalogManagerData.mediaServers || []).length,
     wacustomGroupCount: catalogManagerData.wacustom.length,
     indexerGroupCount: catalogManagerData.newznab.length,
     stremioGroupCount: catalogManagerData.stremio.length
@@ -1159,6 +1161,12 @@ function renderCatalogSourceChoices(selected = []) {
       name: source.name,
       url: source.source_key,
       kind: 'API WaCustom',
+      paused: source.paused
+    })),
+    ...(catalogManagerData.mediaServers || []).map(source => ({
+      name: source.name,
+      url: source.source_key,
+      kind: source.kind === 'plex' ? 'Bibliothèque Plex' : 'Bibliothèque Jellyfin',
       paused: source.paused
     })),
     ...catalogManagerData.newznab.flatMap(source => (source.catalogs || []).map(catalog => ({
@@ -1634,6 +1642,154 @@ async function deleteWebdavSource(id) {
   loadSourceManager();
 }
 window.deleteWebdavSource = deleteWebdavSource;
+
+let detectedMediaServerTargets = [];
+
+function mediaServerPayload() {
+  return {
+    source_id: document.getElementById('mediaServerEditId').value || null,
+    kind: document.getElementById('mediaServerKind').value,
+    name: document.getElementById('mediaServerName').value.trim(),
+    url: document.getElementById('mediaServerUrl').value.trim(),
+    api_key: document.getElementById('mediaServerApiKey').value,
+    targets: [...document.querySelectorAll('#mediaServerTargets input:checked')].map(input => input.value),
+    target_labels: detectedMediaServerTargets.filter(target =>
+      document.querySelector(`#mediaServerTargets input[value="${CSS.escape(target.id)}"]`)?.checked
+    ),
+    max_items: Number(document.getElementById('mediaServerMaxItems').value) || 20000,
+    page_size: Number(document.getElementById('mediaServerPageSize').value) || 500,
+    sync_interval_minutes: document.getElementById('mediaServerInterval').value || null,
+    use_proxy: document.getElementById('mediaServerUseProxy').checked
+  };
+}
+
+function renderMediaServerTargets(targets, selected = []) {
+  detectedMediaServerTargets = targets || [];
+  const container = document.getElementById('mediaServerTargets');
+  if (!container) return;
+  container.innerHTML = detectedMediaServerTargets.length
+    ? detectedMediaServerTargets.map(target => `<label class="catalog-source-choice">
+        <input type="checkbox" value="${escHtml(target.id)}" ${selected.length ? (selected.includes(target.id) ? 'checked' : '') : 'checked'}>
+        <span>${escHtml(target.name)} <small>(${target.kind === 'collection' ? 'collection' : 'bibliothèque'} · ${target.type})</small></span>
+      </label>`).join('')
+    : '<span class="text-muted">Détectez d’abord les bibliothèques disponibles.</span>';
+}
+
+function renderMediaServerSources() {
+  const container = document.getElementById('mediaServerList');
+  if (!container) return;
+  const sources = catalogManagerData.mediaServers || [];
+  if (!sources.length) {
+    container.innerHTML = '<p class="text-muted">Aucun serveur Plex/Jellyfin configuré.</p>';
+    return;
+  }
+  container.innerHTML = sources.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} ${source.kind} plex jellyfin`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name)} <span class="source-name-badge">${source.kind === 'plex' ? 'Plex' : 'Jellyfin'}</span> ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">
+          ${(source.target_labels || []).map(target => escHtml(target.name)).join(' · ') || `${source.targets?.length || 0} cible(s)`}
+          · plafond ${Number(source.max_items).toLocaleString()}
+          ${source.use_proxy ? ' · proxy global' : ' · connexion directe'}
+        </div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editMediaServerSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="revealSourceSecret('media-server','${source.id}',this)">Révéler l’URL</button>
+        <button class="btn-sm" data-secret="api_key" onclick="revealSourceSecret('media-server','${source.id}',this,true)">Copier le jeton</button>
+        <button class="btn-sm" onclick="toggleMediaServerSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteMediaServerSource('${source.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`).join('');
+}
+
+async function previewMediaServerSource() {
+  const output = document.getElementById('mediaServerPreview');
+  output.textContent = 'Détection des bibliothèques…';
+  const response = await fetch('/api/media-server-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mediaServerPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    output.textContent = data.error || 'Erreur';
+    return;
+  }
+  const selected = [...document.querySelectorAll('#mediaServerTargets input:checked')].map(input => input.value);
+  renderMediaServerTargets(data.targets || [], selected);
+  output.textContent = `${data.targets?.length || 0} bibliothèque(s) ou collection(s) détectée(s) sur ${data.server}`;
+}
+window.previewMediaServerSource = previewMediaServerSource;
+
+async function saveMediaServerSource() {
+  const id = document.getElementById('mediaServerEditId').value;
+  const response = await fetch(id ? `/api/media-server-sources/${id}` : '/api/media-server-sources', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(mediaServerPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetMediaServerForm();
+  await loadSourceManager();
+}
+window.saveMediaServerSource = saveMediaServerSource;
+
+async function editMediaServerSource(id) {
+  const source = (catalogManagerData.mediaServers || []).find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/media-server/${id}`)).json();
+  document.getElementById('mediaServerEditId').value = id;
+  document.getElementById('mediaServerKind').value = source.kind;
+  document.getElementById('mediaServerName').value = source.name || '';
+  document.getElementById('mediaServerUrl').value = secrets.url || '';
+  document.getElementById('mediaServerApiKey').value = '';
+  document.getElementById('mediaServerApiKey').placeholder = source.has_api_key ? 'Laisser vide pour conserver' : '';
+  document.getElementById('mediaServerMaxItems').value = source.max_items || 20000;
+  document.getElementById('mediaServerPageSize').value = source.page_size || 500;
+  document.getElementById('mediaServerInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('mediaServerUseProxy').checked = Boolean(source.use_proxy);
+  renderMediaServerTargets(source.target_labels || [], source.targets || []);
+  document.getElementById('mediaServerSubmit').textContent = 'Enregistrer';
+  document.getElementById('mediaServerCancel').hidden = false;
+}
+window.editMediaServerSource = editMediaServerSource;
+
+function resetMediaServerForm() {
+  document.getElementById('mediaServerEditId').value = '';
+  document.getElementById('mediaServerKind').value = 'plex';
+  document.getElementById('mediaServerName').value = '';
+  document.getElementById('mediaServerUrl').value = '';
+  document.getElementById('mediaServerApiKey').value = '';
+  document.getElementById('mediaServerApiKey').placeholder = '';
+  document.getElementById('mediaServerMaxItems').value = 20000;
+  document.getElementById('mediaServerPageSize').value = 500;
+  document.getElementById('mediaServerInterval').value = '';
+  document.getElementById('mediaServerUseProxy').checked = false;
+  document.getElementById('mediaServerPreview').textContent = '';
+  renderMediaServerTargets([]);
+  document.getElementById('mediaServerSubmit').textContent = 'Ajouter';
+  document.getElementById('mediaServerCancel').hidden = true;
+}
+window.resetMediaServerForm = resetMediaServerForm;
+
+async function toggleMediaServerSource(id, paused) {
+  const response = await fetch(`/api/media-server-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.toggleMediaServerSource = toggleMediaServerSource;
+
+async function deleteMediaServerSource(id) {
+  if (!confirm('Supprimer cette source Plex/Jellyfin ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/media-server-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteMediaServerSource = deleteMediaServerSource;
 
 function waCustomPayload() {
   return {

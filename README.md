@@ -41,7 +41,8 @@
 | | |
 |---|---|
 | **Catalogues gérés** | Les 9 catalogues historiques sont repris dans le gestionnaire et conservent leurs contenus ; créez ensuite autant de catalogues personnalisés que nécessaire |
-| **Sources mixtes** | Un catalogue peut combiner RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaCustom et catalogues importés depuis des manifestes Stremio |
+| **Sources mixtes** | Un catalogue peut combiner RSS, Pastebin, WebDAV, Plex, Jellyfin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaStream/WaCustom et catalogues importés depuis des manifestes Stremio |
+| **Plex et Jellyfin directs** | Détection des bibliothèques, sélection des collections Plex, import paginé des films/séries et conservation des identifiants IMDb/TMDB |
 | **Dossiers WebDAV** | Parcours récursif authentifié, filtrage des extensions, profondeur et plafond configurables ; les noms de fichiers alimentent les catalogues et [Davio](https://github.com/arvida42/davio) peut assurer leur lecture dans Stremio |
 | **Filtres personnalisés** | Années incluses ou exclues, plage d'années, genres requis/exclus, mots-clés requis/exclus et sélection des sources |
 | **Deux pauses distinctes** | Gel des nouveaux contenus indépendamment de la visibilité du catalogue dans le manifeste Stremio |
@@ -85,7 +86,7 @@
 | **Gestion des sources** | Onglets, recherche, groupes repliables, modification complète et fréquence propre à chaque source |
 | **Suivi par source** | Dernier succès, prochaine collecte, durée, éléments lus, erreurs consécutives et consommation du plafond |
 | **API d’indexeurs** | Sources multiples et renommables Newznab, Prowlarr, Jackett/Torznab et NZBHydra2, avec pagination, curseur incrémental, plafond et délai configurables |
-| **WaCustom** | Plusieurs instances renommables ; import paginé des contenus WASource avec IMDb/TMDB, reprise du parcours, fréquence, pause et plafond propres |
+| **WaStream/WaCustom** | Plusieurs instances renommables ; import paginé des contenus WASource avec IMDb/TMDB, reprise du parcours, fréquence, pause et plafond propres |
 | **Sauvegarde de configuration** | Export/import versionné ; clés et URLs sensibles exclues sauf demande explicite |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + test de connexion intégré |
 | **SQLite** | Données persistantes, contenu incrémental, index optimisés |

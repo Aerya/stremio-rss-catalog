@@ -11,6 +11,7 @@ const StremioManifestParser = require('../src/stremio-manifest-parser');
 const RSSParser = require('../src/rss-parser');
 const WebUI = require('../src/webui');
 const WaCustomParser = require('../src/wacustom-parser');
+const MediaServerParser = require('../src/media-server-parser');
 
 const header = 'CAT;TMDB;TITLE;SAISON;GROUPES;CAST;DIRECTOR;NETWORK;YEAR;GENRES;RES;URLS=https://alldebrid.com/f/';
 const movieRow = "film;123;Film Test;;[];[];[];[];2026;[28];['MULTI - 1080p'];['abc']";
@@ -269,6 +270,40 @@ async function main() {
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify({ total: 2, limit, offset, contents }));
     }
+    if (req.url === '/plex/library/sections') {
+      res.setHeader('Content-Type', 'application/xml');
+      return res.end('<MediaContainer friendlyName="Plex Test"><Directory key="1" type="movie" title="Films"/><Directory key="2" type="show" title="Séries"/></MediaContainer>');
+    }
+    if (req.url.startsWith('/plex/library/sections/1/collections')) {
+      res.setHeader('Content-Type', 'application/xml');
+      return res.end('<MediaContainer><Directory ratingKey="50" title="Classiques"/></MediaContainer>');
+    }
+    if (req.url.startsWith('/plex/library/sections/2/collections')) {
+      res.setHeader('Content-Type', 'application/xml');
+      return res.end('<MediaContainer/>');
+    }
+    if (req.url.startsWith('/plex/library/sections/1/all')) {
+      res.setHeader('Content-Type', 'application/xml');
+      return res.end('<MediaContainer totalSize="1" size="1"><Video ratingKey="101" type="movie" title="Film Plex" year="2026"><Guid id="imdb://tt0000930"/><Guid id="tmdb://930"/></Video></MediaContainer>');
+    }
+    if (req.url.startsWith('/plex/library/collections/50/children')) {
+      res.setHeader('Content-Type', 'application/xml');
+      return res.end('<MediaContainer totalSize="1" size="1"><Video ratingKey="101" type="movie" title="Film Plex" year="2026"><Guid id="imdb://tt0000930"/><Guid id="tmdb://930"/></Video></MediaContainer>');
+    }
+    if (req.url === '/jellyfin/Library/VirtualFolders') {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify([{ Name: 'Séries Jellyfin', ItemId: 'lib-tv', CollectionType: 'tvshows' }]));
+    }
+    if (req.url.startsWith('/jellyfin/Items')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        Items: [{
+          Id: 'jf-1', Name: 'Série Jellyfin', Type: 'Series', ProductionYear: 2025,
+          ProviderIds: { Imdb: 'tt0000931', Tmdb: '931' }, Genres: ['Drama'], CommunityRating: 8.2
+        }],
+        TotalRecordCount: 1
+      }));
+    }
 
     if (req.url.startsWith('/3/movie/123')) {
       res.setHeader('Content-Type', 'application/json');
@@ -336,6 +371,27 @@ async function main() {
       cleanName: 'Film Fallback', year: '2026', type: 'movie'
     });
     assert.equal(metadataMatch.imdb_id, 'tt0000999');
+
+    const mediaServerParser = new MediaServerParser(db, () => ({ timeout: 2000 }));
+    const plexSource = {
+      id: 'plex-test', kind: 'plex', name: 'Plex Test', url: `${baseUrl}/plex`,
+      apiKey: 'plex-token', targets: ['library:1', 'collection:50'], maxItems: 100
+    };
+    const plexInspection = await mediaServerParser.inspect(plexSource);
+    assert.deepEqual(plexInspection.targets.map(target => target.id), ['library:1', 'library:2', 'collection:50']);
+    const plexItems = await mediaServerParser.fetchSource(plexSource);
+    assert.equal(plexItems.length, 1);
+    assert.equal(plexItems[0].direct_meta.imdb_id, 'tt0000930');
+
+    const jellyfinSource = {
+      id: 'jellyfin-test', kind: 'jellyfin', name: 'Jellyfin Test', url: `${baseUrl}/jellyfin`,
+      apiKey: 'jellyfin-token', targets: ['library:lib-tv'], maxItems: 100
+    };
+    const jellyfinInspection = await mediaServerParser.inspect(jellyfinSource);
+    assert.equal(jellyfinInspection.targets[0].type, 'series');
+    const jellyfinItems = await mediaServerParser.fetchSource(jellyfinSource);
+    assert.equal(jellyfinItems[0].direct_meta.imdb_id, 'tt0000931');
+    console.log('✓ Bibliothèques et collections Plex/Jellyfin indexées avec identifiants directs');
 
     const rssParser = new RSSParser({}, db);
     rssParser.mdblistGuideParser.itemsUrl = () => `${baseUrl}/mdblist/items`;

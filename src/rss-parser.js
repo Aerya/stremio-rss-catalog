@@ -7,6 +7,7 @@ const NewznabParser = require('./newznab-parser');
 const WebDavParser = require('./webdav-parser');
 const WaCustomParser = require('./wacustom-parser');
 const MDBListGuideParser = require('./mdblist-guide-parser');
+const MediaServerParser = require('./media-server-parser');
 
 class RSSParser {
   constructor(config, db) {
@@ -27,6 +28,7 @@ class RSSParser {
     );
     this.waCustomParser = new WaCustomParser(db, () => this.getAxiosConfig());
     this.mdblistGuideParser = new MDBListGuideParser(db, () => this.getAxiosConfig());
+    this.mediaServerParser = new MediaServerParser(db, () => this.getAxiosConfig());
   }
 
   getAxiosConfig() {
@@ -392,10 +394,11 @@ class RSSParser {
     const newznabItems = await this.newznabParser.parseAll(parserOptions);
     const webdavItems = await this.webdavParser.parseAll(parserOptions);
     const waCustomItems = await this.waCustomParser.parseAll(parserOptions);
+    const mediaServerItems = await this.mediaServerParser.parseAll(parserOptions);
     return {
       films: [
         ...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems,
-        ...newznabItems, ...webdavItems, ...waCustomItems
+        ...newznabItems, ...webdavItems, ...waCustomItems, ...mediaServerItems
       ],
       pendingCursorKeys: [
         ...(this.newznabParser.lastPendingCursorKeys || []),
