@@ -514,6 +514,28 @@ async function main() {
     assert.equal(match.failed, 0);
     assert.equal(db.getMediaByImdbId('tt0000123').year, '2026');
     assert.equal(db.getMediaByImdbId('tt0000456').type, 'series');
+    const originalOmdbConfigured = matcher.omdb.isConfigured;
+    const originalOmdbFetch = matcher.omdb.fetch;
+    let directExistingOmdbCalls = 0;
+    matcher.omdb.isConfigured = () => true;
+    matcher.omdb.fetch = async () => {
+      directExistingOmdbCalls++;
+      throw new Error('OMDb ne doit pas être appelé pour un média direct déjà connu');
+    };
+    const directExisting = await matcher.matchBatch([{
+      release_name: 'Film.Test.2026.FRENCH.1080p',
+      indexer_rlz_id: 'direct-existing-release',
+      cleanName: 'Film Test',
+      catalog_type: 'films',
+      type: 'movie',
+      source_url: 'structured:test',
+      direct_meta: { imdb_id: 'tt0000123', name: 'Film Test' }
+    }]);
+    assert.equal(directExisting.matched, 1);
+    assert.equal(directExisting.alreadyInDb, 1);
+    assert.equal(directExistingOmdbCalls, 0);
+    matcher.omdb.isConfigured = originalOmdbConfigured;
+    matcher.omdb.fetch = originalOmdbFetch;
 
     matcher.anilist.search = async () => null;
     matcher.kitsu.search = async () => ({

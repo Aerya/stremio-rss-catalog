@@ -435,10 +435,31 @@ class TMDBMatcher {
         }
       }
 
-      // 2. Pour les séries : si le show est déjà en base (même titre TMDB), on ajoute juste la release
-      if (item.type === 'series') {
-        // On ne peut pas faire ça sans connaître le nom TMDB... on le sait uniquement après match.
-        // On vérifie via cleanName (approximatif) — si match confirmé, on ajoutera la release plus bas.
+      // 1d. Les imports structurés (WaCustom, StreamFusion, CometNet, manifestes)
+      // fournissent souvent déjà un IMDb. Si ce média est connu, enregistrer la
+      // release immédiatement évite un appel OMDb/TMDB et la temporisation réseau
+      // pour chaque ligne d'un gros rattrapage.
+      if (item.direct_meta && /^tt\d+$/i.test(item.direct_meta.imdb_id || '')) {
+        const externalIds = Array.isArray(item.direct_meta.external_ids)
+          ? item.direct_meta.external_ids
+          : [];
+        const existingDirect = this.db.getMediaByImdbId(item.direct_meta.imdb_id)
+          || externalIds.map(externalId => this.db.getMediaByExternalId(externalId)).find(Boolean);
+        if (existingDirect) {
+          this.db.addRelease({
+            media_imdb_id: existingDirect.imdb_id,
+            release_name: item.release_name,
+            indexer_rlz_id: item.indexer_rlz_id,
+            source_url: item.source_url || null,
+            quality: item.quality || null,
+            hash: item.hash || null
+          });
+          this.linkDirectIdentities(item, existingDirect.imdb_id);
+          alreadyInDb++;
+          matched++;
+          if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
+          continue;
+        }
       }
 
       // 3. Recherche TMDB (via MAL si animé, sinon multi-tentatives standard)
@@ -692,8 +713,9 @@ class TMDBMatcher {
         onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
       }
 
-      // Rate limiting : ~30 req/sec
-      if (i < items.length - 1) {
+      // Les métadonnées directes n'utilisent pas le réseau, sauf si OMDb est
+      // configuré pour classifier un média encore inconnu.
+      if (i < items.length - 1 && (!item.direct_meta || this.omdb.isConfigured())) {
         await new Promise(resolve => setTimeout(resolve, 33));
       }
     }
