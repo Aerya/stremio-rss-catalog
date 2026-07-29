@@ -221,14 +221,16 @@ ordered external list ∩ already indexed media = catalog content
   per-list endpoint is limited to 100 items;
 - **SuggestArr**: instance URL, local account, and recommendation statuses; JWT
   login and 100-item pagination are handled automatically.
+- **Agregarr**: instance URL and API key, collection discovery, then ordered
+  preview import using TMDB identifiers. A collection already synchronized to
+  Plex can also be selected directly from the Plex source.
 
 Credentials remain masked and are excluded from configuration exports unless
 the user explicitly includes secrets.
 
-[Agregarr](https://github.com/agregarr/agregarr) supports many list providers,
-but currently has no stable endpoint that enumerates an existing collection
-independently from Plex. Its preview requires an authenticated session and a
-Plex library, so this addon does not ship a fragile scraper.
+The [Agregarr](https://github.com/agregarr/agregarr) integration uses its
+official `api/v1`, `X-Api-Key` authentication, and asynchronous preview
+endpoints. It does not scrape the HTML interface.
 
 ---
 

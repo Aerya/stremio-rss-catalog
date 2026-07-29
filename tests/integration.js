@@ -25,6 +25,7 @@ async function main() {
   let waCustomCookieReceived = false;
   let mdblistKeyReceived = false;
   let suggestArrAuthenticated = false;
+  let agregarrKeyReceived = false;
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     if (req.method === 'PROPFIND' && (req.url === '/dav/' || req.url === '/dav/Films/')) {
@@ -213,6 +214,38 @@ async function main() {
           ? [{ tmdb_id: 789, media_type: 'movie', title: 'Film distant', release_date: '2026-03-04' }]
           : [{ tmdb_id: 456, media_type: 'tv', title: 'Série Test', release_date: '2025-01-01' }],
         total: 1, page: 1, pages: 1
+      }));
+    }
+    if (req.url === '/agregarr/api/v1/collections') {
+      agregarrKeyReceived = req.headers['x-api-key'] === 'agregarr-test-key';
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        collectionConfigs: [{
+          id: 'collection-fr', name: 'Tendances France', type: 'mdblist',
+          mediaType: 'both', libraryId: 'library-test', maxItems: 500
+        }]
+      }));
+    }
+    if (req.url === '/agregarr/api/v1/collections/preview' && req.method === 'POST') {
+      agregarrKeyReceived = req.headers['x-api-key'] === 'agregarr-test-key';
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({ sessionId: 'preview-test' }));
+    }
+    if (req.url === '/agregarr/api/v1/collections/preview/status/preview-test') {
+      agregarrKeyReceived = req.headers['x-api-key'] === 'agregarr-test-key';
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        running: false,
+        completed: true,
+        result: {
+          items: [
+            { title: 'Film Test', year: 2026, tmdbId: 123, mediaType: 'movie', inLibrary: true },
+            { title: 'Série Test', year: 2025, tmdbId: 456, mediaType: 'tv', inLibrary: true }
+          ],
+          totalItems: 2,
+          matchedCount: 2,
+          missingCount: 0
+        }
       }));
     }
     if (req.url.startsWith('/newznab/api')) {
@@ -450,6 +483,18 @@ async function main() {
     });
     assert.equal(suggestArrAuthenticated, true);
     assert.deepEqual(suggestArrResult.items.map(item => item.tmdb_id), [456, 789]);
+    const agregarrSource = {
+      kind: 'agregarr',
+      url: `${baseUrl}/agregarr`,
+      apiKey: 'agregarr-test-key',
+      listId: 'collection-fr',
+      maxItems: 100
+    };
+    const agregarrCollections = await rssParser.mdblistGuideParser.listAgregarrCollections(agregarrSource);
+    assert.deepEqual(agregarrCollections.map(collection => collection.id), ['collection-fr']);
+    const agregarrResult = await rssParser.mdblistGuideParser.fetchItems(agregarrSource);
+    assert.equal(agregarrKeyReceived, true);
+    assert.deepEqual(agregarrResult.items.map(item => item.tmdb_id), [123, 456]);
     assert.equal(rssParser.safeUrl('https://example.test/rss?passkey=secret'), 'https://example.test/rss?…');
     const tmdbEnriched = rssParser.newznabParser.enrichParsedItems(
       [{ guid: 'tmdb-release', 'newznab:attr': { $: { name: 'tmdbid', value: '123' } } }],
@@ -772,7 +817,7 @@ async function main() {
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
     console.log('✓ Identifiants Kitsu/YouTubio natifs et catalogue YouTube sans conversion en film');
     console.log('✓ Guide MDBList limité aux médias locaux et ordre de liste conservé');
-    console.log('✓ Guides ListSync et SuggestArr normalisés sans importer les médias absents');
+    console.log('✓ Guides ListSync, SuggestArr et Agregarr normalisés sans importer les médias absents');
     console.log('✓ API Newznab/Torznab paginée avec types Prowlarr et Jackett');
     console.log('✓ Parcours WebDAV récursif, authentifié et filtré par extension');
     console.log('✓ Import WaCustom paginé avec reprise du parcours et identifiants IMDb directs');

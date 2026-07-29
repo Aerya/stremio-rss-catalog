@@ -205,16 +205,92 @@ class MDBListGuideParser {
     return { items, truncated: items.length >= limit, quota: {} };
   }
 
+  agregarrConfig(source) {
+    return {
+      ...this.getAxiosConfig(),
+      timeout: 30000,
+      headers: {
+        ...(this.getAxiosConfig().headers || {}),
+        'X-Api-Key': source.apiKey
+      }
+    };
+  }
+
+  async listAgregarrCollections(source) {
+    if (!String(source.apiKey || '').trim()) throw new Error('Clé API Agregarr requise');
+    const response = await axios.get(
+      `${this.baseUrl(source.url)}/api/v1/collections`,
+      this.agregarrConfig(source)
+    );
+    const rows = Array.isArray(response.data?.collectionConfigs)
+      ? response.data.collectionConfigs
+      : [];
+    return rows.map((collection, index) => ({
+      id: String(collection.id || collection.collectionId || index),
+      name: collection.name || collection.title || collection.customTitle || `Collection ${index + 1}`,
+      type: collection.type || null,
+      media_type: collection.mediaType || collection.libraryType || null,
+      config: collection
+    }));
+  }
+
+  async fetchAgregarrItems(source, { maxItems = null } = {}) {
+    if (!source.listId) throw new Error('Collection Agregarr requise');
+    const collections = await this.listAgregarrCollections(source);
+    const selected = collections.find(collection => collection.id === String(source.listId));
+    if (!selected) throw new Error('Collection Agregarr introuvable');
+    const limit = Math.min(Math.max(Number(maxItems || source.maxItems) || 5000, 1), 50000);
+    const started = await axios.post(
+      `${this.baseUrl(source.url)}/api/v1/collections/preview`,
+      { ...selected.config, maxItems: limit },
+      this.agregarrConfig(source)
+    );
+    const sessionId = started.data?.sessionId;
+    if (!sessionId) throw new Error('Agregarr n’a pas renvoyé de session d’aperçu');
+
+    const deadline = Date.now() + 180000;
+    let status;
+    do {
+      if (Date.now() >= deadline) throw new Error('Délai dépassé pendant l’aperçu Agregarr');
+      const response = await axios.get(
+        `${this.baseUrl(source.url)}/api/v1/collections/preview/status/${encodeURIComponent(sessionId)}`,
+        this.agregarrConfig(source)
+      );
+      status = response.data || {};
+      if (status.error) throw new Error(status.error);
+      if (!status.completed) await new Promise(resolve => setTimeout(resolve, 500));
+    } while (!status.completed);
+
+    const rows = Array.isArray(status.result?.items) ? status.result.items : [];
+    return {
+      items: rows.slice(0, limit).map((item, index) => ({
+        media_type: String(item.mediaType).toLowerCase() === 'tv' ? 'show' : 'movie',
+        imdb_id: item.imdbId || null,
+        tmdb_id: item.tmdbId ?? null,
+        title: item.title || null,
+        year: item.year ?? null,
+        position: index
+      })).filter(item => item.imdb_id || item.tmdb_id),
+      truncated: rows.length > limit,
+      quota: {}
+    };
+  }
+
   async fetchItems(source, options = {}) {
     const kind = source.kind || 'mdblist';
     if (kind === 'listsync') return this.fetchListSyncItems(source, options);
     if (kind === 'suggestarr') return this.fetchSuggestArrItems(source, options);
+    if (kind === 'agregarr') return this.fetchAgregarrItems(source, options);
     return this.fetchMDBListItems(source, options);
   }
 
   async inspect(source) {
     if ((source.kind || 'mdblist') === 'mdblist' && !String(source.apiKey || '').trim()) {
       throw new Error('Clé API MDBList requise');
+    }
+    if (source.kind === 'agregarr' && !source.listId) {
+      const collections = await this.listAgregarrCollections(source);
+      return { collections: collections.map(({ config, ...collection }) => collection) };
     }
     const result = await this.fetchItems(source, {
       maxItems: Math.min(Number(source.maxItems) || 100, 100)

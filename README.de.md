@@ -222,15 +222,16 @@ geordnete externe Liste ∩ bereits indexierte Medien = Kataloginhalt
   ListSync-Endpunkt ist auf 100 Elemente pro Liste begrenzt;
 - **SuggestArr**: Instanz-URL, lokales Konto und Empfehlungsstatus; JWT-Anmeldung
   und 100er-Paginierung erfolgen automatisch.
+- **Agregarr**: Instanz-URL und API-Schlüssel, Erkennung der Sammlungen und
+  geordneter Vorschauimport über TMDB-IDs. Eine bereits nach Plex
+  synchronisierte Sammlung kann auch direkt in der Plex-Quelle gewählt werden.
 
 Zugangsdaten bleiben verborgen und sind nur nach ausdrücklicher Bestätigung in
 Konfigurationsexporten enthalten.
 
-[Agregarr](https://github.com/agregarr/agregarr) unterstützt zahlreiche
-Listenanbieter, bietet derzeit aber keinen stabilen Endpunkt, der Elemente
-einer bestehenden Sammlung unabhängig von Plex aufzählt. Die Vorschau benötigt
-eine authentifizierte Sitzung und eine Plex-Bibliothek; daher wird kein
-fragiler Scraper eingebaut.
+Die [Agregarr](https://github.com/agregarr/agregarr)-Integration verwendet die
+offizielle `api/v1`, `X-Api-Key`-Authentifizierung und die asynchronen
+Vorschau-Endpunkte. Die HTML-Oberfläche wird nicht gescrapt.
 
 ---
 

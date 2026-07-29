@@ -1212,7 +1212,7 @@ function renderMDBListGuides() {
     <div class="manager-row source-entry">
       <div class="manager-row-main">
         <div class="manager-row-title">${escHtml(guide.name)} <span class="source-name-badge">${escHtml(({
-          mdblist: 'MDBList', listsync: 'ListSync', suggestarr: 'SuggestArr'
+          mdblist: 'MDBList', listsync: 'ListSync', suggestarr: 'SuggestArr', agregarr: 'Agregarr'
         }[guide.kind || 'mdblist']) || guide.kind || 'MDBList')}</span> ${guide.paused ? '⏸' : '●'}</div>
         <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(guide.url))}</div>
         <div class="manager-row-meta">
@@ -1246,7 +1246,9 @@ function mdblistPayload() {
     username: document.getElementById('guideUsername').value.trim(),
     password: document.getElementById('guidePassword').value,
     list_type: document.getElementById('guideListType').value.trim(),
-    list_id: document.getElementById('guideListId').value.trim(),
+    list_id: document.getElementById('guideKind').value === 'agregarr'
+      ? document.getElementById('guideAgregarrCollection').value
+      : document.getElementById('guideListId').value.trim(),
     statuses: [...document.getElementById('guideStatuses').selectedOptions].map(option => option.value),
     max_items: Number(document.getElementById('mdblistMaxItems').value) || 5000,
     sync_interval_minutes: document.getElementById('mdblistInterval').value || null
@@ -1255,17 +1257,42 @@ function mdblistPayload() {
 
 async function previewMDBListGuide() {
   const output = document.getElementById('mdblistPreview');
-  output.textContent = 'Test MDBList en cours…';
+  output.textContent = 'Lecture du guide en cours…';
   const response = await fetch('/api/mdblist-guides/preview', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(mdblistPayload())
   });
   const data = await response.json();
   output.textContent = response.ok
-    ? `${data.items} premiers éléments lus · ${data.movies} films · ${data.shows} séries`
+    ? (data.collections
+        ? `${data.collections.length} collection(s) Agregarr détectée(s)`
+        : `${data.items} premiers éléments lus · ${data.movies} films · ${data.shows} séries`)
     : (data.error || 'Erreur');
 }
 window.previewMDBListGuide = previewMDBListGuide;
+
+async function detectAgregarrCollections() {
+  const output = document.getElementById('mdblistPreview');
+  const payload = mdblistPayload();
+  payload.list_id = '';
+  output.textContent = 'Détection des collections Agregarr…';
+  const response = await fetch('/api/mdblist-guides/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    output.textContent = data.error || 'Détection impossible';
+    return;
+  }
+  const select = document.getElementById('guideAgregarrCollection');
+  select.innerHTML = (data.collections || []).map(collection =>
+    `<option value="${escHtml(collection.id)}">${escHtml(collection.name)}${collection.type ? ` — ${escHtml(collection.type)}` : ''}</option>`
+  ).join('') || '<option value="">Aucune collection disponible</option>';
+  output.textContent = `${data.collections?.length || 0} collection(s) détectée(s)`;
+}
+window.detectAgregarrCollections = detectAgregarrCollections;
 
 async function saveMDBListGuide() {
   const id = document.getElementById('mdblistEditId').value;
@@ -1301,6 +1328,10 @@ async function editMDBListGuide(id) {
   document.getElementById('guidePassword').placeholder = guide.has_password ? 'Mot de passe enregistré — laisser vide pour conserver' : '';
   document.getElementById('guideListType').value = guide.list_type || '';
   document.getElementById('guideListId').value = guide.list_id || '';
+  const agregarrSelect = document.getElementById('guideAgregarrCollection');
+  agregarrSelect.innerHTML = guide.kind === 'agregarr' && guide.list_id
+    ? `<option value="${escHtml(guide.list_id)}">${escHtml(guide.list_id)} — sélection enregistrée</option>`
+    : '<option value="">Détectez les collections disponibles</option>';
   [...document.getElementById('guideStatuses').options].forEach(option => {
     option.selected = (guide.statuses || ['awaiting_approval']).includes(option.value);
   });
@@ -1324,6 +1355,8 @@ function resetMDBListForm() {
   document.getElementById('guidePassword').placeholder = '';
   document.getElementById('guideListType').value = '';
   document.getElementById('guideListId').value = '';
+  document.getElementById('guideAgregarrCollection').innerHTML =
+    '<option value="">Détectez les collections disponibles</option>';
   [...document.getElementById('guideStatuses').options].forEach((option, index) => {
     option.selected = index === 0;
   });
@@ -1341,14 +1374,21 @@ function updateGuideFields() {
   document.querySelectorAll('.guide-field-mdblist').forEach(node => { node.hidden = kind !== 'mdblist'; });
   document.querySelectorAll('.guide-field-listsync').forEach(node => { node.hidden = kind !== 'listsync'; });
   document.querySelectorAll('.guide-field-suggestarr').forEach(node => { node.hidden = kind !== 'suggestarr'; });
+  document.querySelectorAll('.guide-field-agregarr').forEach(node => { node.hidden = kind !== 'agregarr'; });
+  document.querySelectorAll('.guide-field-apikey').forEach(node => {
+    node.hidden = !['mdblist', 'agregarr'].includes(kind);
+  });
   const labels = {
     mdblist: ['URL de la liste ou identifiant MDBList', 'https://mdblist.com/lists/utilisateur/ma-liste'],
     listsync: ['URL racine de ListSync', 'http://listsync:4222'],
-    suggestarr: ['URL racine de SuggestArr', 'http://suggestarr:5000']
+    suggestarr: ['URL racine de SuggestArr', 'http://suggestarr:5000'],
+    agregarr: ['URL racine d’Agregarr', 'http://agregarr:7171']
   };
   const [label, placeholder] = labels[kind];
   document.getElementById('guideUrlLabel').textContent = label;
   document.getElementById('mdblistUrl').placeholder = placeholder;
+  document.getElementById('guideApiKeyLabel').textContent =
+    kind === 'agregarr' ? 'Clé API Agregarr' : 'Clé API MDBList';
   const maxItems = document.getElementById('mdblistMaxItems');
   maxItems.max = kind === 'listsync' ? '100' : kind === 'suggestarr' ? '5000' : '50000';
   if (kind === 'listsync' && Number(maxItems.value) > 100) maxItems.value = 100;

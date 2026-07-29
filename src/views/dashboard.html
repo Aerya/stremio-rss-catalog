@@ -632,7 +632,8 @@
           seuls les contenus déjà indexés par Stremio RSS Catalog peuvent apparaître.
           <a href="https://mdblist.com/" target="_blank" rel="noopener noreferrer">MDBList ↗</a> ·
           <a href="https://github.com/Woahai321/list-sync" target="_blank" rel="noopener noreferrer">ListSync ↗</a> ·
-          <a href="https://github.com/giuseppe99barchetta/SuggestArr" target="_blank" rel="noopener noreferrer">SuggestArr ↗</a>
+          <a href="https://github.com/giuseppe99barchetta/SuggestArr" target="_blank" rel="noopener noreferrer">SuggestArr ↗</a> ·
+          <a href="https://github.com/agregarr/agregarr" target="_blank" rel="noopener noreferrer">Agregarr ↗</a>
         </p>
         <input id="mdblistEditId" type="hidden">
         <div class="config-grid">
@@ -642,6 +643,7 @@
               <option value="mdblist">MDBList</option>
               <option value="listsync">ListSync</option>
               <option value="suggestarr">SuggestArr</option>
+              <option value="agregarr">Agregarr</option>
             </select>
           </div>
           <div class="field">
@@ -652,8 +654,8 @@
             <label id="guideUrlLabel">URL de la liste ou identifiant MDBList</label>
             <input id="mdblistUrl" type="url" placeholder="https://mdblist.com/lists/utilisateur/ma-liste">
           </div>
-          <div class="field guide-field-mdblist">
-            <label>Clé API MDBList</label>
+          <div class="field guide-field-apikey">
+            <label id="guideApiKeyLabel">Clé API MDBList</label>
             <input id="mdblistApiKey" type="password" autocomplete="new-password">
           </div>
           <div class="field guide-field-listsync" hidden>
@@ -662,7 +664,17 @@
           </div>
           <div class="field guide-field-listsync" hidden>
             <label>Identifiant de liste ListSync</label>
-            <input id="guideListId" type="text" placeholder="top ou identifiant configuré">
+            <input id="guideListId" type="text" list="guideCollectionChoices" placeholder="top ou identifiant configuré">
+            <datalist id="guideCollectionChoices"></datalist>
+          </div>
+          <div class="field guide-field-agregarr" hidden>
+            <label>Collection Agregarr</label>
+            <div style="display:flex;gap:8px">
+              <select id="guideAgregarrCollection">
+                <option value="">Détectez les collections disponibles</option>
+              </select>
+              <button type="button" class="btn-sm" onclick="detectAgregarrCollections()">Détecter</button>
+            </div>
           </div>
           <div class="field guide-field-suggestarr" hidden>
             <label>Identifiant SuggestArr</label>

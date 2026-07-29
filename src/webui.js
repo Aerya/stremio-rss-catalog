@@ -1389,7 +1389,7 @@ class WebUI {
       ...(existing || {}),
       ...(body.name !== undefined ? { name: String(body.name).trim() || existing?.name || 'Guide MDBList' } : {}),
       ...(body.url !== undefined ? { url: String(body.url).trim() } : {}),
-      ...(body.kind !== undefined && ['mdblist', 'listsync', 'suggestarr'].includes(body.kind)
+      ...(body.kind !== undefined && ['mdblist', 'listsync', 'suggestarr', 'agregarr'].includes(body.kind)
         ? { kind: body.kind }
         : {}),
       ...(body.api_key ? { apiKey: String(body.api_key).trim() } : {}),
@@ -1433,7 +1433,7 @@ class WebUI {
         const source = {
           ...mdblistPayload(req.body),
           id: crypto.randomUUID(),
-          kind: ['mdblist', 'listsync', 'suggestarr'].includes(req.body.kind) ? req.body.kind : 'mdblist',
+          kind: ['mdblist', 'listsync', 'suggestarr', 'agregarr'].includes(req.body.kind) ? req.body.kind : 'mdblist',
           name: String(req.body.name || '').trim() || 'Guide MDBList',
           paused: Boolean(req.body.paused),
           maxItems: Math.min(Math.max(Number(req.body.max_items) || 5000, 1), 50000),

@@ -238,15 +238,16 @@ liste externe ordonnée ∩ médias déjà indexés = contenu du catalogue
   actuel de ListSync limite une liste à 100 éléments ;
 - **SuggestArr** : URL, compte local et statuts de recommandations ; le jeton JWT
   est obtenu automatiquement et les pages sont lues par lots de 100.
+- **Agregarr** : URL et clé API, détection des collections puis récupération de
+  leur aperçu ordonné avec les identifiants TMDB. Une collection déjà créée
+  dans Plex peut aussi être sélectionnée directement dans la source Plex.
 
 Les identifiants et mots de passe restent masqués, sont exclus des exports par
 défaut et ne sont inclus qu’après confirmation explicite.
 
-[Agregarr](https://github.com/agregarr/agregarr) sait agréger de nombreuses
-listes, mais ne fournit pas actuellement d’endpoint stable énumérant les
-éléments d’une collection existante indépendamment de Plex. Son aperçu dépend
-d’une session authentifiée et d’une bibliothèque Plex ; aucun scraper fragile
-n’est donc embarqué.
+L’intégration [Agregarr](https://github.com/agregarr/agregarr) utilise son API
+officielle `api/v1`, l’authentification `X-Api-Key` et les endpoints d’aperçu
+asynchrone. Elle ne scrape pas l’interface HTML.
 
 ---
 
