@@ -781,9 +781,9 @@ async function main() {
     assert.equal(sourceNames['webdav:webdav-test'], 'WebDAV de test');
     assert.equal(sourceNames['wacustom:wacustom-test'], 'WaCustom de test');
     db.setConfig('rss_additional_urls', JSON.stringify([
-      { name: 'Même source Films', url: `${baseUrl}/shared-rss`, force: 'films' },
-      { name: 'Même source Séries', url: `${baseUrl}/shared-rss`, force: 'series' },
-      { name: 'Même source Docs', url: `${baseUrl}/shared-rss`, force: 'documentaires' }
+      { id: 'rss-legacy-duplicate', name: 'Même source Films', url: `${baseUrl}/shared-rss`, force: 'films' },
+      { id: 'rss-legacy-duplicate', name: 'Même source Séries', url: `${baseUrl}/shared-rss`, force: 'series' },
+      { id: 'rss-legacy-duplicate', name: 'Même source Docs', url: `${baseUrl}/shared-rss`, force: 'documentaires' }
     ]));
     const legacyRssSources = webuiForNames.getAdditionalRssSources();
     assert.equal(new Set(legacyRssSources.map(source => source.id)).size, 3);

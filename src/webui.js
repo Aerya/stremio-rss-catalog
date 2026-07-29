@@ -2414,6 +2414,7 @@ class WebUI {
   getAdditionalRssSources() {
     try {
       const values = JSON.parse(this.db.getConfig('rss_additional_urls') || '[]');
+      const usedIds = new Set();
       return (Array.isArray(values) ? values : []).map((value, index) => {
         const source = typeof value === 'string' ? { url: value } : { ...value };
         source.name ||= source.url;
@@ -2421,9 +2422,15 @@ class WebUI {
         // Les anciennes configurations ne stockaient pas d'identifiant. Plusieurs
         // variantes (Films/Séries/Docs) peuvent partager la même URL : l'URL seule
         // produisait alors le même ID et les actions visaient toujours la première.
-        source.id ||= `rss-${crypto.createHash('sha256')
-          .update(`${source.url || ''}\n${source.name || ''}\n${source.force}\n${index}`)
-          .digest('hex').slice(0, 12)}`;
+        if (!source.id || usedIds.has(source.id)) {
+          let salt = 0;
+          do {
+            source.id = `rss-${crypto.createHash('sha256')
+              .update(`${source.url || ''}\n${source.name || ''}\n${source.force}\n${index}\n${salt++}`)
+              .digest('hex').slice(0, 12)}`;
+          } while (usedIds.has(source.id));
+        }
+        usedIds.add(source.id);
         source.paused = Boolean(source.paused);
         source.syncIntervalMinutes = this.normalizeSourceInterval(source.syncIntervalMinutes);
         return source;
