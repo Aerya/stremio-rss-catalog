@@ -156,6 +156,13 @@ class StremioAddon {
     return `${id}:${skip}:${search || ''}`;
   }
 
+  isCatalogCached(id, extra = {}) {
+    const search = extra.search || null;
+    if (search) return false;
+    const skip = parseInt(extra.skip) || 0;
+    return this._cache.has(this._cacheKey(id, skip, null));
+  }
+
   async handleCatalog({ type, id, extra }) {
     try {
       const custom = this.db.getCustomCatalog(id);

@@ -1,6 +1,7 @@
 const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
+const compression = require('compression');
 const path = require('path');
 const axios = require('axios');
 const { SocksProxyAgent } = require('socks-proxy-agent');
@@ -52,6 +53,7 @@ class WebUI {
   }
 
   setupMiddleware() {
+    this.app.use(compression({ threshold: 1024 }));
     this.app.use((req, res, next) => {
       res.header('Access-Control-Allow-Origin', '*');
       res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
@@ -280,7 +282,8 @@ class WebUI {
       const excludedConfigKeys = new Set([
         'tvdb_token', 'tvdb_token_expiry', 'manifest_revision',
         'last_sync_films', 'last_catalog_refresh', 'managed_catalogs_seeded',
-        'schema_v2_migrated', 'classification_migration_version', 'source_limit_defaults_v2',
+        'schema_v2_migrated', 'classification_migration_version',
+        'source_limit_defaults_v2', 'source_limit_defaults_v3',
         'rss_films_name', 'rss_films_url', 'rss_films_force',
         'rss_films_paused', 'rss_films_sync_interval', 'rss_additional_urls',
         'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources', 'webdav_sources',
@@ -674,11 +677,11 @@ class WebUI {
         name: source.name,
         display_url: source.url,
         paused: Boolean(source.paused),
-        max_items_per_catalog: Number(source.maxItemsPerCatalog) || 1000000,
+        max_items_per_catalog: Number(source.maxItemsPerCatalog) || 10000000,
         sync_interval_minutes: source.syncIntervalMinutes || null,
         runtime: {
           ...this.getSourceRuntime(`stremio:${source.id}`, source.syncIntervalMinutes),
-          configured_quota_limit: Number(source.maxItemsPerCatalog) || 1000000,
+          configured_quota_limit: Number(source.maxItemsPerCatalog) || 10000000,
           quota_unit: 'catalogue'
         },
         catalogs: (source.catalogs || []).map(catalog => ({
@@ -702,7 +705,7 @@ class WebUI {
     this.app.post('/api/stremio-sources', this.authMiddleware.bind(this), async (req, res) => {
       try {
         const {
-          url, name = '', max_items_per_catalog = 1000000, sync_interval_minutes,
+          url, name = '', max_items_per_catalog = 10000000, sync_interval_minutes,
           catalogs: requestedCatalogs
         } = req.body;
         if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
@@ -829,7 +832,7 @@ class WebUI {
         paused: Boolean(source.paused),
         has_api_key: Boolean(source.apiKey),
         categories: source.categories || {},
-        max_items_per_category: Number(source.maxItemsPerCategory) || 100000,
+        max_items_per_category: Number(source.maxItemsPerCategory) || 10000000,
         page_size: Number(source.pageSize) || Number(source.serverMax) || 100,
         request_delay_ms: Number(source.requestDelayMs) || 750,
         lookback_hours: Number(source.lookbackHours) || 24,
@@ -892,7 +895,7 @@ class WebUI {
           apiKey: String(apiKey).trim(),
           paused: Boolean(paused),
           categories: { movie, series },
-          maxItemsPerCategory: Math.min(Math.max(Number(max_items_per_category) || 100000, 1), 1000000),
+          maxItemsPerCategory: Math.min(Math.max(Number(max_items_per_category) || 10000000, 1), 10000000),
           pageSize: inspection.serverMax,
           requestDelayMs: Math.min(Math.max(Number(request_delay_ms) || 750, 250), 10000),
           lookbackHours: Math.min(Math.max(Number(lookback_hours) || 24, 1), 720),
@@ -937,7 +940,7 @@ class WebUI {
         next.categories = { movie, series };
       }
       if (req.body.max_items_per_category !== undefined) {
-        next.maxItemsPerCategory = Math.min(Math.max(Number(req.body.max_items_per_category) || 100000, 1), 1000000);
+        next.maxItemsPerCategory = Math.min(Math.max(Number(req.body.max_items_per_category) || 10000000, 1), 10000000);
       }
       if (req.body.request_delay_ms !== undefined) {
         next.requestDelayMs = Math.min(Math.max(Number(req.body.request_delay_ms) || 750, 250), 10000);
@@ -995,7 +998,7 @@ class WebUI {
       paused: Boolean(source.paused),
       force: source.force || 'auto',
       max_depth: Number(source.maxDepth) || 8,
-      max_items: Number(source.maxItems) || 100000,
+      max_items: Number(source.maxItems) || 10000000,
       extensions: source.extensions || webdavParser.constructor.DEFAULT_EXTENSIONS,
       sync_interval_minutes: source.syncIntervalMinutes || null,
       use_proxy: Boolean(source.useProxy),
@@ -1058,7 +1061,7 @@ class WebUI {
           paused: Boolean(req.body.paused),
           force,
           maxDepth: Math.min(Math.max(Number(req.body.max_depth) || 8, 0), 20),
-          maxItems: Math.min(Math.max(Number(req.body.max_items) || 100000, 1), 1000000),
+          maxItems: Math.min(Math.max(Number(req.body.max_items) || 10000000, 1), 10000000),
           extensions: normalizeExtensions(req.body.extensions),
           syncIntervalMinutes: this.normalizeSourceInterval(req.body.sync_interval_minutes),
           useProxy: Boolean(req.body.use_proxy)
@@ -1095,7 +1098,7 @@ class WebUI {
         next.force = req.body.force;
       }
       if (req.body.max_depth !== undefined) next.maxDepth = Math.min(Math.max(Number(req.body.max_depth) || 0, 0), 20);
-      if (req.body.max_items !== undefined) next.maxItems = Math.min(Math.max(Number(req.body.max_items) || 100000, 1), 1000000);
+      if (req.body.max_items !== undefined) next.maxItems = Math.min(Math.max(Number(req.body.max_items) || 10000000, 1), 10000000);
       if (req.body.extensions !== undefined) next.extensions = normalizeExtensions(req.body.extensions);
       if (req.body.sync_interval_minutes !== undefined) {
         next.syncIntervalMinutes = this.normalizeSourceInterval(req.body.sync_interval_minutes);
@@ -1133,7 +1136,7 @@ class WebUI {
       url: source.url,
       paused: Boolean(source.paused),
       has_admin_password: Boolean(source.adminPassword),
-      max_items_per_sync: Number(source.maxItemsPerSync) || 1000000,
+      max_items_per_sync: Number(source.maxItemsPerSync) || 10000000,
       page_size: Number(source.pageSize) || 1000,
       request_delay_ms: Number(source.requestDelayMs) || 250,
       sync_interval_minutes: source.syncIntervalMinutes || null,
@@ -1184,7 +1187,7 @@ class WebUI {
           url: waCustomParser.baseUrl(url),
           adminPassword: String(adminPassword),
           paused: Boolean(req.body.paused),
-          maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 1000000, 1), 1000000),
+          maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 10000000, 1), 10000000),
           pageSize: Math.min(Math.max(Number(req.body.page_size) || 1000, 10), 5000),
           requestDelayMs: Math.min(Math.max(Number(req.body.request_delay_ms) || 250, 0), 10000),
           syncIntervalMinutes: this.normalizeSourceInterval(req.body.sync_interval_minutes)
@@ -1211,7 +1214,7 @@ class WebUI {
           ...(req.body.admin_password ? { adminPassword: String(req.body.admin_password) } : {}),
           ...(req.body.paused !== undefined ? { paused: Boolean(req.body.paused) } : {}),
           ...(req.body.max_items_per_sync !== undefined ? {
-            maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 1000000, 1), 1000000)
+            maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 10000000, 1), 10000000)
           } : {}),
           ...(req.body.page_size !== undefined ? {
             pageSize: Math.min(Math.max(Number(req.body.page_size) || 1000, 10), 5000)
@@ -1257,7 +1260,7 @@ class WebUI {
       has_api_key: Boolean(source.apiKey),
       targets: source.targets || [],
       target_labels: source.targetLabels || [],
-      max_items: Number(source.maxItems) || 1000000,
+      max_items: Number(source.maxItems) || 10000000,
       page_size: Number(source.pageSize) || 500,
       sync_interval_minutes: source.syncIntervalMinutes || null,
       use_proxy: Boolean(source.useProxy),
@@ -1274,7 +1277,7 @@ class WebUI {
       ...(body.target_labels !== undefined ? { targetLabels: Array.isArray(body.target_labels) ? body.target_labels : [] } : {}),
       ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
       ...(body.use_proxy !== undefined ? { useProxy: Boolean(body.use_proxy) } : {}),
-      ...(body.max_items !== undefined ? { maxItems: Math.min(Math.max(Number(body.max_items) || 1000000, 1), 1000000) } : {}),
+      ...(body.max_items !== undefined ? { maxItems: Math.min(Math.max(Number(body.max_items) || 10000000, 1), 10000000) } : {}),
       ...(body.page_size !== undefined ? { pageSize: Math.min(Math.max(Number(body.page_size) || 500, 10), 1000) } : {}),
       ...(body.sync_interval_minutes !== undefined ? {
         syncIntervalMinutes: this.normalizeSourceInterval(body.sync_interval_minutes)
@@ -1356,7 +1359,7 @@ class WebUI {
       paused: Boolean(source.paused),
       has_key_id: Boolean(source.keyId),
       has_secret: Boolean(source.secret),
-      max_items_per_sync: Number(source.maxItemsPerSync) || 1000000,
+      max_items_per_sync: Number(source.maxItemsPerSync) || 10000000,
       page_size: Number(source.pageSize) || 1000,
       request_delay_ms: Number(source.requestDelayMs) || 100,
       sync_interval_minutes: source.syncIntervalMinutes || null,
@@ -1373,7 +1376,7 @@ class WebUI {
       ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
       ...(body.use_proxy !== undefined ? { useProxy: Boolean(body.use_proxy) } : {}),
       ...(body.max_items_per_sync !== undefined ? {
-        maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 1000000, 1), 1000000)
+        maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 10000000, 1), 10000000)
       } : {}),
       ...(body.page_size !== undefined ? {
         pageSize: Math.min(Math.max(Number(body.page_size) || 1000, 1), 2000)
@@ -1452,7 +1455,7 @@ class WebUI {
         name: source.name,
         url: source.url,
         paused: Boolean(source.paused),
-        max_items_per_sync: Number(source.maxItemsPerSync) || 100000,
+        max_items_per_sync: Number(source.maxItemsPerSync) || 10000000,
         source_key: cometNetParser.sourceKey(source.id),
         peer_node_id: source.peerNodeId || null,
         peer_alias: source.peerAlias || null,
@@ -1473,7 +1476,7 @@ class WebUI {
       ...(body.url !== undefined ? { url: cometNetParser.normalizeUrl(body.url) } : {}),
       ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
       ...(body.max_items_per_sync !== undefined ? {
-        maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 100000, 1), 1000000)
+        maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 10000000, 1), 10000000)
       } : {})
     });
 
@@ -1639,7 +1642,7 @@ class WebUI {
       list_type: source.listType || null,
       list_id: source.listId || null,
       statuses: source.statuses || [],
-      max_items: Number(source.maxItems) || 1000000,
+      max_items: Number(source.maxItems) || 10000000,
       sync_interval_minutes: source.syncIntervalMinutes || null,
       stats: this.db.getGuideItemStats(source.id),
       sample: this.db.listGuideItems(source.id, 5),
@@ -1662,7 +1665,7 @@ class WebUI {
       ...(Array.isArray(body.statuses) ? { statuses: body.statuses.map(String) } : {}),
       ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
       ...(body.max_items !== undefined ? {
-        maxItems: Math.min(Math.max(Number(body.max_items) || 1000000, 1), 1000000)
+        maxItems: Math.min(Math.max(Number(body.max_items) || 10000000, 1), 10000000)
       } : {}),
       ...(body.sync_interval_minutes !== undefined ? {
         syncIntervalMinutes: this.normalizeSourceInterval(body.sync_interval_minutes)
@@ -1697,7 +1700,7 @@ class WebUI {
           kind: ['mdblist', 'listsync', 'suggestarr', 'agregarr'].includes(req.body.kind) ? req.body.kind : 'mdblist',
           name: String(req.body.name || '').trim() || 'Guide MDBList',
           paused: Boolean(req.body.paused),
-          maxItems: Math.min(Math.max(Number(req.body.max_items) || 1000000, 1), 1000000),
+          maxItems: Math.min(Math.max(Number(req.body.max_items) || 10000000, 1), 10000000),
           syncIntervalMinutes: this.normalizeSourceInterval(req.body.sync_interval_minutes)
         };
         if (!source.url) return res.status(400).json({ error: 'Adresse requise' });
@@ -2558,11 +2561,26 @@ class WebUI {
 
     this.app.get('/catalog/:type/:id.json', async (req, res) => {
       try {
+        const startedAt = process.hrtime.bigint();
+        const cached = this.stremioAddon.isCatalogCached(req.params.id, req.query);
         const result = await this.stremioAddon.handleCatalog({
           type: req.params.type,
           id: req.params.id,
           extra: req.query
         });
+        const durationMs = Number(process.hrtime.bigint() - startedAt) / 1e6;
+        const cacheSeconds = Math.min(
+          Math.max(Number(process.env.CATALOG_HTTP_CACHE_SECONDS) || 30, 0),
+          300
+        );
+        res.setHeader(
+          'Cache-Control',
+          cacheSeconds > 0
+            ? `public, max-age=${cacheSeconds}, must-revalidate`
+            : 'no-cache'
+        );
+        res.setHeader('X-Catalog-Cache', cached ? 'HIT' : 'MISS');
+        res.setHeader('Server-Timing', `catalog;dur=${durationMs.toFixed(1)}`);
         res.json(result);
       } catch (error) {
         console.error('Catalog error:', error);

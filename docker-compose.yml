@@ -12,6 +12,8 @@ services:
       - PORT=7000
       - NODE_ENV=production
       - TZ=Europe/Paris
+      # Cache HTTP court des pages de catalogue (0 pour désactiver, maximum 300)
+      - CATALOG_HTTP_CACHE_SECONDS=30
       # À modifier
       - WEBUI_USERNAME=admin
       - WEBUI_PASSWORD=admin

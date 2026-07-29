@@ -1341,7 +1341,7 @@ function renderMDBListGuides() {
           ${Number(guide.stats?.total || 0).toLocaleString()} éléments
           · ${Number(guide.stats?.movies || 0).toLocaleString()} films
           · ${Number(guide.stats?.shows || 0).toLocaleString()} séries
-          · limite de lot ${Number(guide.max_items || 1000000).toLocaleString()}
+          · limite de lot ${Number(guide.max_items || 10000000).toLocaleString()}
         </div>
         ${sourceRuntimeHtml(guide)}
       </div>
@@ -1372,7 +1372,7 @@ function mdblistPayload() {
       ? document.getElementById('guideAgregarrCollection').value
       : document.getElementById('guideListId').value.trim(),
     statuses: [...document.getElementById('guideStatuses').selectedOptions].map(option => option.value),
-    max_items: Number(document.getElementById('mdblistMaxItems').value) || 1000000,
+    max_items: Number(document.getElementById('mdblistMaxItems').value) || 10000000,
     sync_interval_minutes: document.getElementById('mdblistInterval').value || null
   };
 }
@@ -1457,7 +1457,7 @@ async function editMDBListGuide(id) {
   [...document.getElementById('guideStatuses').options].forEach(option => {
     option.selected = (guide.statuses || ['awaiting_approval']).includes(option.value);
   });
-  document.getElementById('mdblistMaxItems').value = guide.max_items || 1000000;
+  document.getElementById('mdblistMaxItems').value = guide.max_items || 10000000;
   document.getElementById('mdblistInterval').value = guide.sync_interval_minutes || '';
   document.getElementById('mdblistSubmit').textContent = 'Enregistrer';
   document.getElementById('mdblistCancel').hidden = false;
@@ -1482,7 +1482,7 @@ function resetMDBListForm() {
   [...document.getElementById('guideStatuses').options].forEach((option, index) => {
     option.selected = index === 0;
   });
-  document.getElementById('mdblistMaxItems').value = 1000000;
+  document.getElementById('mdblistMaxItems').value = 10000000;
   document.getElementById('mdblistInterval').value = '';
   document.getElementById('mdblistPreview').textContent = '';
   document.getElementById('mdblistSubmit').textContent = 'Ajouter et synchroniser';
@@ -1676,7 +1676,7 @@ function webdavPayload() {
     password: document.getElementById('webdavPassword').value,
     force: document.getElementById('webdavForce').value,
     max_depth: Number(document.getElementById('webdavMaxDepth').value),
-    max_items: Number(document.getElementById('webdavMaxItems').value) || 100000,
+    max_items: Number(document.getElementById('webdavMaxItems').value) || 10000000,
     extensions: document.getElementById('webdavExtensions').value,
     sync_interval_minutes: document.getElementById('webdavInterval').value || null,
     use_proxy: document.getElementById('webdavUseProxy').checked,
@@ -1761,7 +1761,7 @@ async function editWebdavSource(id) {
   document.getElementById('webdavPassword').placeholder = source.has_password ? 'Laisser vide pour conserver' : '';
   document.getElementById('webdavForce').value = source.force || 'auto';
   document.getElementById('webdavMaxDepth').value = source.max_depth ?? 8;
-  document.getElementById('webdavMaxItems').value = source.max_items || 100000;
+  document.getElementById('webdavMaxItems').value = source.max_items || 10000000;
   document.getElementById('webdavExtensions').value = (source.extensions || []).join(',');
   document.getElementById('webdavInterval').value = source.sync_interval_minutes || '';
   document.getElementById('webdavUseProxy').checked = Boolean(source.use_proxy);
@@ -1781,7 +1781,7 @@ function resetWebdavForm() {
   document.getElementById('webdavPassword').placeholder = '';
   document.getElementById('webdavForce').value = 'auto';
   document.getElementById('webdavMaxDepth').value = 8;
-  document.getElementById('webdavMaxItems').value = 100000;
+  document.getElementById('webdavMaxItems').value = 10000000;
   document.getElementById('webdavExtensions').value = 'mkv,mp4,avi,mov,m4v,webm,ts,m2ts,iso,strm';
   document.getElementById('webdavInterval').value = '';
   document.getElementById('webdavUseProxy').checked = false;
@@ -1821,7 +1821,7 @@ function mediaServerPayload() {
     target_labels: detectedMediaServerTargets.filter(target =>
       document.querySelector(`#mediaServerTargets input[value="${CSS.escape(target.id)}"]`)?.checked
     ),
-    max_items: Number(document.getElementById('mediaServerMaxItems').value) || 1000000,
+    max_items: Number(document.getElementById('mediaServerMaxItems').value) || 10000000,
     page_size: Number(document.getElementById('mediaServerPageSize').value) || 500,
     sync_interval_minutes: document.getElementById('mediaServerInterval').value || null,
     use_proxy: document.getElementById('mediaServerUseProxy').checked
@@ -1912,7 +1912,7 @@ async function editMediaServerSource(id) {
   document.getElementById('mediaServerUrl').value = secrets.url || '';
   document.getElementById('mediaServerApiKey').value = '';
   document.getElementById('mediaServerApiKey').placeholder = source.has_api_key ? 'Laisser vide pour conserver' : '';
-  document.getElementById('mediaServerMaxItems').value = source.max_items || 1000000;
+  document.getElementById('mediaServerMaxItems').value = source.max_items || 10000000;
   document.getElementById('mediaServerPageSize').value = source.page_size || 500;
   document.getElementById('mediaServerInterval').value = source.sync_interval_minutes || '';
   document.getElementById('mediaServerUseProxy').checked = Boolean(source.use_proxy);
@@ -1929,7 +1929,7 @@ function resetMediaServerForm() {
   document.getElementById('mediaServerUrl').value = '';
   document.getElementById('mediaServerApiKey').value = '';
   document.getElementById('mediaServerApiKey').placeholder = '';
-  document.getElementById('mediaServerMaxItems').value = 1000000;
+  document.getElementById('mediaServerMaxItems').value = 10000000;
   document.getElementById('mediaServerPageSize').value = 500;
   document.getElementById('mediaServerInterval').value = '';
   document.getElementById('mediaServerUseProxy').checked = false;
@@ -1963,7 +1963,7 @@ function streamFusionPayload() {
     url: document.getElementById('streamFusionUrl').value.trim(),
     key_id: document.getElementById('streamFusionKeyId').value,
     secret: document.getElementById('streamFusionSecret').value,
-    max_items_per_sync: Number(document.getElementById('streamFusionMaxItems').value) || 1000000,
+    max_items_per_sync: Number(document.getElementById('streamFusionMaxItems').value) || 10000000,
     page_size: Number(document.getElementById('streamFusionPageSize').value) || 1000,
     request_delay_ms: Number(document.getElementById('streamFusionDelay').value) || 0,
     sync_interval_minutes: document.getElementById('streamFusionInterval').value || null,
@@ -2038,7 +2038,7 @@ async function editStreamFusionSource(id) {
   document.getElementById('streamFusionKeyId').placeholder = source.has_key_id ? 'Laisser vide pour conserver' : '';
   document.getElementById('streamFusionSecret').value = '';
   document.getElementById('streamFusionSecret').placeholder = source.has_secret ? 'Laisser vide pour conserver' : '';
-  document.getElementById('streamFusionMaxItems').value = source.max_items_per_sync || 1000000;
+  document.getElementById('streamFusionMaxItems').value = source.max_items_per_sync || 10000000;
   document.getElementById('streamFusionPageSize').value = source.page_size || 1000;
   document.getElementById('streamFusionDelay').value = source.request_delay_ms ?? 100;
   document.getElementById('streamFusionInterval').value = source.sync_interval_minutes || '';
@@ -2056,7 +2056,7 @@ function resetStreamFusionForm() {
   document.getElementById('streamFusionKeyId').placeholder = '';
   document.getElementById('streamFusionSecret').value = '';
   document.getElementById('streamFusionSecret').placeholder = '';
-  document.getElementById('streamFusionMaxItems').value = 1000000;
+  document.getElementById('streamFusionMaxItems').value = 10000000;
   document.getElementById('streamFusionPageSize').value = 1000;
   document.getElementById('streamFusionDelay').value = 100;
   document.getElementById('streamFusionInterval').value = '';
@@ -2088,7 +2088,7 @@ function cometNetPayload() {
     source_id: document.getElementById('cometNetEditId').value || null,
     name: document.getElementById('cometNetName').value.trim(),
     url: document.getElementById('cometNetUrl').value.trim(),
-    max_items_per_sync: Number(document.getElementById('cometNetMaxItems').value) || 100000
+    max_items_per_sync: Number(document.getElementById('cometNetMaxItems').value) || 10000000
   };
 }
 
@@ -2133,7 +2133,7 @@ function renderCometNetSources() {
         <div class="manager-row-meta">
           Dernier message : ${state.last_message_at ? fmtDate(state.last_message_at) : 'jamais'}
           · dernière annonce conservée : ${inbox.last_received_at ? fmtDate(inbox.last_received_at) : 'jamais'}
-          · limite de lot ${Number(source.max_items_per_sync || 100000).toLocaleString()}
+          · limite de lot ${Number(source.max_items_per_sync || 10000000).toLocaleString()}
         </div>
         ${state.last_error ? `<div class="source-runtime-error">${escHtml(state.last_error)}</div>` : ''}
       </div>
@@ -2194,7 +2194,7 @@ async function editCometNetSource(id) {
   document.getElementById('cometNetEditId').value = id;
   document.getElementById('cometNetName').value = source.name || '';
   document.getElementById('cometNetUrl').value = secrets.url || '';
-  document.getElementById('cometNetMaxItems').value = source.max_items_per_sync || 100000;
+  document.getElementById('cometNetMaxItems').value = source.max_items_per_sync || 10000000;
   document.getElementById('cometNetSubmit').textContent = 'Enregistrer';
   document.getElementById('cometNetCancel').hidden = false;
 }
@@ -2204,7 +2204,7 @@ function resetCometNetForm() {
   document.getElementById('cometNetEditId').value = '';
   document.getElementById('cometNetName').value = '';
   document.getElementById('cometNetUrl').value = '';
-  document.getElementById('cometNetMaxItems').value = 100000;
+  document.getElementById('cometNetMaxItems').value = 10000000;
   document.getElementById('cometNetPreview').textContent = '';
   document.getElementById('cometNetSubmit').textContent = 'Ajouter';
   document.getElementById('cometNetCancel').hidden = true;
@@ -2239,7 +2239,7 @@ function waCustomPayload() {
     name: document.getElementById('wacustomName').value.trim(),
     url: document.getElementById('wacustomUrl').value.trim(),
     admin_password: document.getElementById('wacustomPassword').value,
-    max_items_per_sync: Number(document.getElementById('wacustomMaxItems').value) || 1000000,
+    max_items_per_sync: Number(document.getElementById('wacustomMaxItems').value) || 10000000,
     page_size: Number(document.getElementById('wacustomPageSize').value) || 1000,
     request_delay_ms: Number(document.getElementById('wacustomDelay').value) || 0,
     sync_interval_minutes: document.getElementById('wacustomInterval').value || null
@@ -2316,7 +2316,7 @@ async function editWaCustomSource(id) {
   document.getElementById('wacustomPassword').placeholder = source.has_admin_password
     ? 'Laisser vide pour conserver'
     : '';
-  document.getElementById('wacustomMaxItems').value = source.max_items_per_sync || 1000000;
+  document.getElementById('wacustomMaxItems').value = source.max_items_per_sync || 10000000;
   document.getElementById('wacustomPageSize').value = source.page_size || 1000;
   document.getElementById('wacustomDelay').value = source.request_delay_ms ?? 250;
   document.getElementById('wacustomInterval').value = source.sync_interval_minutes || '';
@@ -2331,7 +2331,7 @@ function resetWaCustomForm() {
   document.getElementById('wacustomUrl').value = '';
   document.getElementById('wacustomPassword').value = '';
   document.getElementById('wacustomPassword').placeholder = '';
-  document.getElementById('wacustomMaxItems').value = 1000000;
+  document.getElementById('wacustomMaxItems').value = 10000000;
   document.getElementById('wacustomPageSize').value = 1000;
   document.getElementById('wacustomDelay').value = 250;
   document.getElementById('wacustomInterval').value = '';
@@ -2365,7 +2365,7 @@ function newznabPayload() {
     api_key: document.getElementById('newznabApiKey').value.trim(),
     movie_categories: document.getElementById('newznabMovieCategories').value.trim(),
     series_categories: document.getElementById('newznabSeriesCategories').value.trim(),
-    max_items_per_category: Number(document.getElementById('newznabMaxItems').value) || 100000,
+    max_items_per_category: Number(document.getElementById('newznabMaxItems').value) || 10000000,
     request_delay_ms: Number(document.getElementById('newznabRequestDelay').value) || 750,
     lookback_hours: Number(document.getElementById('newznabLookbackHours').value) || 24,
     sync_interval_minutes: document.getElementById('newznabInterval').value || null
@@ -2472,7 +2472,7 @@ async function editNewznabSource(id) {
   document.getElementById('newznabApiKey').placeholder = 'Laisser vide pour conserver la clé';
   document.getElementById('newznabMovieCategories').value = source.categories?.movie || '';
   document.getElementById('newznabSeriesCategories').value = source.categories?.series || '';
-  document.getElementById('newznabMaxItems').value = source.max_items_per_category || 100000;
+  document.getElementById('newznabMaxItems').value = source.max_items_per_category || 10000000;
   document.getElementById('newznabRequestDelay').value = source.request_delay_ms || 750;
   document.getElementById('newznabLookbackHours').value = source.lookback_hours || 24;
   document.getElementById('newznabInterval').value = source.sync_interval_minutes || '';
@@ -2491,7 +2491,7 @@ function resetNewznabForm() {
   document.getElementById('newznabApiKey').placeholder = '';
   document.getElementById('newznabMovieCategories').value = '2000';
   document.getElementById('newznabSeriesCategories').value = '5000';
-  document.getElementById('newznabMaxItems').value = 100000;
+  document.getElementById('newznabMaxItems').value = 10000000;
   document.getElementById('newznabRequestDelay').value = 750;
   document.getElementById('newznabLookbackHours').value = 24;
   document.getElementById('newznabInterval').value = '';
@@ -2541,7 +2541,7 @@ function renderStremioSources() {
       <div class="manager-row-main">
         <div class="manager-row-title">${escHtml(source.name)} ${source.paused ? '⏸' : '●'}</div>
         <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.display_url))}</div>
-        <div class="manager-row-meta">${(source.catalogs || []).length} catalogue(s) · limite de sécurité ${Number(source.max_items_per_catalog || 1000000).toLocaleString()} par catalogue</div>
+        <div class="manager-row-meta">${(source.catalogs || []).length} catalogue(s) · limite de sécurité ${Number(source.max_items_per_catalog || 10000000).toLocaleString()} par catalogue</div>
         <div style="margin-top:6px">${(source.catalogs || []).map(catalog =>
           `<span class="src-cat badge-${catalog.type === 'series' ? 'series' : 'films'}">${escHtml(catalog.name)}</span>`
         ).join(' ')}</div>
@@ -2602,7 +2602,7 @@ async function saveStremioSource() {
     body: JSON.stringify({
       name: document.getElementById('stremioSourceName').value,
       url: document.getElementById('stremioSourceUrl').value.trim(),
-      max_items_per_catalog: Number(document.getElementById('stremioMaxItems').value) || 1000000,
+      max_items_per_catalog: Number(document.getElementById('stremioMaxItems').value) || 10000000,
       sync_interval_minutes: document.getElementById('stremioInterval').value || null,
       catalogs
     })
@@ -2622,7 +2622,7 @@ async function editStremioSource(id) {
   document.getElementById('stremioEditId').value = id;
   document.getElementById('stremioSourceName').value = source.name || '';
   document.getElementById('stremioSourceUrl').value = secrets.url || '';
-  document.getElementById('stremioMaxItems').value = source.max_items_per_catalog || 1000000;
+  document.getElementById('stremioMaxItems').value = source.max_items_per_catalog || 10000000;
   document.getElementById('stremioInterval').value = source.sync_interval_minutes || '';
   renderEditableStremioCatalogs(source.catalogs || []);
   document.getElementById('stremioSubmit').textContent = 'Enregistrer';
@@ -2634,7 +2634,7 @@ function resetStremioForm() {
   document.getElementById('stremioEditId').value = '';
   document.getElementById('stremioSourceName').value = '';
   document.getElementById('stremioSourceUrl').value = '';
-  document.getElementById('stremioMaxItems').value = 1000000;
+  document.getElementById('stremioMaxItems').value = 10000000;
   document.getElementById('stremioInterval').value = '';
   document.getElementById('stremioSourcePreview').textContent = '';
   renderEditableStremioCatalogs([]);

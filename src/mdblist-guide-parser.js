@@ -58,7 +58,7 @@ class MDBListGuideParser {
 
   async fetchMDBListItems(source, { maxItems = null } = {}) {
     const reference = this.parseListReference(source.url || source.listId);
-    const limit = Math.min(Math.max(Number(maxItems || source.maxItems) || 1000000, 1), 1000000);
+    const limit = Math.min(Math.max(Number(maxItems || source.maxItems) || 10000000, 1), 10000000);
     const pageSize = Math.min(limit, 1000);
     const seen = new Set();
     const items = [];
@@ -239,7 +239,7 @@ class MDBListGuideParser {
     const collections = await this.listAgregarrCollections(source);
     const selected = collections.find(collection => collection.id === String(source.listId));
     if (!selected) throw new Error('Collection Agregarr introuvable');
-    const limit = Math.min(Math.max(Number(maxItems || source.maxItems) || 1000000, 1), 1000000);
+    const limit = Math.min(Math.max(Number(maxItems || source.maxItems) || 10000000, 1), 10000000);
     const started = await axios.post(
       `${this.baseUrl(source.url)}/api/v1/collections/preview`,
       { ...selected.config, maxItems: limit },

@@ -122,7 +122,7 @@ class WaCustomParser {
   async fetchSource(source) {
     const sourceKey = this.sourceKey(source.id);
     const startedAt = this.db.beginSourceSync(sourceKey, 'wacustom');
-    const maxItems = Math.min(Math.max(Number(source.maxItemsPerSync) || 1000000, 1), 1000000);
+    const maxItems = Math.min(Math.max(Number(source.maxItemsPerSync) || 10000000, 1), 10000000);
     const pageSize = Math.min(Math.max(Number(source.pageSize) || 1000, 10), 5000);
     const delayMs = Math.min(Math.max(Number(source.requestDelayMs) || 250, 0), 10000);
     const previousState = this.db.getSourceSyncState(sourceKey);

@@ -284,7 +284,7 @@ class MediaServerParser {
   async fetchSource(source) {
     const key = this.sourceKey(source.id);
     const startedAt = this.db.beginSourceSync(key, source.kind);
-    const maxItems = Math.min(Math.max(Number(source.maxItems) || 1000000, 1), 1000000);
+    const maxItems = Math.min(Math.max(Number(source.maxItems) || 10000000, 1), 10000000);
     try {
       const rows = source.kind === 'plex'
         ? await this.fetchPlex(source, maxItems)

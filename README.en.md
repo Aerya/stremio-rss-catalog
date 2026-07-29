@@ -165,10 +165,11 @@ Adding indexers separately lets you rename them and see their origin in the
 media library.
 
 An indexer's first collection reads `t=caps`, then fetches `t=search` pages with
-`offset` until the configured cap **per category** is reached. The default is
-100,000 results per category, the safety limit can be raised to 1,000,000,
-page sizes remain server-limited, and the default delay is 750 ms between
-pages. This is a batch-memory guard, not a limit on the accumulated library.
+`offset` until the configured cap **per category** is reached. The safety limit
+can be raised to **10,000,000**, which acts as a quasi-unlimited mode. A true
+infinite value would be unsafe for a source whose pagination never ends. Page
+sizes remain server-limited, and the default delay is 750 ms between pages.
+This is a batch-memory guard, not a limit on the accumulated library.
 
 Later collections start at the newest page and stop at the persisted cursor or
 the end of the overlap window. The cursor is committed only after the batch was
@@ -321,23 +322,22 @@ failed_releases → unmatched releases (for retry)
 
 Catalog responses are cached in memory and automatically invalidated after
 updates. The first five pages of each published catalog are then pre-warmed in
-the background. Searches are not cached.
+the background. JSON responses are compressed and also use a 30-second
+revalidatable HTTP cache. Set `CATALOG_HTTP_CACHE_SECONDS` to `0` to disable it,
+or up to `300` seconds. Searches are not cached.
 
 ### Persistence
 
 Everything is stored in a WAL-enabled SQLite database (`data/addon.db`).
 Content **accumulates** — a sync never replaces existing data. This is suitable
 for hundreds of thousands of indexed rows and concurrent catalog reads in one
-application process. A future multi-user, multi-replica service with concurrent
-writers should migrate to PostgreSQL and add account-level isolation.
+application process.
 
-### Catalogs are not streams
+### Scope
 
-The database stores media and partial release facts, but not always a current,
-playable URL. A stream addon must resolve movies and episodes, rank releases,
-authenticate debrid services or BitTorrent clients, protect credentials, and
-return playable links. That is the role of AIOStreams/Comet; it is deliberately
-kept separate from this catalog addon.
+This project deliberately remains a **catalog** addon and does not provide
+stream playback. Stream resolution remains the responsibility of dedicated
+addons such as AIOStreams or Comet.
 
 ---
 

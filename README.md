@@ -132,6 +132,8 @@ services:
       - PORT=7000
       - NODE_ENV=production
       - TZ=Europe/Paris
+      # Cache HTTP court des catalogues (0 pour le désactiver)
+      - CATALOG_HTTP_CACHE_SECONDS=30
       # À modifier
       - WEBUI_USERNAME=admin
       - WEBUI_PASSWORD=admin
@@ -172,9 +174,11 @@ Lors de la première collecte d’un indexeur, l’addon :
 3. s’arrête au plafond configuré **par catégorie** ;
 4. attend le délai configuré entre les pages pour ménager l’indexeur.
 
-La limite de sécurité peut atteindre 1 000 000 d’éléments par catégorie. Elle
-borne un lot en mémoire, pas la taille totale indexable. Les pages restent
-limitées par le serveur et espacées de 750 ms par défaut.
+La limite de sécurité peut atteindre **10 000 000** d’éléments par catégorie.
+Cette valeur sert de mode quasi illimité : elle borne uniquement un lot en
+mémoire, pas la taille totale indexable. Un vrai infini serait dangereux si une
+source ne termine jamais sa pagination. Les pages restent limitées par le
+serveur et espacées de 750 ms par défaut.
 
 Les collectes suivantes repartent du début, puis s’arrêtent dès le curseur
 mémorisé ou la fin de la fenêtre de recouvrement. Le curseur n’est validé
@@ -344,33 +348,23 @@ Les réponses catalog sont mises en cache entre les synchronisations et
 invalidées automatiquement après chaque modification. Les cinq premières pages
 de chaque catalogue publié sont immédiatement recalculées en arrière-plan afin
 que Stremio, Nuvio ou un intermédiaire tel qu’AIOMetadata obtienne rapidement
-une réponse à jour. Les recherches libres ne sont pas mises en cache.
+une réponse à jour. Les réponses JSON sont compressées et disposent en plus
+d’un cache HTTP revalidable de 30 secondes, réglable avec
+`CATALOG_HTTP_CACHE_SECONDS` (`0` pour le désactiver, maximum `300`). Les
+recherches libres ne sont pas mises en cache.
 
 ### Persistance
 
 Tout est stocké dans une base SQLite (`data/addon.db`) en mode WAL. Les contenus
 s'**accumulent** — une synchronisation ne remplace jamais les données existantes.
 Plusieurs lectures de catalogues peuvent se dérouler pendant une écriture et
-plusieurs centaines de milliers de médias restent un usage réaliste pour une
+plusieurs centaines de milliers de médias restent un usage réaliste pour cette
 instance mono-processus correctement indexée.
 
-SQLite n’est en revanche pas le bon stockage pour plusieurs réplicas applicatifs
-écrivant simultanément ou pour une future plateforme multi-utilisateurs avec
-isolation forte des comptes. Ce chantier nécessiterait PostgreSQL, des migrations
-et un modèle d’autorisations ; il n’est pas requis pour l’instance personnelle
-actuelle.
+### Périmètre
 
-### Pourquoi ce projet ne fournit pas de flux vidéo
-
-La base connaît des **médias** et certaines **releases** (titre, source, qualité,
-parfois infohash), mais pas systématiquement un lien de lecture encore valide.
-Un addon `stream` doit en plus résoudre chaque média/épisode, classer les
-releases, interroger les débrideurs ou clients BitTorrent, protéger leurs
-identifiants, gérer les timeouts et retourner des URLs directement lisibles.
-
-Transformer Stremio RSS Catalog en addon de streams reviendrait donc à intégrer
-une grande partie du rôle de Comet/AIOStreams, pas à simplement activer les
-hashes déjà stockés. L’architecture recommandée reste :
+Ce projet reste volontairement un addon de **catalogues**, sans fonction de
+lecture de flux. Le chemin recommandé est :
 
 ```text
 Stremio RSS Catalog → catalogues

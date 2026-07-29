@@ -1003,7 +1003,7 @@ async function main() {
     );
     assert.equal(stremioParser.normalizeMaxItems(100000), 100000);
     assert.equal(stremioParser.normalizeMaxItems(200000), 200000);
-    assert.equal(stremioParser.normalizeMaxItems(2000000), 1000000);
+    assert.equal(stremioParser.normalizeMaxItems(20000000), 10000000);
     db.setConfig('required_tags', 'GERMAN,SWEDISH,C++');
     assert.equal(rssParser.filterByRequiredTags('Film.2026.GERMAN.1080p'), true);
     assert.equal(rssParser.filterByRequiredTags('Film.2026.FRENCH.1080p'), false);
@@ -1112,6 +1112,8 @@ async function main() {
       'https://posters.example/poster?tmdb_id=&imdb_id=tt0000456&type=tv&fallback_to_imdb=true'
     );
     const historical = await addon.handleCatalog({ type: 'movie', id: 'useflowfr_films', extra: {} });
+    assert.equal(addon.isCatalogCached('useflowfr_films', {}), true);
+    assert.equal(addon.isCatalogCached('useflowfr_films', { search: 'Film' }), false);
     assert.deepEqual(
       new Set(historical.metas.map(item => item.id)),
       new Set(['tt0000123', 'tt0000789', 'tt0000901', 'tt0000902', 'tt0000903', 'tt0000920'])

@@ -110,7 +110,7 @@ class WebDavParser {
     const rootUrl = new URL(root);
     const configuredDepth = Number(source.maxDepth);
     const maxDepth = Math.min(Math.max(Number.isFinite(configuredDepth) ? configuredDepth : 8, 0), 20);
-    const maxItems = Math.min(Math.max(Number(source.maxItems) || 100000, 1), 1000000);
+    const maxItems = Math.min(Math.max(Number(source.maxItems) || 10000000, 1), 10000000);
     const queue = [{ url: root, depth: 0 }];
     const visited = new Set();
     const items = [];
@@ -185,7 +185,7 @@ class WebDavParser {
           sourceKind: 'webdav',
           startedAt,
           itemsFetched: result.items.length,
-          quotaLimit: Number(source.maxItems) || 100000,
+          quotaLimit: Number(source.maxItems) || 10000000,
           quotaUsed: result.items.length,
           quotaStatus: result.limitReached ? 'limit_reached' : 'available'
         });

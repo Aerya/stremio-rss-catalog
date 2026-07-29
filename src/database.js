@@ -29,6 +29,7 @@ class DatabaseManager {
     this.db.pragma('busy_timeout = 5000');
     this.initTables();
     this.upgradeLegacySourceLimits();
+    this.upgradeSourceLimitsV3();
   }
 
   initTables() {
@@ -128,7 +129,11 @@ class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_media_first_seen ON media(first_seen_at);
       CREATE INDEX IF NOT EXISTS idx_media_catalog_seen ON media(catalog_type, first_seen_at DESC);
       CREATE INDEX IF NOT EXISTS idx_media_catalog_type_type ON media(catalog_type, type, first_seen_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_media_type_seen ON media(type, first_seen_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_media_tmdb_type ON media(tmdb_id, type);
       CREATE INDEX IF NOT EXISTS idx_releases_media ON releases(media_imdb_id);
+      CREATE INDEX IF NOT EXISTS idx_releases_media_source_seen
+        ON releases(media_imdb_id, source_url, added_at DESC);
       CREATE INDEX IF NOT EXISTS idx_releases_indexer ON releases(indexer_rlz_id);
       CREATE INDEX IF NOT EXISTS idx_failed_indexer ON failed_releases(indexer_rlz_id);
     `);
@@ -457,14 +462,14 @@ class DatabaseManager {
   upgradeLegacySourceLimits() {
     if (this.getConfig('source_limit_defaults_v2') === 'true') return;
     const migrations = [
-      ['stremio_manifest_sources', 'maxItemsPerCatalog', 5000, 1000000],
-      ['newznab_sources', 'maxItemsPerCategory', 1000, 100000],
-      ['webdav_sources', 'maxItems', 5000, 100000],
-      ['wacustom_sources', 'maxItemsPerSync', 20000, 1000000],
-      ['media_server_sources', 'maxItems', 20000, 1000000],
-      ['streamfusion_sources', 'maxItemsPerSync', 20000, 1000000],
-      ['cometnet_sources', 'maxItemsPerSync', 5000, 100000],
-      ['mdblist_guides', 'maxItems', 5000, 1000000]
+      ['stremio_manifest_sources', 'maxItemsPerCatalog', 5000, 10000000],
+      ['newznab_sources', 'maxItemsPerCategory', 1000, 10000000],
+      ['webdav_sources', 'maxItems', 5000, 10000000],
+      ['wacustom_sources', 'maxItemsPerSync', 20000, 10000000],
+      ['media_server_sources', 'maxItems', 20000, 10000000],
+      ['streamfusion_sources', 'maxItemsPerSync', 20000, 10000000],
+      ['cometnet_sources', 'maxItemsPerSync', 5000, 10000000],
+      ['mdblist_guides', 'maxItems', 5000, 10000000]
     ];
     for (const [configKey, field, legacyDefault, nextDefault] of migrations) {
       let sources;
@@ -483,6 +488,39 @@ class DatabaseManager {
       if (changed) this.setConfig(configKey, JSON.stringify(sources));
     }
     this.setConfig('source_limit_defaults_v2', 'true');
+  }
+
+  upgradeSourceLimitsV3() {
+    if (this.getConfig('source_limit_defaults_v3') === 'true') return;
+    const migrations = [
+      ['stremio_manifest_sources', 'maxItemsPerCatalog'],
+      ['newznab_sources', 'maxItemsPerCategory'],
+      ['webdav_sources', 'maxItems'],
+      ['wacustom_sources', 'maxItemsPerSync'],
+      ['media_server_sources', 'maxItems'],
+      ['streamfusion_sources', 'maxItemsPerSync'],
+      ['cometnet_sources', 'maxItemsPerSync'],
+      ['mdblist_guides', 'maxItems']
+    ];
+    for (const [configKey, field] of migrations) {
+      let sources;
+      try {
+        sources = JSON.parse(this.getConfig(configKey) || '[]');
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(sources)) continue;
+      let changed = false;
+      sources = sources.map(source => {
+        // Valeurs par défaut des versions précédentes. Les plafonds réellement
+        // personnalisés à une autre valeur restent respectés.
+        if (![100000, 1000000].includes(Number(source?.[field]))) return source;
+        changed = true;
+        return { ...source, [field]: 10000000 };
+      });
+      if (changed) this.setConfig(configKey, JSON.stringify(sources));
+    }
+    this.setConfig('source_limit_defaults_v3', 'true');
   }
 
   seedManagedCatalogs() {

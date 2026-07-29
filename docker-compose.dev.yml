@@ -13,6 +13,7 @@ services:
       PORT: "7000"
       NODE_ENV: development
       TZ: Europe/Paris
+      CATALOG_HTTP_CACHE_SECONDS: "30"
       WEBUI_USERNAME: admin
       WEBUI_PASSWORD: admin
       DB_PATH: /data/addon.db

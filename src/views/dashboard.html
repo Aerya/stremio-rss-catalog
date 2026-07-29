@@ -256,6 +256,11 @@
           <button class="source-tab" data-source-tab="stremio" onclick="selectSourceTab('stremio')">Stremio</button>
           <button class="source-tab" data-source-tab="diagnostics" onclick="selectSourceTab('diagnostics')">Diagnostics</button>
         </div>
+        <div class="integration-cat-hint">
+          Les limites de sécurité peuvent atteindre 10 000 000 : cette valeur
+          correspond au mode quasi illimité. Elle protège la mémoire pendant une
+          collecte et ne limite pas la taille totale de la médiathèque.
+        </div>
       </div>
 
       <details class="card source-group" data-source-group="rss" open>
@@ -367,7 +372,7 @@
           </div>
           <div class="field">
             <label>Maximum de fichiers par collecte</label>
-            <input id="webdavMaxItems" type="number" min="1" max="1000000" value="100000">
+            <input id="webdavMaxItems" type="number" min="1" max="10000000" value="10000000">
           </div>
           <div class="field">
             <label>Extensions vidéo</label>
@@ -425,7 +430,7 @@
           </div>
           <div class="field">
             <label>Maximum par collecte</label>
-            <input id="mediaServerMaxItems" type="number" min="1" max="1000000" value="1000000">
+            <input id="mediaServerMaxItems" type="number" min="1" max="10000000" value="10000000">
           </div>
           <div class="field">
             <label>Page</label>
@@ -495,7 +500,7 @@
           </div>
           <div class="field">
             <label data-i18n="sources_newznab_max_items">Maximum par catégorie et synchronisation</label>
-            <input id="newznabMaxItems" type="number" min="1" max="1000000" value="100000">
+            <input id="newznabMaxItems" type="number" min="1" max="10000000" value="10000000">
           </div>
           <div class="field">
             <label data-i18n="sources_newznab_delay">Délai entre les pages (ms)</label>
@@ -551,7 +556,7 @@
           </div>
           <div class="field">
             <label>Maximum par collecte</label>
-            <input id="wacustomMaxItems" type="number" min="1" max="1000000" value="1000000">
+            <input id="wacustomMaxItems" type="number" min="1" max="10000000" value="10000000">
           </div>
           <div class="field">
             <label>Taille d’une page</label>
@@ -582,8 +587,8 @@
       <details class="card source-group" data-source-group="streamfusion">
         <summary><span>Instances StreamFusion</span> <span class="source-group-count" id="streamfusionGroupCount"></span></summary>
         <p class="text-muted" style="margin:8px 0 14px">
-          Importe le cache privé par l’API Peer officielle, sans accès direct à PostgreSQL ou
-          Meilisearch. Seuls les torrents possédant déjà un identifiant IMDb ou TMDB alimentent
+          Importe le cache privé par l’API Peer officielle. Seuls les torrents
+          possédant déjà un identifiant IMDb ou TMDB alimentent
           les catalogues. Le cache public n’est pas énumérable par cette API.
         </p>
         <p class="source-project-links">
@@ -597,7 +602,7 @@
           <div class="field"><label>URL de l’instance</label><input id="streamFusionUrl" type="password" autocomplete="off" placeholder="https://streamfusion.example.net"></div>
           <div class="field"><label>Peer Key ID</label><input id="streamFusionKeyId" type="password" autocomplete="new-password"></div>
           <div class="field"><label>Secret de la Peer Key</label><input id="streamFusionSecret" type="password" autocomplete="new-password"></div>
-          <div class="field"><label>Limite de sécurité par lot</label><input id="streamFusionMaxItems" type="number" min="1" max="1000000" value="1000000"></div>
+          <div class="field"><label>Limite de sécurité par lot</label><input id="streamFusionMaxItems" type="number" min="1" max="10000000" value="10000000"></div>
           <div class="field"><label>Taille d’une page</label><input id="streamFusionPageSize" type="number" min="1" max="2000" value="1000"></div>
           <div class="field"><label>Délai entre les pages (ms)</label><input id="streamFusionDelay" type="number" min="0" max="10000" value="100"></div>
           <div class="field"><label>Fréquence de collecte (min)</label><input id="streamFusionInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale"></div>
@@ -632,7 +637,7 @@
         <div class="config-grid">
           <div class="field"><label>Nom du pair ciblé</label><input id="cometNetName" type="text" placeholder="Mon Comet local"></div>
           <div class="field"><label>URL WebSocket CometNet</label><input id="cometNetUrl" type="password" autocomplete="off" placeholder="wss://comet.example.net"></div>
-          <div class="field"><label>Limite de sécurité par lot</label><input id="cometNetMaxItems" type="number" min="1" max="1000000" value="100000"></div>
+          <div class="field"><label>Limite de sécurité par lot</label><input id="cometNetMaxItems" type="number" min="1" max="10000000" value="10000000"></div>
         </div>
         <div class="integration-cat-hint" style="margin-top:12px">
           L’identité cryptographique du pair est épinglée au premier test. Les annonces valides sont
@@ -671,7 +676,7 @@
           <input id="stremioSourceName" type="text" placeholder="Nom de la source" data-i18n-placeholder="sources_name_placeholder" class="rss-name-input">
           <input id="stremioSourceUrl" type="password" autocomplete="off"
             placeholder="https://example.net/manifest.json?..." class="flex-1">
-          <input id="stremioMaxItems" type="number" min="1" max="1000000" value="1000000" title="Limite de sécurité par catalogue">
+          <input id="stremioMaxItems" type="number" min="1" max="10000000" value="10000000" title="Limite de sécurité par catalogue">
           <input id="stremioInterval" type="number" min="5" max="43200" placeholder="Fréquence (min)" title="Vide : fréquence globale">
           <button type="button" class="btn-sm" onclick="previewStremioSource()" data-i18n="sources_preview">Prévisualiser</button>
           <button type="button" class="btn-primary" id="stremioSubmit" onclick="saveStremioSource()" data-i18n="sources_add">Ajouter</button>
@@ -806,7 +811,7 @@
           </div>
           <div class="field">
             <label>Maximum d’éléments</label>
-            <input id="mdblistMaxItems" type="number" min="1" max="1000000" value="1000000">
+            <input id="mdblistMaxItems" type="number" min="1" max="10000000" value="10000000">
           </div>
           <div class="field">
             <label>Fréquence de mise à jour (min)</label>

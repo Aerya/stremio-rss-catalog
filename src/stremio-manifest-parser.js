@@ -17,7 +17,7 @@ class StremioManifestParser {
   }
 
   normalizeMaxItems(value) {
-    return Math.min(Math.max(Number(value) || 1000000, 1), 1000000);
+    return Math.min(Math.max(Number(value) || 10000000, 1), 10000000);
   }
 
   maskUrl(value) {

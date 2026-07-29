@@ -166,10 +166,11 @@ Getrennte Indexer können umbenannt und in der Mediathek als Herkunft erkannt we
 
 Bei der ersten Sammlung wird `t=caps` gelesen. Danach werden `t=search`-Seiten
 mit `offset` bis zur konfigurierten Obergrenze **pro Kategorie** geladen.
-Standardmäßig sind das 100.000 Ergebnisse pro Kategorie; die Sicherheitsgrenze
-kann auf 1.000.000 erhöht werden. Seitengrößen bleiben serverbegrenzt und
-zwischen Seiten liegen standardmäßig 750 ms. Dies begrenzt den Speicher eines
-Stapels, nicht die Größe der angesammelten Mediathek.
+Die Sicherheitsgrenze kann auf **10.000.000** Ergebnisse pro Kategorie erhöht
+werden und dient damit als quasi unbegrenzter Modus. Ein echter unendlicher Wert
+wäre bei einer Quelle mit endloser Seitennavigation gefährlich. Seitengrößen
+bleiben serverbegrenzt und zwischen Seiten liegen standardmäßig 750 ms. Dies
+begrenzt den Speicher eines Stapels, nicht die Größe der angesammelten Mediathek.
 
 Spätere Sammlungen beginnen bei den neuesten Ergebnissen und enden am
 gespeicherten Cursor oder am Ende des Überlappungsfensters. Der Cursor wird erst
@@ -323,23 +324,23 @@ failed_releases → nicht gematchte Releases (für Retry)
 
 Katalogantworten werden gecacht und nach Änderungen automatisch invalidiert.
 Anschließend werden die ersten fünf Seiten jedes veröffentlichten Katalogs im
-Hintergrund vorgewärmt. Suchanfragen werden nicht gecacht.
+Hintergrund vorgewärmt. JSON-Antworten werden komprimiert und zusätzlich
+30 Sekunden lang revalidierbar per HTTP gecacht. Mit
+`CATALOG_HTTP_CACHE_SECONDS=0` wird dies deaktiviert; maximal sind `300`
+Sekunden möglich. Suchanfragen werden nicht gecacht.
 
 ### Persistenz
 
 Alles wird in einer SQLite-Datenbank im WAL-Modus (`data/addon.db`) gespeichert.
 Inhalte **akkumulieren sich** — eine Sync ersetzt niemals vorhandene Daten.
 Hunderttausende indexierte Zeilen und parallele Katalog-Lesezugriffe sind für
-einen Anwendungsprozess realistisch. Ein künftiger Multi-User-Dienst mit
-mehreren schreibenden Replikaten sollte PostgreSQL und eine Kontentrennung
-verwenden.
+einen Anwendungsprozess realistisch.
 
-### Kataloge sind keine Streams
+### Umfang
 
-Die Datenbank enthält Medien und teilweise Release-Daten, aber nicht immer eine
-aktuelle abspielbare URL. Ein Stream-Addon muss Episoden auflösen, Releases
-bewerten, Debrid-Dienste oder BitTorrent-Clients authentifizieren und geschützte
-Wiedergabelinks liefern. Diese Aufgabe bleibt bewusst bei AIOStreams/Comet.
+Dieses Projekt bleibt bewusst ein **Katalog**-Addon und bietet keine
+Stream-Wiedergabe. Die Stream-Auflösung bleibt spezialisierten Addons wie
+AIOStreams oder Comet überlassen.
 
 ---
 
