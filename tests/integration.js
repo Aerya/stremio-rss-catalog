@@ -396,7 +396,14 @@ async function main() {
       return res.end(JSON.stringify([{ Name: 'Séries Jellyfin', ItemId: 'lib-tv', CollectionType: 'tvshows' }]));
     }
     if (req.url.startsWith('/jellyfin/Items')) {
+      const requestUrl = new URL(req.url, baseUrl);
       res.setHeader('Content-Type', 'application/json');
+      if (requestUrl.searchParams.get('IncludeItemTypes') === 'BoxSet') {
+        return res.end(JSON.stringify({
+          Items: [{ Id: 'jf-collection-1', Name: 'Favoris' }],
+          TotalRecordCount: 1
+        }));
+      }
       return res.end(JSON.stringify({
         Items: [{
           Id: 'jf-1', Name: 'Série Jellyfin', Type: 'Series', ProductionYear: 2025,
@@ -507,11 +514,16 @@ async function main() {
 
     const jellyfinSource = {
       id: 'jellyfin-test', kind: 'jellyfin', name: 'Jellyfin Test', url: `${baseUrl}/jellyfin`,
-      apiKey: 'jellyfin-token', targets: ['library:lib-tv'], maxItems: 100
+      apiKey: 'jellyfin-token', targets: ['library:lib-tv', 'collection:jf-collection-1'], maxItems: 100
     };
     const jellyfinInspection = await mediaServerParser.inspect(jellyfinSource);
     assert.equal(jellyfinInspection.targets[0].type, 'series');
+    assert.deepEqual(
+      jellyfinInspection.targets.map(target => target.id),
+      ['library:lib-tv', 'collection:jf-collection-1']
+    );
     const jellyfinItems = await mediaServerParser.fetchSource(jellyfinSource);
+    assert.equal(jellyfinItems.length, 1);
     assert.equal(jellyfinItems[0].direct_meta.imdb_id, 'tt0000931');
     console.log('✓ Bibliothèques et collections Plex/Jellyfin indexées avec identifiants directs');
 

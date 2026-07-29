@@ -103,7 +103,8 @@ class StreamFusionParser {
     const tmdbId = /^\d+$/.test(String(row.tmdb_id || '')) ? String(row.tmdb_id) : null;
     const typeValue = String(row.type || row.parsed_data?.type || '').toLowerCase();
     const isSeries = ['series', 'show', 'tv'].includes(typeValue)
-      || row.parsed_data?.season !== undefined;
+      || (row.parsed_data?.season !== null && row.parsed_data?.season !== undefined)
+      || (row.parsed_data?.episode !== null && row.parsed_data?.episode !== undefined);
     const year = String(row.parsed_data?.year || '').match(/\b(19|20)\d{2}\b/)?.[0] || null;
     const item = {
       release_name: title,

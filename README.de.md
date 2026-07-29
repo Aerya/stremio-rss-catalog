@@ -42,7 +42,7 @@
 |---|---|
 | **Verwaltete Kataloge** | Die 9 bisherigen Kataloge werden mit ihren vorhandenen Inhalten in die Verwaltung übernommen; beliebig viele eigene Kataloge können ergänzt werden |
 | **Gemischte Quellen** | Ein Katalog kann RSS, Pastebin, WebDAV, Plex, Jellyfin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaStream/WaCustom, StreamFusion und aus Stremio-Manifesten importierte Quellen kombinieren |
-| **Plex und Jellyfin direkt** | Bibliothekserkennung, Auswahl von Plex-Sammlungen, paginierter Film-/Serienimport und Erhalt der IMDb-/TMDB-IDs |
+| **Plex und Jellyfin direkt** | Erkennung von Bibliotheken und Sammlungen, paginierter Film-/Serienimport und Erhalt der IMDb-/TMDB-IDs |
 | **WebDAV-Ordner** | Authentifizierter rekursiver Scan mit konfigurierbaren Erweiterungen, Tiefe und Obergrenze; Dateinamen speisen Kataloge und [Davio](https://github.com/arvida42/davio) kann die Wiedergabe in Stremio übernehmen |
 | **Eigene Filter** | Ein- oder ausgeschlossene Jahre, Jahresbereiche, Genres, Schlüsselwörter und Quellenauswahl |
 | **Zwei getrennte Pausen** | Neue Kataloginhalte unabhängig von der Sichtbarkeit im Stremio-Manifest einfrieren |

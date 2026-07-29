@@ -96,7 +96,7 @@ class MediaServerParser {
     const response = await axios.get(`${this.baseUrl(source.url)}/Library/VirtualFolders`, this.axiosConfig(source, {
       headers: this.authHeaders(source)
     }));
-    const targets = (Array.isArray(response.data) ? response.data : [])
+    const libraries = (Array.isArray(response.data) ? response.data : [])
       .filter(folder => folder.ItemId)
       .map(folder => ({
         id: `library:${folder.ItemId}`,
@@ -105,7 +105,26 @@ class MediaServerParser {
           : folder.CollectionType === 'movies' ? 'movie' : 'mixed',
         kind: 'library'
       }));
-    return { server: new URL(source.url).hostname, targets };
+    let collections = [];
+    try {
+      const result = await axios.get(`${this.baseUrl(source.url)}/Items`, this.axiosConfig(source, {
+        headers: this.authHeaders(source),
+        params: {
+          Recursive: true,
+          IncludeItemTypes: 'BoxSet',
+          Fields: 'ChildCount'
+        }
+      }));
+      collections = (Array.isArray(result.data?.Items) ? result.data.Items : []).map(item => ({
+        id: `collection:${item.Id}`,
+        name: item.Name,
+        type: 'mixed',
+        kind: 'collection'
+      }));
+    } catch (error) {
+      console.warn(`[Jellyfin] Collections non lisibles : ${error.message}`);
+    }
+    return { server: new URL(source.url).hostname, targets: [...libraries, ...collections] };
   }
 
   async inspect(source) {
@@ -219,7 +238,7 @@ class MediaServerParser {
     const seen = new Set();
     const pageSize = Math.min(Number(source.pageSize) || 500, 1000);
     for (const target of targets) {
-      const parentId = String(target).replace(/^library:/, '');
+      const parentId = String(target).replace(/^(?:library|collection):/, '');
       let offset = 0;
       while (rows.length < maxItems) {
         const response = await axios.get(`${this.baseUrl(source.url)}/Items`, this.axiosConfig(source, {

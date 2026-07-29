@@ -42,7 +42,7 @@
 |---|---|
 | **Managed catalogs** | The 9 historical catalogs are migrated into the manager with their existing content preserved; create any number of custom catalogs |
 | **Mixed sources** | A catalog may combine RSS, Pastebin, WebDAV, Plex, Jellyfin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaStream/WaCustom, StreamFusion, and catalogs imported from Stremio manifests |
-| **Direct Plex and Jellyfin** | Library discovery, Plex collection selection, paginated movie/series imports, and preserved IMDb/TMDB identifiers |
+| **Direct Plex and Jellyfin** | Library and collection discovery, paginated movie/series imports, and preserved IMDb/TMDB identifiers |
 | **WebDAV folders** | Authenticated recursive scan with configurable extensions, depth, and cap; filenames feed catalogs and [Davio](https://github.com/arvida42/davio) can handle playback in Stremio |
 | **Custom filters** | Included or excluded years, year ranges, included/excluded genres and keywords, and source selection |
 | **Two separate pauses** | Freeze new catalog content independently from catalog visibility in the Stremio manifest |
