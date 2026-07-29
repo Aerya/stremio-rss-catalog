@@ -1,25 +1,28 @@
 {
-  "name": "stremio-rss-catalogs",
-  "version": "1.0.0",
-  "description": "Addon Stremio de création de catalogues depuis des flux RSS",
+  "name": "stremio-rss-catalog",
+  "version": "1.1.0",
+  "description": "Création de catalogues Stremio depuis des sources BitTorrent, Usenet et autres",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "test": "node tests/integration.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "stremio-addon-sdk": "^1.6.10",
+    "@msgpack/msgpack": "^3.1.3",
     "axios": "^1.16.1",
-    "xml2js": "^0.6.2",
-    "better-sqlite3": "^12.10.0",
     "bcrypt": "^6.0.0",
-    "express-session": "^1.19.0",
+    "better-sqlite3": "^12.10.0",
     "body-parser": "^1.20.2",
+    "compression": "^1.8.1",
     "dotenv": "^17.4.2",
+    "express": "^4.18.2",
+    "express-session": "^1.19.0",
+    "form-data": "^4.0.5",
+    "sharp": "^0.35.1",
     "socks-proxy-agent": "^10.0.0",
-    "sharp": "^0.34.5",
-    "form-data": "^4.0.5"
+    "ws": "^8.21.1",
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

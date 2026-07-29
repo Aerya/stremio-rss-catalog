@@ -1,0 +1,20 @@
+services:
+  stremio-rss-catalog-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stremio-rss-catalog-dev
+    restart: unless-stopped
+    ports:
+      - "17973:7000"
+    volumes:
+      - ./work-data:/data
+    environment:
+      PORT: "7000"
+      NODE_ENV: development
+      TZ: Europe/Paris
+      CATALOG_HTTP_CACHE_SECONDS: "30"
+      WEBUI_USERNAME: admin
+      WEBUI_PASSWORD: admin
+      DB_PATH: /data/addon.db
+      SESSION_SECRET: local-development-only-change-me

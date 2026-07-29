@@ -6,6 +6,7 @@ node_modules/
 *.db-shm
 *.db-wal
 data/
+work-data*/
 
 # Environment variables
 .env
@@ -27,7 +28,3 @@ desktop.ini
 .idea/
 *.swp
 *.swo
-
-# Claude Code
-claude.md
-.claude/

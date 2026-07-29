@@ -2,16 +2,70 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 
+const SCHEMA_VERSION = 6;
+const SCHEMA_BACKUP_RETENTION = 10;
+
+const DEFAULT_CATALOGS = [
+  ['useflowfr_films', 'Films', 'movie', ['films']],
+  ['useflowfr_documentaires', 'Documentaires', 'movie', ['documentaires']],
+  ['useflowfr_documentaires_series', 'Documentaires', 'series', ['documentaires']],
+  ['useflowfr_series', 'Séries', 'series', ['series']],
+  ['useflowfr_emissions', 'Émissions TV', 'series', ['emissions']],
+  ['useflowfr_animes_films', 'Animés (Films)', 'movie', ['animés']],
+  ['useflowfr_animes_series', 'Animés (Séries)', 'series', ['animés']],
+  ['useflowfr_concerts', 'Concerts', 'movie', ['concerts']],
+  ['useflowfr_spectacles', 'Spectacles', 'movie', ['spectacles']]
+];
+
 class DatabaseManager {
   constructor(dbPath) {
+    this.dbPath = dbPath;
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
     this.db = new Database(dbPath);
+    this.prepareSchemaMigration();
     this.db.pragma('journal_mode = WAL');
+    this.db.pragma('synchronous = NORMAL');
+    this.db.pragma('foreign_keys = ON');
+    this.db.pragma('busy_timeout = 5000');
     this.initTables();
+    this.upgradeLegacySourceLimits();
+    this.upgradeSourceLimitsV3();
+  }
+
+  prepareSchemaMigration() {
+    const currentVersion = Number(this.db.pragma('user_version', { simple: true })) || 0;
+    if (currentVersion > SCHEMA_VERSION) {
+      throw new Error(
+        `Base de données plus récente que cette version de l'addon (${currentVersion} > ${SCHEMA_VERSION})`
+      );
+    }
+    const hasUserTables = this.db.prepare(`
+      SELECT 1 FROM sqlite_master
+      WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+      LIMIT 1
+    `).get();
+    if (hasUserTables && currentVersion < SCHEMA_VERSION) {
+      const dir = path.join(path.dirname(this.dbPath), 'backups');
+      fs.mkdirSync(dir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const destination = path.join(
+        dir,
+        `${stamp}-before-schema-v${currentVersion}-to-v${SCHEMA_VERSION}.db`
+      );
+      this.db.prepare('VACUUM INTO ?').run(destination);
+      const backups = fs.readdirSync(dir)
+        .filter(name => /-before-schema-v\d+-to-v\d+\.db$/.test(name))
+        .sort()
+        .reverse();
+      for (const stale of backups.slice(SCHEMA_BACKUP_RETENTION)) {
+        fs.unlinkSync(path.join(dir, stale));
+      }
+      console.log(`[DB] Sauvegarde avant migration : ${destination}`);
+    }
   }
 
   initTables() {
@@ -111,9 +165,184 @@ class DatabaseManager {
       CREATE INDEX IF NOT EXISTS idx_media_first_seen ON media(first_seen_at);
       CREATE INDEX IF NOT EXISTS idx_media_catalog_seen ON media(catalog_type, first_seen_at DESC);
       CREATE INDEX IF NOT EXISTS idx_media_catalog_type_type ON media(catalog_type, type, first_seen_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_media_type_seen ON media(type, first_seen_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_media_tmdb_type ON media(tmdb_id, type);
       CREATE INDEX IF NOT EXISTS idx_releases_media ON releases(media_imdb_id);
+      CREATE INDEX IF NOT EXISTS idx_releases_media_source_seen
+        ON releases(media_imdb_id, source_url, added_at DESC);
       CREATE INDEX IF NOT EXISTS idx_releases_indexer ON releases(indexer_rlz_id);
       CREATE INDEX IF NOT EXISTS idx_failed_indexer ON failed_releases(indexer_rlz_id);
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS custom_catalogs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        updates_enabled INTEGER NOT NULL DEFAULT 1,
+        frozen_at INTEGER,
+        source_urls TEXT NOT NULL DEFAULT '[]',
+        filters TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS media_identities (
+        namespace TEXT NOT NULL,
+        external_id TEXT NOT NULL,
+        media_imdb_id TEXT NOT NULL REFERENCES media(imdb_id) ON DELETE CASCADE,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY(namespace, external_id)
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS guide_items (
+        guide_id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        media_type TEXT NOT NULL,
+        imdb_id TEXT,
+        tmdb_id TEXT,
+        title TEXT,
+        year TEXT,
+        PRIMARY KEY(guide_id, position)
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS maintenance_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,
+        status TEXT NOT NULL,
+        details TEXT NOT NULL DEFAULT '{}',
+        backup_path TEXT,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER,
+        error_message TEXT
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS source_sync_state (
+        source_key TEXT PRIMARY KEY,
+        source_kind TEXT NOT NULL,
+        last_attempt_at INTEGER,
+        last_success_at INTEGER,
+        last_duration_ms INTEGER,
+        last_items_fetched INTEGER NOT NULL DEFAULT 0,
+        last_error_at INTEGER,
+        last_error_message TEXT,
+        last_http_status INTEGER,
+        consecutive_errors INTEGER NOT NULL DEFAULT 0,
+        quota_limit INTEGER,
+        quota_used INTEGER,
+        quota_status TEXT,
+        cursor_json TEXT NOT NULL DEFAULT '{}',
+        updated_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS source_health_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL,
+        source_kind TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        consecutive_errors INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT,
+        http_status INTEGER,
+        created_at INTEGER NOT NULL,
+        processed_at INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS source_alert_state (
+        source_key TEXT PRIMARY KEY,
+        outage_notified INTEGER NOT NULL DEFAULT 0,
+        last_alert_at INTEGER,
+        last_recovery_at INTEGER,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS source_alert_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL,
+        source_name TEXT,
+        event_type TEXT NOT NULL,
+        threshold INTEGER NOT NULL,
+        consecutive_errors INTEGER NOT NULL DEFAULT 0,
+        message TEXT,
+        channels_json TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_source_health_events_pending
+        ON source_health_events(processed_at, id);
+      CREATE INDEX IF NOT EXISTS idx_source_alert_history_created
+        ON source_alert_history(created_at DESC);
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS manifest_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        revision INTEGER NOT NULL,
+        event TEXT NOT NULL,
+        catalog_id TEXT,
+        catalog_name TEXT,
+        details TEXT NOT NULL DEFAULT '{}',
+        snapshot TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL
+      )
+    `);
+
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_source_sync_success
+        ON source_sync_state(last_success_at);
+      CREATE INDEX IF NOT EXISTS idx_manifest_history_revision
+        ON manifest_history(revision DESC);
+      CREATE INDEX IF NOT EXISTS idx_media_identities_media
+        ON media_identities(media_imdb_id);
+      CREATE INDEX IF NOT EXISTS idx_guide_items_imdb
+        ON guide_items(guide_id, imdb_id);
+      CREATE INDEX IF NOT EXISTS idx_guide_items_tmdb
+        ON guide_items(guide_id, tmdb_id);
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS cometnet_inbox (
+        item_key TEXT PRIMARY KEY,
+        source_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        received_at INTEGER NOT NULL,
+        processed_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_cometnet_inbox_pending
+        ON cometnet_inbox(source_id, processed_at, received_at);
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS release_parse_cache (
+        release_name TEXT NOT NULL,
+        parser_version TEXT NOT NULL,
+        parsed_json TEXT NOT NULL,
+        parsed_at INTEGER NOT NULL,
+        PRIMARY KEY(release_name, parser_version)
+      );
+      CREATE INDEX IF NOT EXISTS idx_release_parse_cache_parsed_at
+        ON release_parse_cache(parsed_at);
+    `);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS image_cache_entries (
+        cache_key TEXT PRIMARY KEY,
+        source_url TEXT NOT NULL,
+        content_type TEXT,
+        file_size INTEGER NOT NULL DEFAULT 0,
+        fetched_at INTEGER,
+        accessed_at INTEGER NOT NULL,
+        last_error TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_image_cache_accessed
+        ON image_cache_entries(accessed_at);
     `);
 
     // Migration depuis l'ancien schéma catalog_items si nécessaire
@@ -127,8 +356,15 @@ class DatabaseManager {
 
     // Migration v3 : ajout colonnes concerts_added / spectacles_added dans sync_history
     this._migrateV3SyncHistory();
+    this._migrateManagedCatalogPauses();
+    this._migrateCatalogMediaTypes();
+    this._migrateMediaEnrichment();
+    this._migrateAvailability();
+    this._migrateMatchAudit();
 
     this.initDefaultConfig();
+    this.seedManagedCatalogs();
+    this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
   }
 
   _migrateV3SyncHistory() {
@@ -141,6 +377,107 @@ class DatabaseManager {
       this.db.prepare("ALTER TABLE sync_history ADD COLUMN spectacles_added INTEGER DEFAULT 0").run();
       console.log('[DB] Migration v3 : colonne spectacles_added ajoutée à sync_history');
     }
+  }
+
+  _migrateManagedCatalogPauses() {
+    const cols = this.db.prepare("PRAGMA table_info(custom_catalogs)").all().map(c => c.name);
+    if (!cols.includes('updates_enabled')) {
+      this.db.prepare("ALTER TABLE custom_catalogs ADD COLUMN updates_enabled INTEGER NOT NULL DEFAULT 1").run();
+      console.log('[DB] Migration catalogues : contrôle des mises à jour ajouté');
+    }
+    if (!cols.includes('frozen_at')) {
+      this.db.prepare("ALTER TABLE custom_catalogs ADD COLUMN frozen_at INTEGER").run();
+      console.log('[DB] Migration catalogues : date de gel ajoutée');
+    }
+  }
+
+  _migrateMediaEnrichment() {
+    const cols = this.db.prepare("PRAGMA table_info(media)").all().map(c => c.name);
+    if (!cols.includes('keywords')) {
+      this.db.prepare("ALTER TABLE media ADD COLUMN keywords TEXT").run();
+      console.log('[DB] Migration médias : mots-clés ajoutés');
+    }
+  }
+
+  _migrateAvailability() {
+    const mediaCols = this.db.prepare("PRAGMA table_info(media)").all().map(c => c.name);
+    const releaseCols = this.db.prepare("PRAGMA table_info(releases)").all().map(c => c.name);
+    const mediaMigrations = [
+      ['last_seen_at', 'INTEGER'],
+      ['availability_hidden', 'INTEGER NOT NULL DEFAULT 0'],
+      ['availability_hidden_at', 'INTEGER']
+    ];
+    const releaseMigrations = [
+      ['last_seen_at', 'INTEGER'],
+      ['last_scan_token', 'TEXT'],
+      ['missing_scan_count', 'INTEGER NOT NULL DEFAULT 0'],
+      ['availability_hidden', 'INTEGER NOT NULL DEFAULT 0'],
+      ['availability_hidden_at', 'INTEGER']
+    ];
+    for (const [column, definition] of mediaMigrations) {
+      if (!mediaCols.includes(column)) this.db.prepare(`ALTER TABLE media ADD COLUMN ${column} ${definition}`).run();
+    }
+    for (const [column, definition] of releaseMigrations) {
+      if (!releaseCols.includes(column)) this.db.prepare(`ALTER TABLE releases ADD COLUMN ${column} ${definition}`).run();
+    }
+    this.db.exec(`
+      UPDATE releases SET last_seen_at = COALESCE(last_seen_at, added_at);
+      UPDATE media SET last_seen_at = COALESCE(
+        last_seen_at,
+        (SELECT MAX(COALESCE(r.last_seen_at, r.added_at)) FROM releases r WHERE r.media_imdb_id = media.imdb_id),
+        updated_at,
+        first_seen_at
+      );
+      CREATE INDEX IF NOT EXISTS idx_releases_availability
+        ON releases(availability_hidden, missing_scan_count, last_seen_at);
+      CREATE INDEX IF NOT EXISTS idx_media_availability
+        ON media(availability_hidden, last_seen_at);
+    `);
+  }
+
+  _migrateMatchAudit() {
+    const cols = this.db.prepare("PRAGMA table_info(media)").all().map(c => c.name);
+    const migrations = [
+      ['match_confidence', 'REAL'],
+      ['match_provider', 'TEXT'],
+      ['match_reasons', 'TEXT']
+    ];
+    for (const [column, definition] of migrations) {
+      if (!cols.includes(column)) this.db.prepare(`ALTER TABLE media ADD COLUMN ${column} ${definition}`).run();
+    }
+  }
+
+  _migrateCatalogMediaTypes() {
+    const schema = this.db.prepare(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'custom_catalogs'"
+    ).get()?.sql || '';
+    if (!/CHECK\s*\(\s*type\s+IN/i.test(schema)) return;
+    const migrate = this.db.transaction(() => {
+      this.db.exec('ALTER TABLE custom_catalogs RENAME TO custom_catalogs_legacy_types');
+      this.db.exec(`
+        CREATE TABLE custom_catalogs (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          updates_enabled INTEGER NOT NULL DEFAULT 1,
+          frozen_at INTEGER,
+          source_urls TEXT NOT NULL DEFAULT '[]',
+          filters TEXT NOT NULL DEFAULT '{}',
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      `);
+      this.db.exec(`
+        INSERT INTO custom_catalogs
+          (id, name, type, enabled, updates_enabled, frozen_at, source_urls, filters, created_at, updated_at)
+        SELECT id, name, type, enabled, updates_enabled, frozen_at, source_urls, filters, created_at, updated_at
+        FROM custom_catalogs_legacy_types
+      `);
+      this.db.exec('DROP TABLE custom_catalogs_legacy_types');
+    });
+    migrate();
+    console.log('[DB] Migration catalogues : types Stremio étendus');
   }
 
   _migrateFromV1() {
@@ -185,8 +522,19 @@ class DatabaseManager {
       rss_films_name: '',
       rss_films_url: '',
       rss_films_force: 'auto',
+      rss_films_paused: 'false',
+      rss_films_sync_interval: '',
       rss_additional_urls: '[]',
+      pastebin_sources: '[]',
+      stremio_manifest_sources: '[]',
+      newznab_sources: '[]',
+      wacustom_sources: '[]',
+      media_server_sources: '[]',
+      streamfusion_sources: '[]',
+      mdblist_guides: '[]',
+      manifest_revision: '0',
       tmdb_api_key: '',
+      tmdb_match_min_confidence: '58',
       tvdb_api_key: '',
       proxy_enabled: 'false',
       proxy_host: '',
@@ -196,6 +544,7 @@ class DatabaseManager {
       proxy_protocol: 'http',
       refresh_interval: '180',
       auto_refresh_enabled: 'false',
+      last_catalog_refresh: '0',
       last_sync_films: '0',
       discord_webhook_url: '',
       discord_notifications_enabled: 'false',
@@ -203,6 +552,14 @@ class DatabaseManager {
       discord_rpdb_posters_enabled: 'false',
       rpdb_enabled: 'false',
       rpdb_api_key: '',
+      postersplus_enabled: 'false',
+      postersplus_url_template: '',
+      image_cache_enabled: 'false',
+      image_cache_ttl_hours: '168',
+      image_cache_max_mb: '1024',
+      availability_enabled: 'false',
+      availability_missing_scans: '3',
+      availability_expiration_days: '0',
       required_tags: 'FRENCH,MULTi,TRUEFRENCH,VOF,VFF,VFI,VFQ',
       prowlarr_url: '',
       prowlarr_apikey: '',
@@ -210,17 +567,107 @@ class DatabaseManager {
       nzbhydra2_apikey: '',
       mal_client_id: '',
       anilist_enabled: 'true',
+      kitsu_enabled: 'true',
+      stremio_metadata_enabled: 'false',
+      stremio_metadata_manifest_url: '',
+      stremio_metadata_sources: '[]',
       apprise_enabled: 'false',
       apprise_server_url: '',
       apprise_urls: '',
       omdb_api_key: '',
-      notification_language: 'fr'
+      notification_language: 'fr',
+      source_alerts_enabled: 'true',
+      source_alert_default_threshold: '3',
+      source_alert_thresholds: '{}',
+      classification_migration_version: '0'
     };
 
     const stmt = this.db.prepare('INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)');
     for (const [key, value] of Object.entries(defaults)) {
       stmt.run(key, value);
     }
+  }
+
+  upgradeLegacySourceLimits() {
+    if (this.getConfig('source_limit_defaults_v2') === 'true') return;
+    const migrations = [
+      ['stremio_manifest_sources', 'maxItemsPerCatalog', 5000, 10000000],
+      ['newznab_sources', 'maxItemsPerCategory', 1000, 10000000],
+      ['webdav_sources', 'maxItems', 5000, 10000000],
+      ['wacustom_sources', 'maxItemsPerSync', 20000, 10000000],
+      ['media_server_sources', 'maxItems', 20000, 10000000],
+      ['streamfusion_sources', 'maxItemsPerSync', 20000, 10000000],
+      ['cometnet_sources', 'maxItemsPerSync', 5000, 10000000],
+      ['mdblist_guides', 'maxItems', 5000, 10000000]
+    ];
+    for (const [configKey, field, legacyDefault, nextDefault] of migrations) {
+      let sources;
+      try {
+        sources = JSON.parse(this.getConfig(configKey) || '[]');
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(sources)) continue;
+      let changed = false;
+      sources = sources.map(source => {
+        if (Number(source?.[field]) !== legacyDefault) return source;
+        changed = true;
+        return { ...source, [field]: nextDefault };
+      });
+      if (changed) this.setConfig(configKey, JSON.stringify(sources));
+    }
+    this.setConfig('source_limit_defaults_v2', 'true');
+  }
+
+  upgradeSourceLimitsV3() {
+    if (this.getConfig('source_limit_defaults_v3') === 'true') return;
+    const migrations = [
+      ['stremio_manifest_sources', 'maxItemsPerCatalog'],
+      ['newznab_sources', 'maxItemsPerCategory'],
+      ['webdav_sources', 'maxItems'],
+      ['wacustom_sources', 'maxItemsPerSync'],
+      ['media_server_sources', 'maxItems'],
+      ['streamfusion_sources', 'maxItemsPerSync'],
+      ['cometnet_sources', 'maxItemsPerSync'],
+      ['mdblist_guides', 'maxItems']
+    ];
+    for (const [configKey, field] of migrations) {
+      let sources;
+      try {
+        sources = JSON.parse(this.getConfig(configKey) || '[]');
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(sources)) continue;
+      let changed = false;
+      sources = sources.map(source => {
+        // Valeurs par défaut des versions précédentes. Les plafonds réellement
+        // personnalisés à une autre valeur restent respectés.
+        if (![100000, 1000000].includes(Number(source?.[field]))) return source;
+        changed = true;
+        return { ...source, [field]: 10000000 };
+      });
+      if (changed) this.setConfig(configKey, JSON.stringify(sources));
+    }
+    this.setConfig('source_limit_defaults_v3', 'true');
+  }
+
+  seedManagedCatalogs() {
+    if (this.getConfig('managed_catalogs_seeded') === 'true') return;
+    const now = Date.now();
+    const insert = this.db.prepare(`
+      INSERT OR IGNORE INTO custom_catalogs
+        (id, name, type, enabled, source_urls, filters, created_at, updated_at)
+      VALUES (?, ?, ?, 1, '[]', ?, ?, ?)
+    `);
+    const seed = this.db.transaction(() => {
+      DEFAULT_CATALOGS.forEach(([id, name, type, catalogTypes], index) => {
+        insert.run(id, name, type, JSON.stringify({ catalog_types: catalogTypes }), now + index, now);
+      });
+      this.setConfig('managed_catalogs_seeded', 'true');
+    });
+    seed();
+    console.log('[DB] Catalogues historiques intégrés au gestionnaire');
   }
 
   // ─── Config ───────────────────────────────────────────────────────────────
@@ -234,9 +681,358 @@ class DatabaseManager {
     this.db.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)').run(key, value);
   }
 
+  // ─── Maintenance ────────────────────────────────────────────────────────
+
+  getMaintenanceAnalysis() {
+    const counts = {
+      anime_candidates: this.getAnimeCandidatesForReclassify().length,
+      documentaries: this.getDocumentaryCandidatesForReclassify().length,
+      false_documentaries: this.getFalseDocumentaryCandidates().length,
+      false_emissions: this.getFalseEmissionCandidates().length,
+      concerts: this.getConcertCandidatesFromGenre().length,
+      false_concerts: this.getFalseConcertCandidates().length,
+      spectacles: this.getSpectacleCandidatesFromTitle().length
+    };
+    return {
+      media_count: this.db.prepare('SELECT COUNT(*) AS count FROM media').get().count,
+      counts,
+      database_only_count: counts.documentaries + counts.false_documentaries
+        + counts.false_emissions + counts.concerts + counts.false_concerts + counts.spectacles,
+      analyzed_at: Date.now()
+    };
+  }
+
+  async createMaintenanceBackup(label = 'maintenance') {
+    const dir = path.join(path.dirname(this.dbPath), 'backups');
+    fs.mkdirSync(dir, { recursive: true });
+    const safeLabel = String(label).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-|-$/g, '') || 'maintenance';
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const destination = path.join(dir, `${stamp}-${safeLabel}.db`);
+    await this.db.backup(destination);
+    return destination;
+  }
+
+  startMaintenanceHistory(action, details = {}) {
+    return this.db.prepare(`
+      INSERT INTO maintenance_history (action, status, details, started_at)
+      VALUES (?, 'running', ?, ?)
+    `).run(action, JSON.stringify(details), Date.now()).lastInsertRowid;
+  }
+
+  finishMaintenanceHistory(id, { status = 'completed', details = {}, backupPath = null, error = null } = {}) {
+    this.db.prepare(`
+      UPDATE maintenance_history
+      SET status = ?, details = ?, backup_path = ?, error_message = ?, finished_at = ?
+      WHERE id = ?
+    `).run(status, JSON.stringify(details), backupPath, error, Date.now(), id);
+  }
+
+  listMaintenanceHistory(limit = 20) {
+    return this.db.prepare(`
+      SELECT * FROM maintenance_history
+      ORDER BY started_at DESC
+      LIMIT ?
+    `).all(Math.min(Math.max(Number(limit) || 20, 1), 100)).map(row => ({
+      ...row,
+      details: JSON.parse(row.details || '{}')
+    }));
+  }
+
   getAllConfig() {
     const rows = this.db.prepare('SELECT key, value FROM config').all();
     return rows.reduce((acc, row) => { acc[row.key] = row.value; return acc; }, {});
+  }
+
+  // ─── Catalogues personnalisés ────────────────────────────────────────────
+
+  listCustomCatalogs(includeDisabled = true) {
+    const rows = includeDisabled
+      ? this.db.prepare("SELECT * FROM custom_catalogs ORDER BY CASE WHEN id LIKE 'useflowfr_%' THEN 0 ELSE 1 END, created_at ASC").all()
+      : this.db.prepare("SELECT * FROM custom_catalogs WHERE enabled = 1 ORDER BY CASE WHEN id LIKE 'useflowfr_%' THEN 0 ELSE 1 END, created_at ASC").all();
+    return rows.map(row => ({
+      ...row,
+      enabled: Boolean(row.enabled),
+      updates_enabled: Boolean(row.updates_enabled),
+      source_urls: JSON.parse(row.source_urls || '[]'),
+      filters: JSON.parse(row.filters || '{}')
+    }));
+  }
+
+  getCustomCatalog(id) {
+    const row = this.db.prepare('SELECT * FROM custom_catalogs WHERE id = ?').get(id);
+    if (!row) return null;
+    return {
+      ...row,
+      enabled: Boolean(row.enabled),
+      updates_enabled: Boolean(row.updates_enabled),
+      source_urls: JSON.parse(row.source_urls || '[]'),
+      filters: JSON.parse(row.filters || '{}')
+    };
+  }
+
+  saveCustomCatalog(catalog) {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO custom_catalogs
+        (id, name, type, enabled, updates_enabled, frozen_at, source_urls, filters, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        type = excluded.type,
+        enabled = excluded.enabled,
+        updates_enabled = excluded.updates_enabled,
+        frozen_at = excluded.frozen_at,
+        source_urls = excluded.source_urls,
+        filters = excluded.filters,
+        updated_at = excluded.updated_at
+    `).run(
+      catalog.id, catalog.name, catalog.type, catalog.enabled === false ? 0 : 1,
+      catalog.updates_enabled === false ? 0 : 1,
+      catalog.updates_enabled === false ? (Number(catalog.frozen_at) || now) : null,
+      JSON.stringify(catalog.source_urls || []), JSON.stringify(catalog.filters || {}),
+      catalog.created_at || now, now
+    );
+    return this.getCustomCatalog(catalog.id);
+  }
+
+  deleteCustomCatalog(id) {
+    return this.db.prepare('DELETE FROM custom_catalogs WHERE id = ?').run(id).changes > 0;
+  }
+
+  removeCustomCatalogReferences(id) {
+    let changed = 0;
+    for (const catalog of this.listCustomCatalogs()) {
+      const current = Array.isArray(catalog.filters?.catalog_ids)
+        ? catalog.filters.catalog_ids.map(String)
+        : [];
+      const next = current.filter(catalogId => catalogId !== String(id));
+      if (next.length === current.length) continue;
+      this.saveCustomCatalog({
+        ...catalog,
+        filters: { ...catalog.filters, catalog_ids: next }
+      });
+      changed++;
+    }
+    return changed;
+  }
+
+  replaceGuideItems(guideId, items) {
+    const remove = this.db.prepare('DELETE FROM guide_items WHERE guide_id = ?');
+    const insert = this.db.prepare(`
+      INSERT INTO guide_items
+        (guide_id, position, media_type, imdb_id, tmdb_id, title, year)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const replace = this.db.transaction(() => {
+      remove.run(guideId);
+      items.forEach((item, index) => {
+        insert.run(
+          guideId,
+          Number.isInteger(item.position) ? item.position : index,
+          item.media_type || 'unknown',
+          item.imdb_id || null,
+          item.tmdb_id === null || item.tmdb_id === undefined ? null : String(item.tmdb_id),
+          item.title || null,
+          item.year === null || item.year === undefined ? null : String(item.year)
+        );
+      });
+    });
+    replace();
+    return this.getGuideItemStats(guideId);
+  }
+
+  deleteGuideItems(guideId) {
+    return this.db.prepare('DELETE FROM guide_items WHERE guide_id = ?').run(guideId).changes;
+  }
+
+  getGuideItemStats(guideId) {
+    return this.db.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN media_type = 'movie' THEN 1 ELSE 0 END) AS movies,
+        SUM(CASE WHEN media_type IN ('show', 'series') THEN 1 ELSE 0 END) AS shows
+      FROM guide_items
+      WHERE guide_id = ?
+    `).get(guideId);
+  }
+
+  listGuideItems(guideId, limit = 20) {
+    return this.db.prepare(`
+      SELECT * FROM guide_items
+      WHERE guide_id = ?
+      ORDER BY position ASC
+      LIMIT ?
+    `).all(guideId, Math.min(Math.max(Number(limit) || 20, 1), 1000));
+  }
+
+  _customCatalogConditions(catalog, search = null, visitedCatalogIds = new Set()) {
+    const catalogId = catalog.id ? String(catalog.id) : null;
+    const visited = new Set(visitedCatalogIds);
+    if (catalogId) visited.add(catalogId);
+    const animeCatalog = String(catalog.type).toLowerCase() === 'anime';
+    const conditions = ['m.availability_hidden = 0', animeCatalog
+      ? `(m.catalog_type = 'animés' OR EXISTS (
+          SELECT 1 FROM media_identities anime_identity
+          WHERE anime_identity.media_imdb_id = m.imdb_id
+            AND anime_identity.namespace IN ('kitsu', 'mal', 'anilist', 'anidb')
+        ))`
+      : 'm.type = ?'];
+    const params = animeCatalog ? [] : [catalog.type];
+    const filters = catalog.filters || {};
+    const frozenAt = catalog.updates_enabled === false && Number(catalog.frozen_at)
+      ? Number(catalog.frozen_at)
+      : null;
+
+    if (frozenAt) {
+      conditions.push('m.first_seen_at <= ?');
+      params.push(frozenAt);
+    }
+
+    const selectorConditions = [];
+    const selectorParams = [];
+    if (catalog.source_urls?.length) {
+      selectorConditions.push(`EXISTS (
+        SELECT 1 FROM releases r
+        WHERE r.media_imdb_id = m.imdb_id
+          AND r.source_url IN (${catalog.source_urls.map(() => '?').join(',')})
+          ${frozenAt ? 'AND r.added_at <= ?' : ''}
+      )`);
+      selectorParams.push(...catalog.source_urls);
+      if (frozenAt) selectorParams.push(frozenAt);
+    }
+
+    const requestedCatalogIds = Array.isArray(filters.catalog_ids)
+      ? [...new Set(filters.catalog_ids.map(String).filter(Boolean))]
+      : [];
+    let validIncludedCatalogs = 0;
+    for (const includedId of requestedCatalogIds) {
+      if (visited.has(includedId)) continue;
+      const included = this.getCustomCatalog(includedId);
+      if (!included || included.type !== catalog.type) continue;
+      const nested = this._customCatalogConditions(included, null, visited);
+      selectorConditions.push(`(${nested.conditions.join(' AND ')})`);
+      selectorParams.push(...nested.params);
+      validIncludedCatalogs++;
+    }
+    if (selectorConditions.length) {
+      conditions.push(`(${selectorConditions.join(' OR ')})`);
+      params.push(...selectorParams);
+    } else if (requestedCatalogIds.length && validIncludedCatalogs === 0) {
+      // Une composition dont toutes les références ont disparu ne doit jamais
+      // se transformer silencieusement en « tous les médias ».
+      conditions.push('0 = 1');
+    }
+
+    if (filters.guide_id) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM guide_items gi
+        WHERE gi.guide_id = ?
+          AND (
+            gi.imdb_id = m.imdb_id
+            OR (gi.tmdb_id IS NOT NULL AND CAST(gi.tmdb_id AS TEXT) = CAST(m.tmdb_id AS TEXT))
+            OR EXISTS (
+              SELECT 1 FROM media_identities mi
+              WHERE mi.media_imdb_id = m.imdb_id
+                AND mi.external_id = gi.imdb_id
+            )
+          )
+      )`);
+      params.push(String(filters.guide_id));
+    }
+
+    const years = Array.isArray(filters.years)
+      ? filters.years.map(String).filter(year => /^\d{4}$/.test(year))
+      : [];
+    if (years.length) {
+      conditions.push(`m.year ${filters.year_mode === 'exclude' ? 'NOT ' : ''}IN (${years.map(() => '?').join(',')})`);
+      params.push(...years);
+    }
+    if (/^\d{4}$/.test(String(filters.year_min || ''))) {
+      conditions.push('CAST(m.year AS INTEGER) >= ?');
+      params.push(Number(filters.year_min));
+    }
+    if (/^\d{4}$/.test(String(filters.year_max || ''))) {
+      conditions.push('CAST(m.year AS INTEGER) <= ?');
+      params.push(Number(filters.year_max));
+    }
+
+    const baseCatalogs = Array.isArray(filters.catalog_types) ? filters.catalog_types.filter(Boolean) : [];
+    if (baseCatalogs.length) {
+      conditions.push(`m.catalog_type IN (${baseCatalogs.map(() => '?').join(',')})`);
+      params.push(...baseCatalogs);
+    }
+    for (const [key, negate] of [['genres_include', false], ['genres_exclude', true]]) {
+      const genres = Array.isArray(filters[key])
+        ? filters[key].map(Number).filter(Number.isInteger)
+        : [];
+      if (genres.length) {
+        conditions.push(`${negate ? 'NOT ' : ''}EXISTS (
+          SELECT 1 FROM json_each(COALESCE(m.genres, '[]')) genre
+          WHERE CAST(genre.value AS INTEGER) IN (${genres.map(() => '?').join(',')})
+        )`);
+        params.push(...genres);
+      }
+    }
+    if (search) {
+      conditions.push('(m.name LIKE ? OR m.release_name LIKE ?)');
+      params.push(`%${search}%`, `%${search}%`);
+    }
+    for (const [key, negate] of [['keywords_include', false], ['keywords_exclude', true]]) {
+      const words = Array.isArray(filters[key]) ? filters[key].map(String).filter(Boolean) : [];
+      for (const word of words) {
+        conditions.push(`${negate ? 'NOT ' : ''}(
+          m.name LIKE ? OR m.release_name LIKE ? OR EXISTS (
+            SELECT 1 FROM json_each(COALESCE(m.keywords, '[]')) keyword
+            WHERE CAST(keyword.value AS TEXT) LIKE ?
+          )
+        )`);
+        params.push(`%${word}%`, `%${word}%`, `%${word}%`);
+      }
+    }
+
+    return { conditions, params };
+  }
+
+  countCustomCatalogMedia(catalog, search = null) {
+    const { conditions, params } = this._customCatalogConditions(catalog, search);
+    return this.db.prepare(`
+      SELECT COUNT(*) AS total
+      FROM media m
+      WHERE ${conditions.join(' AND ')}
+    `).get(...params).total;
+  }
+
+  getCustomCatalogMedia(catalog, skip = 0, limit = 101, search = null) {
+    const { conditions, params } = this._customCatalogConditions(catalog, search);
+    const guideId = catalog.filters?.guide_id ? String(catalog.filters.guide_id) : null;
+    const guideOrder = guideId
+      ? `COALESCE((
+          SELECT MIN(gi.position) FROM guide_items gi
+          WHERE gi.guide_id = ?
+            AND (
+              gi.imdb_id = m.imdb_id
+              OR (gi.tmdb_id IS NOT NULL AND CAST(gi.tmdb_id AS TEXT) = CAST(m.tmdb_id AS TEXT))
+              OR EXISTS (
+                SELECT 1 FROM media_identities mi
+                WHERE mi.media_imdb_id = m.imdb_id
+                  AND mi.external_id = gi.imdb_id
+              )
+            )
+        ), 2147483647) ASC,`
+      : '';
+    if (guideId) params.push(guideId);
+    params.push(Number(limit), Number(skip));
+    const rows = this.db.prepare(`
+      SELECT m.* FROM media m
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY ${guideOrder} m.first_seen_at DESC
+      LIMIT ? OFFSET ?
+    `).all(...params);
+    return rows.map(row => ({
+      ...row,
+      genres: row.genres ? JSON.parse(row.genres) : [],
+      keywords: row.keywords ? JSON.parse(row.keywords) : []
+    }));
   }
 
   // ─── Médias ───────────────────────────────────────────────────────────────
@@ -246,14 +1042,24 @@ class DatabaseManager {
     try {
       this.db.prepare(`
         INSERT INTO media
-          (imdb_id, tmdb_id, type, catalog_type, name, year, poster, background, description, genres, vote_average, release_name, first_seen_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (imdb_id, tmdb_id, type, catalog_type, name, year, poster, background, description,
+           genres, keywords, vote_average, release_name, first_seen_at, updated_at, last_seen_at,
+           availability_hidden, availability_hidden_at, match_confidence, match_provider, match_reasons)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?)
         ON CONFLICT(imdb_id) DO UPDATE SET
           poster       = excluded.poster,
           background   = excluded.background,
           description  = excluded.description,
+          genres       = excluded.genres,
+          keywords     = excluded.keywords,
           vote_average = excluded.vote_average,
           release_name = excluded.release_name,
+          last_seen_at  = MAX(COALESCE(media.last_seen_at, 0), COALESCE(excluded.last_seen_at, 0)),
+          availability_hidden = 0,
+          availability_hidden_at = NULL,
+          match_confidence = COALESCE(excluded.match_confidence, media.match_confidence),
+          match_provider = COALESCE(excluded.match_provider, media.match_provider),
+          match_reasons = COALESCE(excluded.match_reasons, media.match_reasons),
           updated_at   = excluded.updated_at
       `).run(
         item.imdb_id,
@@ -266,10 +1072,15 @@ class DatabaseManager {
         item.background || null,
         item.description || null,
         item.genres ? JSON.stringify(item.genres) : null,
+        item.keywords ? JSON.stringify(item.keywords) : null,
         item.vote_average || null,
         item.release_name || null,
         item.first_seen_at || now,
-        now
+        now,
+        item.last_seen_at || now,
+        item.match_confidence ?? null,
+        item.match_provider || null,
+        item.match_reasons ? JSON.stringify(item.match_reasons) : null
       );
       return true;
     } catch (err) {
@@ -281,6 +1092,152 @@ class DatabaseManager {
   getMediaByImdbId(imdbId) {
     const row = this.db.prepare('SELECT * FROM media WHERE imdb_id = ?').get(imdbId);
     if (row && row.genres) row.genres = JSON.parse(row.genres);
+    if (row && row.keywords) row.keywords = JSON.parse(row.keywords);
+    if (row && row.match_reasons) row.match_reasons = JSON.parse(row.match_reasons);
+    return row;
+  }
+
+  getReleaseParseCache(releaseNames, parserVersion) {
+    const names = [...new Set((releaseNames || []).filter(Boolean))];
+    if (!names.length) return new Map();
+    const result = new Map();
+    const chunkSize = 500;
+    for (let offset = 0; offset < names.length; offset += chunkSize) {
+      const chunk = names.slice(offset, offset + chunkSize);
+      const rows = this.db.prepare(`
+        SELECT release_name, parsed_json
+        FROM release_parse_cache
+        WHERE parser_version = ?
+          AND release_name IN (${chunk.map(() => '?').join(',')})
+      `).all(parserVersion, ...chunk);
+      for (const row of rows) {
+        try {
+          result.set(row.release_name, JSON.parse(row.parsed_json));
+        } catch {
+          // Une entrée corrompue sera simplement recalculée.
+        }
+      }
+    }
+    return result;
+  }
+
+  setReleaseParseCache(entries, parserVersion) {
+    if (!Array.isArray(entries) || !entries.length) return;
+    const statement = this.db.prepare(`
+      INSERT INTO release_parse_cache (release_name, parser_version, parsed_json, parsed_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(release_name, parser_version) DO UPDATE SET
+        parsed_json = excluded.parsed_json,
+        parsed_at = excluded.parsed_at
+    `);
+    const now = Date.now();
+    this.db.transaction(rows => {
+      for (const [releaseName, parsed] of rows) {
+        statement.run(releaseName, parserVersion, JSON.stringify(parsed), now);
+      }
+    })(entries);
+  }
+
+  registerImageCacheEntry(cacheKey, sourceUrl) {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO image_cache_entries (cache_key, source_url, accessed_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(cache_key) DO UPDATE SET
+        source_url = excluded.source_url,
+        accessed_at = excluded.accessed_at
+    `).run(cacheKey, sourceUrl, now);
+    return this.getImageCacheEntry(cacheKey);
+  }
+
+  getImageCacheEntry(cacheKey) {
+    return this.db.prepare(
+      'SELECT * FROM image_cache_entries WHERE cache_key = ?'
+    ).get(cacheKey) || null;
+  }
+
+  updateImageCacheEntry(cacheKey, data = {}) {
+    this.db.prepare(`
+      UPDATE image_cache_entries
+      SET content_type = ?, file_size = ?, fetched_at = ?, accessed_at = ?, last_error = ?
+      WHERE cache_key = ?
+    `).run(
+      data.contentType || null,
+      Number(data.fileSize) || 0,
+      data.fetchedAt || null,
+      data.accessedAt || Date.now(),
+      data.lastError || null,
+      cacheKey
+    );
+  }
+
+  touchImageCacheEntry(cacheKey) {
+    this.db.prepare(
+      'UPDATE image_cache_entries SET accessed_at = ? WHERE cache_key = ?'
+    ).run(Date.now(), cacheKey);
+  }
+
+  listImageCacheEntries() {
+    return this.db.prepare(
+      'SELECT * FROM image_cache_entries ORDER BY accessed_at ASC'
+    ).all();
+  }
+
+  deleteImageCacheEntries(cacheKeys) {
+    const keys = [...new Set((cacheKeys || []).filter(Boolean))];
+    if (!keys.length) return 0;
+    return this.db.prepare(
+      `DELETE FROM image_cache_entries WHERE cache_key IN (${keys.map(() => '?').join(',')})`
+    ).run(...keys).changes;
+  }
+
+  linkMediaIdentity(mediaId, externalId, namespace = null) {
+    if (!mediaId || !externalId) return false;
+    const value = String(externalId);
+    const inferredNamespace = namespace || value.match(/^([^:]+):/)?.[1]
+      || (/^tt\d+$/i.test(value) ? 'imdb' : 'stremio');
+    this.db.prepare(`
+      INSERT INTO media_identities (namespace, external_id, media_imdb_id, created_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(namespace, external_id) DO UPDATE SET
+        media_imdb_id = excluded.media_imdb_id
+    `).run(String(inferredNamespace).toLowerCase(), value, mediaId, Date.now());
+    return true;
+  }
+
+  getMediaByExternalId(externalId, namespace = null) {
+    if (!externalId) return null;
+    const value = String(externalId);
+    const inferredNamespace = namespace || value.match(/^([^:]+):/)?.[1]
+      || (/^tt\d+$/i.test(value) ? 'imdb' : 'stremio');
+    const row = this.db.prepare(`
+      SELECT m.* FROM media_identities i
+      JOIN media m ON m.imdb_id = i.media_imdb_id
+      WHERE i.namespace = ? AND i.external_id = ?
+      LIMIT 1
+    `).get(String(inferredNamespace).toLowerCase(), value);
+    if (row?.genres) row.genres = JSON.parse(row.genres);
+    if (row?.keywords) row.keywords = JSON.parse(row.keywords);
+    if (row?.match_reasons) row.match_reasons = JSON.parse(row.match_reasons);
+    return row || null;
+  }
+
+  getMediaIdentities(mediaId) {
+    return this.db.prepare(`
+      SELECT namespace, external_id
+      FROM media_identities
+      WHERE media_imdb_id = ?
+      ORDER BY namespace, external_id
+    `).all(mediaId);
+  }
+
+  getMediaByTmdbId(tmdbId, type = null) {
+    const row = type
+      ? this.db.prepare('SELECT * FROM media WHERE tmdb_id = ? AND type = ? LIMIT 1').get(String(tmdbId), type)
+      : this.db.prepare('SELECT * FROM media WHERE tmdb_id = ? LIMIT 1').get(String(tmdbId));
+    if (row && row.genres) row.genres = JSON.parse(row.genres);
+    if (row && row.keywords) row.keywords = JSON.parse(row.keywords);
+    if (row && row.match_reasons) row.match_reasons = JSON.parse(row.match_reasons);
     return row;
   }
 
@@ -288,27 +1245,39 @@ class DatabaseManager {
     if (typeFilter) {
       const rows = this.db.prepare(`
         SELECT * FROM media
-        WHERE catalog_type = ? AND type = ?
+        WHERE catalog_type = ? AND type = ? AND availability_hidden = 0
         ORDER BY first_seen_at DESC
         LIMIT ? OFFSET ?
       `).all(catalogType, typeFilter, Number(limit), Number(skip));
-      return rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+      return rows.map(r => ({
+        ...r,
+        genres: r.genres ? JSON.parse(r.genres) : [],
+        keywords: r.keywords ? JSON.parse(r.keywords) : []
+      }));
     }
     const rows = this.db.prepare(`
       SELECT * FROM media
-      WHERE catalog_type = ?
+      WHERE catalog_type = ? AND availability_hidden = 0
       ORDER BY first_seen_at DESC
       LIMIT ? OFFSET ?
     `).all(catalogType, Number(limit), Number(skip));
-    return rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+    return rows.map(r => ({
+      ...r,
+      genres: r.genres ? JSON.parse(r.genres) : [],
+      keywords: r.keywords ? JSON.parse(r.keywords) : []
+    }));
   }
 
   getMediaCount(catalogType, typeFilter = null) {
     if (typeFilter) {
-      const row = this.db.prepare('SELECT COUNT(*) as count FROM media WHERE catalog_type = ? AND type = ?').get(catalogType, typeFilter);
+      const row = this.db.prepare(
+        'SELECT COUNT(*) as count FROM media WHERE catalog_type = ? AND type = ? AND availability_hidden = 0'
+      ).get(catalogType, typeFilter);
       return row ? row.count : 0;
     }
-    const row = this.db.prepare('SELECT COUNT(*) as count FROM media WHERE catalog_type = ?').get(catalogType);
+    const row = this.db.prepare(
+      'SELECT COUNT(*) as count FROM media WHERE catalog_type = ? AND availability_hidden = 0'
+    ).get(catalogType);
     return row ? row.count : 0;
   }
 
@@ -317,39 +1286,61 @@ class DatabaseManager {
     if (typeFilter) {
       const rows = this.db.prepare(`
         SELECT * FROM media
-        WHERE catalog_type = ? AND type = ? AND (name LIKE ? OR release_name LIKE ?)
+        WHERE catalog_type = ? AND type = ? AND availability_hidden = 0
+          AND (name LIKE ? OR release_name LIKE ?)
         ORDER BY first_seen_at DESC
         LIMIT ? OFFSET ?
       `).all(catalogType, typeFilter, term, term, Number(limit), Number(skip));
-      return rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+      return rows.map(r => ({
+        ...r,
+        genres: r.genres ? JSON.parse(r.genres) : [],
+        keywords: r.keywords ? JSON.parse(r.keywords) : []
+      }));
     }
     const rows = this.db.prepare(`
       SELECT * FROM media
-      WHERE catalog_type = ? AND (name LIKE ? OR release_name LIKE ?)
+      WHERE catalog_type = ? AND availability_hidden = 0
+        AND (name LIKE ? OR release_name LIKE ?)
       ORDER BY first_seen_at DESC
       LIMIT ? OFFSET ?
     `).all(catalogType, term, term, Number(limit), Number(skip));
-    return rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+    return rows.map(r => ({
+      ...r,
+      genres: r.genres ? JSON.parse(r.genres) : [],
+      keywords: r.keywords ? JSON.parse(r.keywords) : []
+    }));
   }
 
   getRecentMediaAdditions(catalogType, limit = 5) {
     const rows = this.db.prepare(`
       SELECT * FROM media
-      WHERE catalog_type = ?
+      WHERE catalog_type = ? AND availability_hidden = 0
       ORDER BY first_seen_at DESC
       LIMIT ?
     `).all(catalogType, limit);
-    return rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+    return rows.map(r => ({
+      ...r,
+      genres: r.genres ? JSON.parse(r.genres) : [],
+      keywords: r.keywords ? JSON.parse(r.keywords) : []
+    }));
   }
 
   // ─── Releases ─────────────────────────────────────────────────────────────
 
   addRelease(release) {
     try {
+      const now = release.last_seen_at || Date.now();
       this.db.prepare(`
-        INSERT OR IGNORE INTO releases
-          (media_imdb_id, release_name, indexer_rlz_id, source_url, quality, hash, added_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO releases
+          (media_imdb_id, release_name, indexer_rlz_id, source_url, quality, hash, added_at,
+           last_seen_at, last_scan_token, missing_scan_count, availability_hidden, availability_hidden_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, NULL)
+        ON CONFLICT(indexer_rlz_id) DO UPDATE SET
+          last_seen_at = excluded.last_seen_at,
+          last_scan_token = COALESCE(excluded.last_scan_token, releases.last_scan_token),
+          missing_scan_count = 0,
+          availability_hidden = 0,
+          availability_hidden_at = NULL
       `).run(
         release.media_imdb_id,
         release.release_name,
@@ -357,8 +1348,17 @@ class DatabaseManager {
         release.source_url || null,
         release.quality || null,
         release.hash || null,
-        release.added_at || Date.now()
+        release.added_at || now,
+        now,
+        release.scan_token || null
       );
+      this.db.prepare(`
+        UPDATE media
+        SET last_seen_at = MAX(COALESCE(last_seen_at, 0), ?),
+            availability_hidden = 0,
+            availability_hidden_at = NULL
+        WHERE imdb_id = ?
+      `).run(now, release.media_imdb_id);
       return true;
     } catch (err) {
       console.error('[DB] addRelease error:', err.message);
@@ -373,6 +1373,111 @@ class DatabaseManager {
   hasReleaseByHash(hash) {
     if (!hash) return false;
     return !!this.db.prepare('SELECT id FROM releases WHERE hash = ?').get(hash);
+  }
+
+  markReleaseSeenByIndexer(indexerRlzId, scanToken = null, seenAt = Date.now()) {
+    const row = this.db.prepare(
+      'SELECT media_imdb_id FROM releases WHERE indexer_rlz_id = ?'
+    ).get(indexerRlzId);
+    if (!row) return false;
+    this.db.prepare(`
+      UPDATE releases
+      SET last_seen_at = ?, last_scan_token = COALESCE(?, last_scan_token),
+          missing_scan_count = 0, availability_hidden = 0, availability_hidden_at = NULL
+      WHERE indexer_rlz_id = ?
+    `).run(seenAt, scanToken, indexerRlzId);
+    this.db.prepare(`
+      UPDATE media SET last_seen_at = MAX(COALESCE(last_seen_at, 0), ?),
+        availability_hidden = 0, availability_hidden_at = NULL
+      WHERE imdb_id = ?
+    `).run(seenAt, row.media_imdb_id);
+    return true;
+  }
+
+  markReleaseSeenByHash(hash, scanToken = null, seenAt = Date.now()) {
+    if (!hash) return false;
+    const rows = this.db.prepare(
+      'SELECT DISTINCT media_imdb_id FROM releases WHERE hash = ?'
+    ).all(hash);
+    if (!rows.length) return false;
+    this.db.prepare(`
+      UPDATE releases
+      SET last_seen_at = ?, last_scan_token = COALESCE(?, last_scan_token),
+          missing_scan_count = 0, availability_hidden = 0, availability_hidden_at = NULL
+      WHERE hash = ?
+    `).run(seenAt, scanToken, hash);
+    const updateMedia = this.db.prepare(`
+      UPDATE media SET last_seen_at = MAX(COALESCE(last_seen_at, 0), ?),
+        availability_hidden = 0, availability_hidden_at = NULL
+      WHERE imdb_id = ?
+    `);
+    for (const row of rows) updateMedia.run(seenAt, row.media_imdb_id);
+    return true;
+  }
+
+  beginAvailabilityScan() {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  finalizeAvailabilityScan(
+    scanToken,
+    { missingScans = 3, expirationDays = 0, sourceUrls = [] } = {}
+  ) {
+    if (!scanToken) return { releasesHidden: 0, mediaHidden: 0, mediaRestored: 0 };
+    const sources = [...new Set((sourceUrls || []).map(String).filter(Boolean))];
+    if (!sources.length) return { releasesHidden: 0, mediaHidden: 0, mediaRestored: 0 };
+    const threshold = Math.min(Math.max(Number(missingScans) || 3, 1), 100);
+    const expiryDays = Math.min(Math.max(Number(expirationDays) || 0, 0), 36500);
+    const now = Date.now();
+    const cutoff = expiryDays > 0 ? now - expiryDays * 86400000 : null;
+    return this.db.transaction(() => {
+      this.db.prepare(`
+        UPDATE releases
+        SET missing_scan_count = missing_scan_count + 1
+        WHERE COALESCE(last_scan_token, '') <> ?
+          AND availability_hidden = 0
+          AND source_url IN (${sources.map(() => '?').join(',')})
+      `).run(scanToken, ...sources);
+      const hiddenByScans = this.db.prepare(`
+        UPDATE releases
+        SET availability_hidden = 1, availability_hidden_at = ?
+        WHERE availability_hidden = 0 AND missing_scan_count >= ?
+          AND source_url IN (${sources.map(() => '?').join(',')})
+      `).run(now, threshold, ...sources).changes;
+      const hiddenByExpiry = cutoff
+        ? this.db.prepare(`
+            UPDATE releases
+            SET availability_hidden = 1, availability_hidden_at = ?
+            WHERE availability_hidden = 0 AND COALESCE(last_seen_at, added_at) < ?
+              AND source_url IN (${sources.map(() => '?').join(',')})
+          `).run(now, cutoff, ...sources).changes
+        : 0;
+      const restored = this.db.prepare(`
+        UPDATE media
+        SET availability_hidden = 0, availability_hidden_at = NULL,
+            last_seen_at = COALESCE((
+              SELECT MAX(r.last_seen_at) FROM releases r
+              WHERE r.media_imdb_id = media.imdb_id AND r.availability_hidden = 0
+            ), last_seen_at)
+        WHERE availability_hidden = 1 AND EXISTS (
+          SELECT 1 FROM releases r
+          WHERE r.media_imdb_id = media.imdb_id AND r.availability_hidden = 0
+        )
+      `).run().changes;
+      const hiddenMedia = this.db.prepare(`
+        UPDATE media
+        SET availability_hidden = 1, availability_hidden_at = ?
+        WHERE availability_hidden = 0 AND NOT EXISTS (
+          SELECT 1 FROM releases r
+          WHERE r.media_imdb_id = media.imdb_id AND r.availability_hidden = 0
+        )
+      `).run(now).changes;
+      return {
+        releasesHidden: hiddenByScans + hiddenByExpiry,
+        mediaHidden: hiddenMedia,
+        mediaRestored: restored
+      };
+    })();
   }
 
   // Pour les séries : vérifie si un show est déjà indexé (par nom TMDB)
@@ -519,7 +1624,7 @@ class DatabaseManager {
 
   getMediaList({ catalog = null, search = '', page = 1, limit = 24, sort = 'date_desc', year = null, quality = null } = {}) {
     const offset = (Number(page) - 1) * Number(limit);
-    const conditions = [];
+    const conditions = ["m.catalog_type <> 'youtube'"];
     const params = [];
 
     if (catalog) { conditions.push('m.catalog_type = ?'); params.push(catalog); }
@@ -557,7 +1662,11 @@ class DatabaseManager {
       SELECT m.*, COUNT(r.id) as release_count,
         (SELECT GROUP_CONCAT(release_name, '|||')
          FROM (SELECT release_name FROM releases WHERE media_imdb_id = m.imdb_id ORDER BY added_at DESC LIMIT 3)
-        ) as release_names_raw
+        ) as release_names_raw,
+        (SELECT json_group_array(DISTINCT source_url)
+         FROM releases
+         WHERE media_imdb_id = m.imdb_id AND source_url IS NOT NULL AND source_url != ''
+        ) as source_urls_raw
       FROM media m LEFT JOIN releases r ON r.media_imdb_id = m.imdb_id
       ${where}
       GROUP BY m.imdb_id
@@ -569,7 +1678,10 @@ class DatabaseManager {
       items: rows.map(r => ({
         ...r,
         genres: r.genres ? JSON.parse(r.genres) : [],
-        release_names: r.release_names_raw ? r.release_names_raw.split('|||') : []
+        keywords: r.keywords ? JSON.parse(r.keywords) : [],
+        match_reasons: r.match_reasons ? JSON.parse(r.match_reasons) : [],
+        release_names: r.release_names_raw ? r.release_names_raw.split('|||') : [],
+        source_urls: r.source_urls_raw ? JSON.parse(r.source_urls_raw) : []
       })),
       total, page: Number(page), limit: Number(limit),
       pages: Math.ceil(total / Number(limit))
@@ -579,7 +1691,7 @@ class DatabaseManager {
   getMediaYears() {
     return this.db.prepare(`
       SELECT DISTINCT year FROM media
-      WHERE year IS NOT NULL AND year != ''
+      WHERE catalog_type <> 'youtube' AND year IS NOT NULL AND year != ''
       ORDER BY year DESC
     `).all().map(r => r.year);
   }
@@ -633,6 +1745,364 @@ class DatabaseManager {
       // On supprime les erreurs précédentes pour ce flux quand il revient en succès
       this.db.prepare(`DELETE FROM feed_fetch_errors WHERE source_url = ?`).run(url);
     } catch (e) { console.error('[DB] recordFeedSuccess:', e.message); }
+  }
+
+  beginSourceSync(sourceKey, sourceKind) {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO source_sync_state
+        (source_key, source_kind, last_attempt_at, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(source_key) DO UPDATE SET
+        source_kind = excluded.source_kind,
+        last_attempt_at = excluded.last_attempt_at,
+        updated_at = excluded.updated_at
+    `).run(sourceKey, sourceKind, now, now);
+    return now;
+  }
+
+  finishSourceSync(sourceKey, {
+    sourceKind = 'unknown',
+    startedAt = Date.now(),
+    itemsFetched = 0,
+    quotaLimit = null,
+    quotaUsed = null,
+    quotaStatus = null,
+    cursor = undefined
+  } = {}) {
+    const now = Date.now();
+    const current = this.getSourceSyncState(sourceKey);
+    this.db.prepare(`
+      INSERT INTO source_sync_state (
+        source_key, source_kind, last_attempt_at, last_success_at,
+        last_duration_ms, last_items_fetched, last_error_at,
+        last_error_message, last_http_status, consecutive_errors,
+        quota_limit, quota_used, quota_status, cursor_json, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, ?, ?, ?, ?, ?)
+      ON CONFLICT(source_key) DO UPDATE SET
+        source_kind = excluded.source_kind,
+        last_success_at = excluded.last_success_at,
+        last_duration_ms = excluded.last_duration_ms,
+        last_items_fetched = excluded.last_items_fetched,
+        last_error_at = NULL,
+        last_error_message = NULL,
+        last_http_status = NULL,
+        consecutive_errors = 0,
+        quota_limit = excluded.quota_limit,
+        quota_used = excluded.quota_used,
+        quota_status = excluded.quota_status,
+        cursor_json = excluded.cursor_json,
+        updated_at = excluded.updated_at
+    `).run(
+      sourceKey, sourceKind, Number(startedAt) || now, now,
+      Math.max(0, now - (Number(startedAt) || now)),
+      Math.max(0, Number(itemsFetched) || 0),
+      quotaLimit === null ? current?.quota_limit ?? null : Number(quotaLimit),
+      quotaUsed === null ? current?.quota_used ?? null : Number(quotaUsed),
+      quotaStatus === null ? current?.quota_status ?? null : String(quotaStatus),
+      JSON.stringify(cursor === undefined ? (current?.cursor || {}) : cursor),
+      now
+    );
+    this.recordFeedSuccess(sourceKey);
+    if (Number(current?.consecutive_errors) > 0) {
+      this.recordSourceHealthEvent({
+        sourceKey,
+        sourceKind,
+        eventType: 'recovery',
+        consecutiveErrors: 0
+      });
+    }
+  }
+
+  failSourceSync(sourceKey, {
+    sourceKind = 'unknown',
+    startedAt = Date.now(),
+    errorMessage = null,
+    httpStatus = null
+  } = {}) {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO source_sync_state (
+        source_key, source_kind, last_attempt_at, last_duration_ms,
+        last_error_at, last_error_message, last_http_status,
+        consecutive_errors, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+      ON CONFLICT(source_key) DO UPDATE SET
+        source_kind = excluded.source_kind,
+        last_attempt_at = excluded.last_attempt_at,
+        last_duration_ms = excluded.last_duration_ms,
+        last_error_at = excluded.last_error_at,
+        last_error_message = excluded.last_error_message,
+        last_http_status = excluded.last_http_status,
+        consecutive_errors = source_sync_state.consecutive_errors + 1,
+        updated_at = excluded.updated_at
+    `).run(
+      sourceKey, sourceKind, Number(startedAt) || now,
+      Math.max(0, now - (Number(startedAt) || now)),
+      now, errorMessage || null, httpStatus || null, now
+    );
+    const state = this.getSourceSyncState(sourceKey);
+    this.recordSourceHealthEvent({
+      sourceKey,
+      sourceKind,
+      eventType: 'failure',
+      consecutiveErrors: state?.consecutive_errors || 1,
+      errorMessage,
+      httpStatus
+    });
+  }
+
+  getSourceSyncState(sourceKey) {
+    const row = this.db.prepare('SELECT * FROM source_sync_state WHERE source_key = ?').get(sourceKey);
+    if (!row) return null;
+    return { ...row, cursor: JSON.parse(row.cursor_json || '{}') };
+  }
+
+  recordSourceHealthEvent({
+    sourceKey,
+    sourceKind = 'unknown',
+    eventType,
+    consecutiveErrors = 0,
+    errorMessage = null,
+    httpStatus = null
+  }) {
+    return this.db.prepare(`
+      INSERT INTO source_health_events (
+        source_key, source_kind, event_type, consecutive_errors,
+        error_message, http_status, created_at, processed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+    `).run(
+      sourceKey,
+      sourceKind,
+      eventType,
+      Math.max(0, Number(consecutiveErrors) || 0),
+      errorMessage || null,
+      httpStatus || null,
+      Date.now()
+    ).lastInsertRowid;
+  }
+
+  getPendingSourceHealthEvents(limit = 200) {
+    return this.db.prepare(`
+      SELECT * FROM source_health_events
+      WHERE processed_at IS NULL
+      ORDER BY id ASC
+      LIMIT ?
+    `).all(Math.min(Math.max(Number(limit) || 200, 1), 1000));
+  }
+
+  markSourceHealthEventsProcessed(ids) {
+    const values = [...new Set((ids || []).map(Number).filter(Number.isInteger))];
+    if (!values.length) return 0;
+    const statement = this.db.prepare(`
+      UPDATE source_health_events SET processed_at = ?
+      WHERE id = ? AND processed_at IS NULL
+    `);
+    return this.db.transaction(eventIds => eventIds.reduce(
+      (count, id) => count + statement.run(Date.now(), id).changes,
+      0
+    ))(values);
+  }
+
+  getSourceAlertState(sourceKey) {
+    return this.db.prepare('SELECT * FROM source_alert_state WHERE source_key = ?').get(sourceKey)
+      || { source_key: sourceKey, outage_notified: 0, last_alert_at: null, last_recovery_at: null };
+  }
+
+  setSourceAlertState(sourceKey, { outageNotified, lastAlertAt = null, lastRecoveryAt = null }) {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO source_alert_state (
+        source_key, outage_notified, last_alert_at, last_recovery_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(source_key) DO UPDATE SET
+        outage_notified = excluded.outage_notified,
+        last_alert_at = COALESCE(excluded.last_alert_at, source_alert_state.last_alert_at),
+        last_recovery_at = COALESCE(excluded.last_recovery_at, source_alert_state.last_recovery_at),
+        updated_at = excluded.updated_at
+    `).run(sourceKey, outageNotified ? 1 : 0, lastAlertAt, lastRecoveryAt, now);
+  }
+
+  recordSourceAlert({
+    sourceKey,
+    sourceName = null,
+    eventType,
+    threshold,
+    consecutiveErrors = 0,
+    message = null,
+    channels = []
+  }) {
+    return this.db.prepare(`
+      INSERT INTO source_alert_history (
+        source_key, source_name, event_type, threshold,
+        consecutive_errors, message, channels_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      sourceKey,
+      sourceName,
+      eventType,
+      threshold,
+      consecutiveErrors,
+      message,
+      JSON.stringify(channels),
+      Date.now()
+    ).lastInsertRowid;
+  }
+
+  listSourceAlerts(limit = 100) {
+    return this.db.prepare(`
+      SELECT * FROM source_alert_history ORDER BY created_at DESC, id DESC LIMIT ?
+    `).all(Math.min(Math.max(Number(limit) || 100, 1), 500)).map(row => ({
+      ...row,
+      channels: JSON.parse(row.channels_json || '[]')
+    }));
+  }
+
+  enqueueCometNetItem(sourceId, itemKey, payload) {
+    const now = Date.now();
+    return this.db.prepare(`
+      INSERT OR IGNORE INTO cometnet_inbox
+        (item_key, source_id, payload_json, received_at, processed_at)
+      VALUES (?, ?, ?, ?, NULL)
+    `).run(itemKey, sourceId, JSON.stringify(payload), now).changes > 0;
+  }
+
+  getPendingCometNetItems(sourceId, limit = 5000) {
+    return this.db.prepare(`
+      SELECT item_key, payload_json, received_at
+      FROM cometnet_inbox
+      WHERE source_id = ? AND processed_at IS NULL
+      ORDER BY received_at ASC
+      LIMIT ?
+    `).all(sourceId, Math.min(Math.max(Number(limit) || 5000, 1), 50000)).map(row => ({
+      item_key: row.item_key,
+      payload: JSON.parse(row.payload_json),
+      received_at: row.received_at
+    }));
+  }
+
+  markCometNetItemsProcessed(itemKeys) {
+    const keys = [...new Set((itemKeys || []).filter(Boolean))];
+    if (!keys.length) return 0;
+    const statement = this.db.prepare(`
+      UPDATE cometnet_inbox SET processed_at = ?, payload_json = '{}'
+      WHERE item_key = ? AND processed_at IS NULL
+    `);
+    const transaction = this.db.transaction(values => values.reduce(
+      (count, key) => count + statement.run(Date.now(), key).changes,
+      0
+    ));
+    return transaction(keys);
+  }
+
+  getCometNetInboxStats(sourceId) {
+    return this.db.prepare(`
+      SELECT
+        COUNT(*) AS received,
+        SUM(CASE WHEN processed_at IS NULL THEN 1 ELSE 0 END) AS pending,
+        MAX(received_at) AS last_received_at
+      FROM cometnet_inbox
+      WHERE source_id = ?
+    `).get(sourceId) || { received: 0, pending: 0, last_received_at: null };
+  }
+
+  deleteCometNetInbox(sourceId) {
+    return this.db.prepare('DELETE FROM cometnet_inbox WHERE source_id = ?').run(sourceId).changes;
+  }
+
+  compactCometNetInbox(retentionDays = 30) {
+    const compacted = this.db.prepare(`
+      UPDATE cometnet_inbox SET payload_json = '{}'
+      WHERE processed_at IS NOT NULL AND payload_json != '{}'
+    `).run().changes;
+    const cutoff = Date.now() - Math.min(Math.max(Number(retentionDays) || 30, 1), 365) * 86400000;
+    const deleted = this.db.prepare(`
+      DELETE FROM cometnet_inbox WHERE processed_at IS NOT NULL AND processed_at < ?
+    `).run(cutoff).changes;
+    return { compacted, deleted };
+  }
+
+  listSourceSyncStates() {
+    return this.db.prepare('SELECT * FROM source_sync_state ORDER BY updated_at DESC').all().map(row => ({
+      ...row,
+      cursor: JSON.parse(row.cursor_json || '{}')
+    }));
+  }
+
+  isSourceDue(sourceKey, intervalMinutes, now = Date.now()) {
+    const state = this.getSourceSyncState(sourceKey);
+    if (!state?.last_attempt_at) return true;
+    return now - state.last_attempt_at >= Math.max(1, Number(intervalMinutes) || 1) * 60 * 1000;
+  }
+
+  deleteSourceSyncState(sourceKey) {
+    return this.db.prepare('DELETE FROM source_sync_state WHERE source_key = ?').run(sourceKey).changes > 0;
+  }
+
+  deleteSourceSyncStates(sourceKeys) {
+    const keys = [...new Set((sourceKeys || []).filter(Boolean))];
+    if (!keys.length) return 0;
+    return this.db.prepare(`
+      DELETE FROM source_sync_state WHERE source_key IN (${keys.map(() => '?').join(',')})
+    `).run(...keys).changes;
+  }
+
+  clearSourceSyncStates() {
+    return this.db.prepare('DELETE FROM source_sync_state').run().changes;
+  }
+
+  commitPendingSourceCursors(sourceKeys = null) {
+    const keys = Array.isArray(sourceKeys) ? [...new Set(sourceKeys.filter(Boolean))] : null;
+    if (keys && !keys.length) return 0;
+    const rows = this.db.prepare(`
+      SELECT source_key, cursor_json
+      FROM source_sync_state
+      WHERE cursor_json LIKE '%"pending"%'
+      ${keys ? `AND source_key IN (${keys.map(() => '?').join(',')})` : ''}
+    `).all(...(keys || []));
+    const update = this.db.prepare(`
+      UPDATE source_sync_state SET cursor_json = ?, updated_at = ? WHERE source_key = ?
+    `);
+    let committed = 0;
+    const commit = this.db.transaction(() => {
+      for (const row of rows) {
+        let cursor;
+        try { cursor = JSON.parse(row.cursor_json || '{}'); } catch { continue; }
+        if (!cursor.pending || typeof cursor.pending !== 'object') continue;
+        update.run(JSON.stringify({ committed: cursor.pending }), Date.now(), row.source_key);
+        committed++;
+      }
+    });
+    commit();
+    return committed;
+  }
+
+  recordManifestHistory({ revision, event, catalog = null, details = {} }) {
+    const snapshot = this.listCustomCatalogs().map(item => ({
+      id: item.id,
+      name: item.name,
+      type: item.type,
+      enabled: item.enabled,
+      updates_enabled: item.updates_enabled
+    }));
+    this.db.prepare(`
+      INSERT INTO manifest_history
+        (revision, event, catalog_id, catalog_name, details, snapshot, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      Number(revision), String(event), catalog?.id || null, catalog?.name || null,
+      JSON.stringify(details || {}), JSON.stringify(snapshot), Date.now()
+    );
+  }
+
+  listManifestHistory(limit = 50) {
+    return this.db.prepare(`
+      SELECT * FROM manifest_history ORDER BY revision DESC, id DESC LIMIT ?
+    `).all(Math.min(Math.max(Number(limit) || 50, 1), 200)).map(row => ({
+      ...row,
+      details: JSON.parse(row.details || '{}'),
+      snapshot: JSON.parse(row.snapshot || '[]')
+    }));
   }
 
   getSourceStats() {

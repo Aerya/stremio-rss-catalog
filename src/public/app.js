@@ -20,11 +20,29 @@ function navigate(sectionId) {
     if (limitEl) limitEl.value = libLimit;
     loadRpdbConfig().then(() => loadLibrary()); loadLibraryCounts(); loadYearsFilter();
   }
-  if (sectionId === 'sources')  loadSources();
-  if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); }
+  if (sectionId === 'sources')  loadSourceManager();
+  if (sectionId === 'catalogs') loadCatalogManager();
+  if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); refreshSyncStatus(); }
   if (sectionId === 'failures') loadFailed();
-  if (sectionId === 'config')   loadConfig();
+  if (sectionId === 'config')   { loadConfig(); loadMaintenanceHistory(); }
   if (sectionId === 'overview') { loadStats(); loadOverview(); }
+}
+
+function navigateToRequiredTags(event) {
+  if (event) event.preventDefault();
+  navigate('config');
+  requestAnimationFrame(() => {
+    const input = document.getElementById('required_tags');
+    if (!input) return;
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    input.focus({ preventScroll: true });
+    const field = input.closest('.field');
+    if (field) {
+      field.classList.remove('field-highlight');
+      requestAnimationFrame(() => field.classList.add('field-highlight'));
+      setTimeout(() => field.classList.remove('field-highlight'), 1800);
+    }
+  });
 }
 
 document.querySelectorAll('.nav-item[data-section]').forEach(btn => {
@@ -109,7 +127,7 @@ async function loadOverview() {
     const renderRow = (m) => {
       const title = escHtml(m.title || m.name || m.imdb_id || '—');
       const year  = m.year ? `<span class="ov-row-year">${m.year}</span>` : '';
-      const imdb  = m.imdb_id
+      const imdb  = /^tt\d+$/i.test(m.imdb_id || '')
         ? `<a class="ov-row-imdb" href="https://www.imdb.com/title/${escHtml(m.imdb_id)}" target="_blank">${escHtml(m.imdb_id)}</a>`
         : '';
       return `<li class="ov-row">
@@ -164,6 +182,11 @@ window.copyInstallUrl = function () {
     document.body.removeChild(ta);
     alert(t('install_copied'));
   }
+};
+
+window.openInStremio = function () {
+  const url = document.getElementById('installUrl').textContent;
+  window.location.href = url.replace(/^https?:\/\//i, 'stremio://');
 };
 
 // ═══════════════════════════ LIBRARY ═══════════════════════════════════
@@ -377,6 +400,15 @@ function renderMediaContent(data) {
   else renderMediaGrid(data);
 }
 
+function renderSourceBadges(names = [], limit = 2) {
+  const unique = [...new Set(names.filter(Boolean))];
+  if (!unique.length) return '<span class="text-muted">—</span>';
+  const visible = unique.slice(0, limit)
+    .map(name => `<span class="source-name-badge" title="${escHtml(name)}">${escHtml(name)}</span>`)
+    .join(' ');
+  return `${visible}${unique.length > limit ? ` <span class="source-more">+${unique.length - limit}</span>` : ''}`;
+}
+
 function renderMediaList(data) {
   const grid  = document.getElementById('libraryGrid');
   const pager = document.getElementById('libraryPager');
@@ -391,7 +423,7 @@ function renderMediaList(data) {
   grid.className = 'media-list-view';
   grid.innerHTML = `<table class="media-list-table">
     <thead><tr>
-      <th>Titre</th><th>Releases</th><th>Année</th><th>Catégorie</th><th>Ajouté le</th>
+      <th>Titre</th><th>Releases</th><th>Sources</th><th>Année</th><th>Catégorie</th><th>Ajouté le</th>
     </tr></thead>
     <tbody>
       ${data.items.map(m => {
@@ -410,6 +442,7 @@ function renderMediaList(data) {
             <span>${escHtml(m.name)}</span>
           </td>
           <td class="mlt-rlz-cell">${rlzCell}</td>
+          <td class="media-sources-cell">${renderSourceBadges(m.source_names)}</td>
           <td class="mlt-year">${m.year || '—'}</td>
           <td><span class="${badgeCls}">${m.catalog_type}</span></td>
           <td class="mlt-date">${fmtDate(m.first_seen_at)}</td>
@@ -453,6 +486,7 @@ function renderMediaGrid(data) {
           <span class="media-rlz">${m.release_count || 0} rlz</span>
         </div>
         <div style="margin-top:5px"><span class="${badgeCls}">${m.catalog_type}</span></div>
+        ${m.source_names?.length ? `<div class="media-card-sources">${renderSourceBadges(m.source_names, 1)}</div>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -605,6 +639,7 @@ function openDrawer(imdbId, media) {
       IMDB: <a href="https://www.imdb.com/title/${escHtml(imdbId)}" target="_blank">${escHtml(imdbId)}</a>
     </div>
     ${media.description ? `<p style="margin-top:10px;font-size:13px;color:var(--text-muted);line-height:1.6">${escHtml(media.description.substring(0, 220))}${media.description.length > 220 ? '…' : ''}</p>` : ''}
+    ${media.source_names?.length ? `<div class="drawer-source-list">${renderSourceBadges(media.source_names, 4)}</div>` : ''}
     <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <select id="drawerCatalogSelect" class="select-sm" style="font-size:12px">${catOptions}</select>
       <button class="btn-sm" onclick="changeCatalog('${escHtml(imdbId)}')" style="font-size:12px">Appliquer</button>
@@ -623,26 +658,26 @@ function openDrawer(imdbId, media) {
         body.innerHTML = '<p class="text-muted">' + t('library_releases_none') + '</p>';
         return;
       }
-      const src = releases.find(r => r.source_url)?.source_url;
       body.innerHTML = `
         <p class="text-muted" style="margin-bottom:12px">${releases.length} release${releases.length > 1 ? 's' : ''}</p>
         <div style="overflow-x:auto">
         <table class="releases-table">
           <thead><tr>
             <th data-i18n="library_col_name">Nom</th>
+            <th>Source</th>
             <th data-i18n="library_col_quality">Qualité</th>
             <th data-i18n="library_col_date">Date</th>
           </tr></thead>
           <tbody>
             ${releases.map(r => `<tr>
               <td style="font-size:11px">${escHtml(r.release_name)}</td>
+              <td>${r.source_name ? renderSourceBadges([r.source_name], 1) : '<span class="text-muted">—</span>'}</td>
               <td>${r.quality ? `<span class="quality-badge">${escHtml(r.quality)}</span>` : '<span class="text-muted">—</span>'}</td>
               <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)">${fmtDate(r.added_at)}</td>
             </tr>`).join('')}
           </tbody>
         </table>
         </div>
-        ${src ? `<p style="margin-top:14px;font-size:12px;color:var(--text-muted)">Source : <span style="font-family:monospace">${escHtml(trimUrl(src))}</span></p>` : ''}
       `;
       applyI18nToElement(body);
     })
@@ -719,6 +754,7 @@ async function loadSources() {
         <th data-i18n="sources_media">Médias</th>
         <th data-i18n="sources_last_seen">Dernier ajout</th>
         <th data-i18n="sources_errors">Erreurs</th>
+        <th>Catalogue</th>
       </tr></thead>
       <tbody>
         ${d.map(s => {
@@ -753,6 +789,7 @@ async function loadSources() {
             <td><span class="source-num">${(s.media_count || 0).toLocaleString()}</span></td>
             <td style="font-size:12px;color:var(--text-muted);white-space:nowrap">${s.last_seen ? fmtDate(s.last_seen) : '—'}</td>
             <td>${errCell}</td>
+            <td><button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(s.source_url).replace(/'/g, '%27')}','${encodeURIComponent(s.name || '').replace(/'/g, '%27')}')">Créer</button></td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -764,6 +801,2017 @@ async function loadSources() {
   }
 }
 window.loadSources = loadSources;
+
+async function createCatalogForSource(encodedUrl, encodedName, mediaType = null) {
+  await loadCatalogManager();
+  navigate('catalogs');
+  resetCatalogForm();
+  const url = decodeURIComponent(encodedUrl);
+  const name = decodeURIComponent(encodedName);
+  document.getElementById('catalogName').value = name ? `${name} — Films` : 'Nouveau catalogue';
+  if (mediaType) {
+    document.getElementById('catalogMediaType').value = mediaType;
+    document.getElementById('catalogName').value = name || 'Nouveau catalogue';
+  }
+  const checkbox = [...document.querySelectorAll('#catalogSourceChoices input')]
+    .find(input => input.value === url);
+  if (checkbox) checkbox.checked = true;
+  document.getElementById('catalogName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+window.createCatalogForSource = createCatalogForSource;
+
+// ═══════════════════════════ CATALOGUES ═══════════════════════════════
+
+let catalogManagerData = {
+  catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [], webdav: [], wacustom: [],
+  mediaServers: [], streamfusion: [], cometnet: [], guides: []
+};
+
+function csvValues(id) {
+  return (document.getElementById(id)?.value || '').split(',').map(v => v.trim()).filter(Boolean);
+}
+
+function selectedValues(id) {
+  return [...(document.getElementById(id)?.selectedOptions || [])].map(option => Number(option.value));
+}
+
+function catalogPayload() {
+  return {
+    name: document.getElementById('catalogName').value.trim(),
+    type: document.getElementById('catalogMediaType').value,
+    source_urls: [...document.querySelectorAll('#catalogSourceChoices input:checked')].map(input => input.value),
+    filters: {
+      year_mode: document.getElementById('catalogYearMode').value,
+      years: csvValues('catalogYears'),
+      year_min: document.getElementById('catalogYearMin').value || null,
+      year_max: document.getElementById('catalogYearMax').value || null,
+      keywords_include: csvValues('catalogKeywordsInclude'),
+      keywords_exclude: csvValues('catalogKeywordsExclude'),
+      genres_include: selectedValues('catalogGenresInclude'),
+      genres_exclude: selectedValues('catalogGenresExclude'),
+      guide_id: document.getElementById('catalogGuide').value || null,
+      catalog_ids: [...document.querySelectorAll('#catalogCompositionChoices input:checked')]
+        .map(input => input.value)
+    }
+  };
+}
+
+async function loadCatalogManager() {
+  try {
+    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes, waCustomRes, mediaServerRes, streamFusionRes, cometNetRes, guideRes] = await Promise.all([
+      fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/rss-sources'),
+      fetch('/api/stremio-sources'), fetch('/api/newznab-sources'), fetch('/api/webdav-sources'),
+      fetch('/api/wacustom-sources'), fetch('/api/media-server-sources'),
+      fetch('/api/streamfusion-sources'), fetch('/api/cometnet-sources'), fetch('/api/mdblist-guides')
+    ]);
+    const [catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, streamfusion, cometnet, guides] = await Promise.all([
+      catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json(), newznabRes.json(),
+      webdavRes.json(), waCustomRes.json(), mediaServerRes.json(), streamFusionRes.json(), cometNetRes.json(), guideRes.json()
+    ]);
+    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, streamfusion, cometnet, guides };
+    renderRssSources();
+    renderPastebins();
+    renderNewznabSources();
+    renderStremioSources();
+    renderWebdavSources();
+    renderWaCustomSources();
+    renderMediaServerSources();
+    renderStreamFusionSources();
+    renderCometNetSources();
+    renderMDBListGuides();
+    renderCatalogGuideChoices();
+    renderCatalogCompositionChoices();
+    renderCatalogSourceChoices();
+    renderCatalogs();
+    updateSourceGroupCounts();
+    loadManifestHistory();
+  } catch (error) {
+    console.error('loadCatalogManager', error);
+  }
+}
+window.loadCatalogManager = loadCatalogManager;
+
+function renderCatalogCompositionChoices(selectedIds = null) {
+  const container = document.getElementById('catalogCompositionChoices');
+  if (!container) return;
+  const editingId = document.getElementById('catalogEditId')?.value || null;
+  const type = document.getElementById('catalogMediaType')?.value || 'movie';
+  const selected = new Set(selectedIds || [...container.querySelectorAll('input:checked')].map(input => input.value));
+  const choices = (catalogManagerData.catalogs || [])
+    .filter(catalog => catalog.id !== editingId && catalog.type === type);
+  container.innerHTML = choices.length
+    ? choices.map(catalog => `<label class="catalog-source-choice">
+        <input type="checkbox" value="${escHtml(catalog.id)}" ${selected.has(catalog.id) ? 'checked' : ''}>
+        <span><strong>${escHtml(catalog.name)}</strong><br><small>${catalog.enabled ? 'Publié' : 'Masqué de Stremio'}</small></span>
+      </label>`).join('')
+    : `<span class="text-muted">${t('catalogs_compose_none')}</span>`;
+}
+window.renderCatalogCompositionChoices = renderCatalogCompositionChoices;
+
+async function loadSourceManager() {
+  await Promise.all([loadCatalogManager(), loadSources(), loadSourceAlerts()]);
+}
+window.loadSourceManager = loadSourceManager;
+
+async function loadSourceAlerts() {
+  const thresholdList = document.getElementById('sourceAlertThresholdList');
+  const historyContainer = document.getElementById('sourceAlertHistory');
+  if (!thresholdList || !historyContainer) return;
+  try {
+    const [configResponse, historyResponse] = await Promise.all([
+      fetch('/api/source-alerts/config'),
+      fetch('/api/source-alerts/history?limit=50')
+    ]);
+    const config = await configResponse.json();
+    const history = await historyResponse.json();
+    if (!configResponse.ok) throw new Error(config.error || 'Configuration des alertes inaccessible');
+    if (!historyResponse.ok) throw new Error(history.error || 'Historique des alertes inaccessible');
+
+    document.getElementById('sourceAlertsEnabled').checked = config.enabled !== false;
+    document.getElementById('sourceAlertDefaultThreshold').value = config.default_threshold || 3;
+    thresholdList.innerHTML = config.sources.length
+      ? `<div class="source-alert-threshold-grid">${config.sources.map(source => {
+          const runtime = source.runtime || {};
+          const failures = Number(runtime.consecutive_errors || 0);
+          return `<label class="source-alert-threshold-row">
+            <span>
+              <strong>${escHtml(source.name)}</strong>
+              <small>${escHtml(source.kind)} · ${source.paused ? t('sources_alerts_paused') : `${failures} ${t('sources_alerts_failures')}`}</small>
+            </span>
+            <input type="number" min="1" max="100"
+              data-source-alert-key="${escHtml(source.source_key)}"
+              value="${source.uses_default ? '' : source.threshold}"
+              placeholder="${config.default_threshold}"
+              title="Vide : utiliser le seuil par défaut (${config.default_threshold})">
+          </label>`;
+        }).join('')}</div>`
+      : `<p class="text-muted">${t('sources_alerts_no_source')}</p>`;
+
+    historyContainer.innerHTML = history.length
+      ? `<div class="source-alert-history">${history.map(entry => {
+          const recovered = entry.event_type === 'recovery';
+          let channels = Array.isArray(entry.channels) ? entry.channels : [];
+          if (!channels.length && typeof entry.channels === 'string') {
+            try { channels = JSON.parse(entry.channels || '[]'); } catch {}
+          }
+          return `<div class="source-alert-history-row ${recovered ? 'recovery' : 'failure'}">
+            <span class="source-alert-icon">${recovered ? '✓' : '!'}</span>
+            <span>
+              <strong>${escHtml(entry.source_name || entry.source_key)}</strong>
+              <small>${fmtDate(entry.created_at)} · ${escHtml(entry.message || '')}</small>
+              <small>${t('sources_alerts_channels')} : ${channels.map(escHtml).join(', ') || 'WebUI'}</small>
+            </span>
+          </div>`;
+        }).join('')}</div>`
+      : `<p class="text-muted">${t('sources_alerts_none')}</p>`;
+  } catch (error) {
+    thresholdList.innerHTML = `<p class="source-runtime-error">${escHtml(error.message)}</p>`;
+    historyContainer.innerHTML = `<p class="text-muted">${t('sources_alerts_unavailable')}</p>`;
+  }
+}
+window.loadSourceAlerts = loadSourceAlerts;
+
+async function saveSourceAlerts() {
+  const thresholds = {};
+  document.querySelectorAll('[data-source-alert-key]').forEach(input => {
+    if (input.value !== '') thresholds[input.dataset.sourceAlertKey] = Number(input.value);
+  });
+  const response = await fetch('/api/source-alerts/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      enabled: document.getElementById('sourceAlertsEnabled').checked,
+      default_threshold: Number(document.getElementById('sourceAlertDefaultThreshold').value) || 3,
+      thresholds
+    })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    window.alert(result.error || 'Impossible d’enregistrer les alertes');
+    return;
+  }
+  await loadSourceAlerts();
+}
+window.saveSourceAlerts = saveSourceAlerts;
+
+let activeSourceTab = 'all';
+
+function selectSourceTab(tab) {
+  activeSourceTab = tab;
+  document.querySelectorAll('.source-tab').forEach(button => {
+    button.classList.toggle('active', button.dataset.sourceTab === tab);
+  });
+  applySourceFilters();
+}
+window.selectSourceTab = selectSourceTab;
+
+function applySourceFilters() {
+  const query = (document.getElementById('sourceSearch')?.value || '').trim().toLowerCase();
+  document.querySelectorAll('.source-group').forEach(group => {
+    const kind = group.dataset.sourceGroup;
+    const tabVisible = activeSourceTab === 'all' || kind === activeSourceTab || kind === 'all';
+    group.hidden = !tabVisible;
+  });
+  document.querySelectorAll('.source-entry').forEach(entry => {
+    entry.hidden = Boolean(query) && !entry.dataset.sourceSearch.includes(query);
+  });
+}
+window.applySourceFilters = applySourceFilters;
+
+function sourceRuntimeHtml(source) {
+  const runtime = source.runtime || {};
+  const duration = runtime.last_duration_ms === null || runtime.last_duration_ms === undefined
+    ? '—'
+    : runtime.last_duration_ms < 1000
+      ? `${runtime.last_duration_ms} ms`
+      : `${(runtime.last_duration_ms / 1000).toFixed(1)} s`;
+  const displayedQuotaLimit = runtime.configured_quota_limit ?? runtime.quota_limit;
+  const quota = displayedQuotaLimit
+    ? runtime.quota_unit === 'catalogue'
+      ? `${Number(displayedQuotaLimit).toLocaleString()} par catalogue`
+      : `${Number(runtime.quota_used || 0).toLocaleString()} / ${Number(displayedQuotaLimit).toLocaleString()}`
+    : 'non communiqué';
+  const quotaReached = runtime.quota_status === 'limit_reached'
+    && Number(runtime.quota_used || 0) >= Number(displayedQuotaLimit || 0);
+  const status = source.paused
+    ? '<span class="source-runtime-paused">En pause</span>'
+    : runtime.last_error_at
+      ? `<span class="source-runtime-error">Erreur${runtime.last_http_status ? ` HTTP ${runtime.last_http_status}` : ''}</span>`
+      : '<span class="source-runtime-ok">Active</span>';
+  return `<div class="source-runtime">
+    ${status}
+    <span>Dernier succès : ${runtime.last_success_at ? fmtDate(runtime.last_success_at) : 'jamais'}</span>
+    <span>Prochaine collecte : ${source.paused ? '—' : fmtDate(runtime.next_sync_at)}</span>
+    <span>Durée : ${duration}</span>
+    <span>Éléments lus pendant ce lot : ${Number(runtime.last_items_fetched || 0).toLocaleString()}</span>
+    <span>Limite de sécurité du lot : ${quota}${quotaReached ? ' (lot rempli)' : ''}</span>
+    ${runtime.backfill_in_progress ? '<span class="source-runtime-paused">Rattrapage historique en cours — prochain lot prioritaire</span>' : ''}
+    <span>Fréquence : ${runtime.interval_minutes || '—'} min${runtime.uses_global_interval ? ' (globale)' : ''}</span>
+    ${runtime.last_error_message ? `<span class="source-runtime-error" title="${escHtml(runtime.last_error_message)}">${escHtml(runtime.last_error_message)}</span>` : ''}
+  </div>`;
+}
+
+function maskedSourceUrl(value) {
+  try {
+    const parsed = new URL(value);
+    return `${parsed.origin}/••••••${parsed.search ? '?••••••' : ''}`;
+  } catch {
+    return '••••••';
+  }
+}
+
+async function revealSourceSecret(kind, id, button, copy = false) {
+  const response = await fetch(`/api/source-secrets/${kind}/${id}`);
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  const row = button.closest('.source-entry');
+  const target = row?.querySelector('.sensitive-source-value');
+  const value = button.dataset.secret ? data[button.dataset.secret] : data.url;
+  if (copy) {
+    await navigator.clipboard.writeText(value || '');
+    button.textContent = 'Copié ✓';
+    setTimeout(() => { button.textContent = 'Copier'; }, 1200);
+  } else if (target) {
+    target.textContent = value || '—';
+    target.title = value || '';
+  }
+}
+window.revealSourceSecret = revealSourceSecret;
+
+function sourceSecretActions(kind, id, hasApiKey = false) {
+  return `<button class="btn-sm" onclick="revealSourceSecret('${kind}','${id}',this)">Révéler l’URL</button>
+    <button class="btn-sm" onclick="revealSourceSecret('${kind}','${id}',this,true)">Copier</button>
+    ${hasApiKey ? `<button class="btn-sm" data-secret="api_key" onclick="revealSourceSecret('${kind}','${id}',this,true)">Copier la clé</button>` : ''}`;
+}
+
+function updateSourceGroupCounts() {
+  const values = {
+    rssGroupCount: catalogManagerData.rss.length,
+    pastebinGroupCount: catalogManagerData.pastebins.length,
+    webdavGroupCount: catalogManagerData.webdav.length,
+    mediaserverGroupCount: (catalogManagerData.mediaServers || []).length,
+    streamfusionGroupCount: (catalogManagerData.streamfusion || []).length,
+    cometnetGroupCount: (catalogManagerData.cometnet || []).length,
+    wacustomGroupCount: catalogManagerData.wacustom.length,
+    indexerGroupCount: catalogManagerData.newznab.length,
+    stremioGroupCount: catalogManagerData.stremio.length
+  };
+  Object.entries(values).forEach(([id, count]) => {
+    const node = document.getElementById(id);
+    if (node) node.textContent = count;
+  });
+  applySourceFilters();
+}
+
+async function exportConfiguration(includeSecrets) {
+  if (includeSecrets && !confirm(
+    'Cet export contiendra les clés API, URLs privées et identifiants configurés. Continuer ?'
+  )) return;
+  const response = await fetch(`/api/config/export?include_secrets=${includeSecrets}`);
+  if (!response.ok) return alert((await response.json()).error || 'Export impossible');
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] || 'stremio-rss-catalog.json';
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+window.exportConfiguration = exportConfiguration;
+
+async function importConfiguration() {
+  const file = document.getElementById('configImportFile').files[0];
+  const status = document.getElementById('configImportStatus');
+  if (!file) return alert('Choisissez un fichier JSON.');
+  let payload;
+  try {
+    payload = JSON.parse(await file.text());
+  } catch {
+    return alert('Le fichier ne contient pas un JSON valide.');
+  }
+  const includeSecrets = document.getElementById('configImportSecrets').checked;
+  const previewResponse = await fetch('/api/config/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payload, include_secrets: includeSecrets, dry_run: true })
+  });
+  const preview = await previewResponse.json();
+  if (!previewResponse.ok) {
+    status.textContent = preview.error || 'Import invalide';
+    return;
+  }
+  const counts = preview.counts;
+  const secretWarning = preview.includes_secrets
+    ? (includeSecrets ? '\nLes secrets présents seront importés.' : '\nLes secrets présents resteront exclus.')
+    : '';
+  if (!confirm(
+    `Import valide : ${counts.rss} RSS, ${counts.pastebin} Pastebin, ${counts.webdav || 0} WebDAV, ${counts.wacustom || 0} WaStream/WaCustom, ${counts.media_servers || 0} Plex/Jellyfin, ${counts.streamfusion || 0} StreamFusion, ${counts.cometnet || 0} CometNet, ${counts.indexers} indexeurs, ${counts.stremio} manifestes et ${counts.catalogs} catalogues.${secretWarning}\n\nUne sauvegarde SQLite sera créée avant application. Continuer ?`
+  )) return;
+  const response = await fetch('/api/config/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payload, include_secrets: includeSecrets, dry_run: false })
+  });
+  const result = await response.json();
+  status.textContent = response.ok
+    ? `Import terminé. Sauvegarde : ${result.backup_path}`
+    : (result.error || 'Import impossible');
+  if (response.ok) await loadSourceManager();
+}
+window.importConfiguration = importConfiguration;
+
+function renderRssSources() {
+  const container = document.getElementById('rssSourceList');
+  if (!container) return;
+  if (!catalogManagerData.rss.length) {
+    container.innerHTML = `<p class="text-muted">${t('sources_rss_none')}</p>`;
+    return;
+  }
+  container.innerHTML = catalogManagerData.rss.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} rss`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'RSS')} ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">Classement : ${escHtml(source.force || 'auto')}</div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.url).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editRssSource('${source.id}')">Modifier</button>
+        ${sourceSecretActions('rss', source.id)}
+        <button class="btn-sm" onclick="toggleRssSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteRssSource('${source.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`).join('');
+}
+
+async function saveRssSource() {
+  const id = document.getElementById('rssSourceEditId').value;
+  const response = await fetch(id ? `/api/rss-sources/${id}` : '/api/rss-sources', {
+    method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: document.getElementById('rssSourceName').value,
+      url: document.getElementById('rssSourceUrl').value.trim(),
+      force: document.getElementById('rssSourceForce').value,
+      sync_interval_minutes: document.getElementById('rssSourceInterval').value || null
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetRssSourceForm();
+  await loadSourceManager();
+}
+window.saveRssSource = saveRssSource;
+window.addRssSource = saveRssSource;
+
+async function editRssSource(id) {
+  const source = catalogManagerData.rss.find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/rss/${id}`)).json();
+  document.getElementById('rssSourceEditId').value = id;
+  document.getElementById('rssSourceName').value = source.name || '';
+  document.getElementById('rssSourceUrl').value = secrets.url || '';
+  document.getElementById('rssSourceForce').value = source.force || 'auto';
+  document.getElementById('rssSourceInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('rssSourceSubmit').textContent = 'Enregistrer';
+  document.getElementById('rssSourceCancel').hidden = false;
+}
+window.editRssSource = editRssSource;
+
+function resetRssSourceForm() {
+  document.getElementById('rssSourceEditId').value = '';
+  document.getElementById('rssSourceName').value = '';
+  document.getElementById('rssSourceUrl').value = '';
+  document.getElementById('rssSourceForce').value = 'auto';
+  document.getElementById('rssSourceInterval').value = '';
+  document.getElementById('rssSourceSubmit').textContent = 'Ajouter';
+  document.getElementById('rssSourceCancel').hidden = true;
+}
+window.resetRssSourceForm = resetRssSourceForm;
+
+async function toggleRssSource(id, paused) {
+  const response = await fetch(`/api/rss-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.toggleRssSource = toggleRssSource;
+
+async function deleteRssSource(id) {
+  if (!confirm('Supprimer cette source RSS ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/rss-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteRssSource = deleteRssSource;
+
+function renderPastebins() {
+  const container = document.getElementById('pastebinList');
+  if (!catalogManagerData.pastebins.length) {
+    container.innerHTML = `<p class="text-muted">${t('sources_pastebin_none')}</p>`;
+    return;
+  }
+  container.innerHTML = catalogManagerData.pastebins.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} pastebin`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'Pastebin')} ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">Limite : ${Number(source.maxPages || 1000).toLocaleString()} pages</div>
+        <div class="manager-row-meta">${source.assume_required_tags !== false
+          ? 'Tags requis : conformité déclarée pour toute la source'
+          : 'Tags requis : vérification de chaque titre'}</div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.url).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editPastebin('${source.id}')">Modifier</button>
+        ${sourceSecretActions('pastebin', source.id)}
+        <button class="btn-sm" onclick="togglePastebin('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deletePastebin('${source.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderCatalogSourceChoices(selected = []) {
+  const sources = [
+    ...catalogManagerData.rss,
+    ...catalogManagerData.pastebins.map(source => ({ ...source, kind: 'Pastebin' })),
+    ...catalogManagerData.webdav.map(source => ({
+      name: source.name,
+      url: source.source_key,
+      kind: 'Dossier WebDAV',
+      paused: source.paused
+    })),
+    ...catalogManagerData.wacustom.map(source => ({
+      name: source.name,
+      url: source.source_key,
+      kind: 'API WaCustom',
+      paused: source.paused
+    })),
+    ...(catalogManagerData.mediaServers || []).map(source => ({
+      name: source.name,
+      url: source.source_key,
+      kind: source.kind === 'plex' ? 'Bibliothèque Plex' : 'Bibliothèque Jellyfin',
+      paused: source.paused
+    })),
+    ...(catalogManagerData.streamfusion || []).map(source => ({
+      name: source.name,
+      url: source.source_key,
+      kind: 'Cache privé StreamFusion',
+      paused: source.paused
+    })),
+    ...(catalogManagerData.cometnet || []).map(source => ({
+      name: source.name,
+      url: source.source_key,
+      kind: 'Annonces CometNet reçues',
+      paused: source.paused
+    })),
+    ...catalogManagerData.newznab.flatMap(source => (source.catalogs || []).map(catalog => ({
+      name: `${source.name} — ${catalog.name}`,
+      url: catalog.source_key,
+      kind: `API ${indexerKindLabel(source.kind)}`,
+      paused: source.paused
+    }))),
+    ...catalogManagerData.stremio.flatMap(source => (source.catalogs || []).map(catalog => ({
+      name: `${source.name} — ${catalog.name}`,
+      url: catalog.source_key,
+      kind: 'Catalogue Stremio',
+      paused: source.paused || catalog.enabled === false
+    })))
+  ];
+  const container = document.getElementById('catalogSourceChoices');
+  container.innerHTML = sources.length ? sources.filter(source => !source.paused).map(source => `
+    <label class="catalog-source-choice">
+      <input type="checkbox" value="${escHtml(source.url)}" ${selected.includes(source.url) ? 'checked' : ''}>
+      <span><strong>${escHtml(source.name || source.url)}</strong><br><small class="text-muted">${source.kind}</small></span>
+    </label>`).join('') : '<span class="text-muted">Ajoutez d’abord une source.</span>';
+}
+
+function renderCatalogGuideChoices(selected = null) {
+  const select = document.getElementById('catalogGuide');
+  if (!select) return;
+  const current = selected === null ? select.value : selected;
+  select.innerHTML = '<option value="">Aucun guide — filtres locaux uniquement</option>'
+    + catalogManagerData.guides.map(guide => `
+      <option value="${escHtml(guide.id)}" ${guide.id === current ? 'selected' : ''}>
+        ${escHtml(guide.name)}${guide.paused ? ' — en pause' : ''}
+      </option>`).join('');
+}
+
+function renderMDBListGuides() {
+  const container = document.getElementById('mdblistGuideList');
+  if (!container) return;
+  if (!catalogManagerData.guides.length) {
+    container.innerHTML = '<p class="text-muted">Aucun guide MDBList configuré.</p>';
+    return;
+  }
+  container.innerHTML = catalogManagerData.guides.map(guide => `
+    <div class="manager-row source-entry">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(guide.name)} <span class="source-name-badge">${escHtml(({
+          mdblist: 'MDBList', listsync: 'ListSync', suggestarr: 'SuggestArr', agregarr: 'Agregarr'
+        }[guide.kind || 'mdblist']) || guide.kind || 'MDBList')}</span> ${guide.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(guide.url))}</div>
+        <div class="manager-row-meta">
+          ${Number(guide.stats?.total || 0).toLocaleString()} éléments
+          · ${Number(guide.stats?.movies || 0).toLocaleString()} films
+          · ${Number(guide.stats?.shows || 0).toLocaleString()} séries
+          · limite de lot ${Number(guide.max_items || 10000000).toLocaleString()}
+        </div>
+        ${sourceRuntimeHtml(guide)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="syncMDBListGuide('${guide.id}')">Synchroniser</button>
+        <button class="btn-sm" onclick="editMDBListGuide('${guide.id}')">Modifier</button>
+        <button class="btn-sm" onclick="revealSourceSecret('guide','${guide.id}',this)">Révéler l’URL</button>
+        ${guide.has_api_key ? `<button class="btn-sm" data-secret="api_key" onclick="revealSourceSecret('guide','${guide.id}',this,true)">Copier la clé</button>` : ''}
+        ${guide.has_username ? `<button class="btn-sm" data-secret="username" onclick="revealSourceSecret('guide','${guide.id}',this,true)">Copier l’utilisateur</button>` : ''}
+        ${guide.has_password ? `<button class="btn-sm" data-secret="password" onclick="revealSourceSecret('guide','${guide.id}',this,true)">Copier le mot de passe</button>` : ''}
+        <button class="btn-sm" onclick="toggleMDBListGuide('${guide.id}', ${!guide.paused})">${guide.paused ? 'Reprendre' : 'Mettre en pause'}</button>
+        <button class="btn-danger btn-sm" onclick="deleteMDBListGuide('${guide.id}')">Supprimer</button>
+      </div>
+    </div>`).join('');
+}
+
+function mdblistPayload() {
+  return {
+    source_id: document.getElementById('mdblistEditId').value || null,
+    name: document.getElementById('mdblistName').value.trim(),
+    kind: document.getElementById('guideKind').value,
+    url: document.getElementById('mdblistUrl').value.trim(),
+    api_key: document.getElementById('mdblistApiKey').value,
+    username: document.getElementById('guideUsername').value.trim(),
+    password: document.getElementById('guidePassword').value,
+    list_type: document.getElementById('guideListType').value.trim(),
+    list_id: document.getElementById('guideKind').value === 'agregarr'
+      ? document.getElementById('guideAgregarrCollection').value
+      : document.getElementById('guideListId').value.trim(),
+    statuses: [...document.getElementById('guideStatuses').selectedOptions].map(option => option.value),
+    max_items: Number(document.getElementById('mdblistMaxItems').value) || 10000000,
+    sync_interval_minutes: document.getElementById('mdblistInterval').value || null
+  };
+}
+
+async function previewMDBListGuide() {
+  const output = document.getElementById('mdblistPreview');
+  output.textContent = 'Lecture du guide en cours…';
+  const response = await fetch('/api/mdblist-guides/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(mdblistPayload())
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? (data.collections
+        ? `${data.collections.length} collection(s) Agregarr détectée(s)`
+        : `${data.items} premiers éléments lus · ${data.movies} films · ${data.shows} séries`)
+    : (data.error || 'Erreur');
+}
+window.previewMDBListGuide = previewMDBListGuide;
+
+async function detectAgregarrCollections() {
+  const output = document.getElementById('mdblistPreview');
+  const payload = mdblistPayload();
+  payload.list_id = '';
+  output.textContent = 'Détection des collections Agregarr…';
+  const response = await fetch('/api/mdblist-guides/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    output.textContent = data.error || 'Détection impossible';
+    return;
+  }
+  const select = document.getElementById('guideAgregarrCollection');
+  select.innerHTML = (data.collections || []).map(collection =>
+    `<option value="${escHtml(collection.id)}">${escHtml(collection.name)}${collection.type ? ` — ${escHtml(collection.type)}` : ''}</option>`
+  ).join('') || '<option value="">Aucune collection disponible</option>';
+  output.textContent = `${data.collections?.length || 0} collection(s) détectée(s)`;
+}
+window.detectAgregarrCollections = detectAgregarrCollections;
+
+async function saveMDBListGuide() {
+  const id = document.getElementById('mdblistEditId').value;
+  const output = document.getElementById('mdblistPreview');
+  output.textContent = id ? 'Enregistrement…' : 'Ajout et première synchronisation…';
+  const response = await fetch(id ? `/api/mdblist-guides/${id}` : '/api/mdblist-guides', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(mdblistPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    output.textContent = data.error || 'Erreur';
+    return;
+  }
+  resetMDBListForm();
+  await loadCatalogManager();
+}
+window.saveMDBListGuide = saveMDBListGuide;
+
+async function editMDBListGuide(id) {
+  const guide = catalogManagerData.guides.find(item => item.id === id);
+  if (!guide) return;
+  const secrets = await (await fetch(`/api/source-secrets/guide/${id}`)).json();
+  document.getElementById('mdblistEditId').value = id;
+  document.getElementById('guideKind').value = guide.kind || 'mdblist';
+  document.getElementById('mdblistName').value = guide.name || '';
+  document.getElementById('mdblistUrl').value = secrets.url || '';
+  document.getElementById('mdblistApiKey').value = '';
+  document.getElementById('mdblistApiKey').placeholder = 'Clé enregistrée — laisser vide pour conserver';
+  document.getElementById('guideUsername').value = secrets.username || '';
+  document.getElementById('guidePassword').value = '';
+  document.getElementById('guidePassword').placeholder = guide.has_password ? 'Mot de passe enregistré — laisser vide pour conserver' : '';
+  document.getElementById('guideListType').value = guide.list_type || '';
+  document.getElementById('guideListId').value = guide.list_id || '';
+  const agregarrSelect = document.getElementById('guideAgregarrCollection');
+  agregarrSelect.innerHTML = guide.kind === 'agregarr' && guide.list_id
+    ? `<option value="${escHtml(guide.list_id)}">${escHtml(guide.list_id)} — sélection enregistrée</option>`
+    : '<option value="">Détectez les collections disponibles</option>';
+  [...document.getElementById('guideStatuses').options].forEach(option => {
+    option.selected = (guide.statuses || ['awaiting_approval']).includes(option.value);
+  });
+  document.getElementById('mdblistMaxItems').value = guide.max_items || 10000000;
+  document.getElementById('mdblistInterval').value = guide.sync_interval_minutes || '';
+  document.getElementById('mdblistSubmit').textContent = 'Enregistrer';
+  document.getElementById('mdblistCancel').hidden = false;
+  updateGuideFields();
+}
+window.editMDBListGuide = editMDBListGuide;
+
+function resetMDBListForm() {
+  document.getElementById('mdblistEditId').value = '';
+  document.getElementById('mdblistName').value = '';
+  document.getElementById('guideKind').value = 'mdblist';
+  document.getElementById('mdblistUrl').value = '';
+  document.getElementById('mdblistApiKey').value = '';
+  document.getElementById('mdblistApiKey').placeholder = '';
+  document.getElementById('guideUsername').value = '';
+  document.getElementById('guidePassword').value = '';
+  document.getElementById('guidePassword').placeholder = '';
+  document.getElementById('guideListType').value = '';
+  document.getElementById('guideListId').value = '';
+  document.getElementById('guideAgregarrCollection').innerHTML =
+    '<option value="">Détectez les collections disponibles</option>';
+  [...document.getElementById('guideStatuses').options].forEach((option, index) => {
+    option.selected = index === 0;
+  });
+  document.getElementById('mdblistMaxItems').value = 10000000;
+  document.getElementById('mdblistInterval').value = '';
+  document.getElementById('mdblistPreview').textContent = '';
+  document.getElementById('mdblistSubmit').textContent = 'Ajouter et synchroniser';
+  document.getElementById('mdblistCancel').hidden = true;
+  updateGuideFields();
+}
+window.resetMDBListForm = resetMDBListForm;
+
+function updateGuideFields() {
+  const kind = document.getElementById('guideKind')?.value || 'mdblist';
+  document.querySelectorAll('.guide-field-mdblist').forEach(node => { node.hidden = kind !== 'mdblist'; });
+  document.querySelectorAll('.guide-field-listsync').forEach(node => { node.hidden = kind !== 'listsync'; });
+  document.querySelectorAll('.guide-field-suggestarr').forEach(node => { node.hidden = kind !== 'suggestarr'; });
+  document.querySelectorAll('.guide-field-agregarr').forEach(node => { node.hidden = kind !== 'agregarr'; });
+  document.querySelectorAll('.guide-field-apikey').forEach(node => {
+    node.hidden = !['mdblist', 'agregarr'].includes(kind);
+  });
+  const labels = {
+    mdblist: ['URL de la liste ou identifiant MDBList', 'https://mdblist.com/lists/utilisateur/ma-liste'],
+    listsync: ['URL racine de ListSync', 'http://listsync:4222'],
+    suggestarr: ['URL racine de SuggestArr', 'http://suggestarr:5000'],
+    agregarr: ['URL racine d’Agregarr', 'http://agregarr:7171']
+  };
+  const [label, placeholder] = labels[kind];
+  document.getElementById('guideUrlLabel').textContent = label;
+  document.getElementById('mdblistUrl').placeholder = placeholder;
+  document.getElementById('guideApiKeyLabel').textContent =
+    kind === 'agregarr' ? 'Clé API Agregarr' : 'Clé API MDBList';
+  const maxItems = document.getElementById('mdblistMaxItems');
+  maxItems.max = kind === 'listsync' ? '100' : kind === 'suggestarr' ? '5000' : '50000';
+  if (kind === 'listsync' && Number(maxItems.value) > 100) maxItems.value = 100;
+}
+window.updateGuideFields = updateGuideFields;
+
+async function syncMDBListGuide(id) {
+  const response = await fetch(`/api/mdblist-guides/${id}/sync`, { method: 'POST' });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Synchronisation impossible');
+  await loadCatalogManager();
+}
+window.syncMDBListGuide = syncMDBListGuide;
+
+async function toggleMDBListGuide(id, paused) {
+  const response = await fetch(`/api/mdblist-guides/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadCatalogManager();
+}
+window.toggleMDBListGuide = toggleMDBListGuide;
+
+async function deleteMDBListGuide(id) {
+  if (!confirm('Supprimer ce guide ? Les catalogues qui l’utilisent deviendront vides tant qu’un autre guide ne leur sera pas affecté.')) return;
+  const response = await fetch(`/api/mdblist-guides/${id}`, { method: 'DELETE' });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadCatalogManager();
+}
+window.deleteMDBListGuide = deleteMDBListGuide;
+
+function renderCatalogs() {
+  const container = document.getElementById('catalogList');
+  if (!catalogManagerData.catalogs.length) {
+    container.innerHTML = `<p class="text-muted">${t('catalogs_none')}</p>`;
+    return;
+  }
+  container.innerHTML = catalogManagerData.catalogs.map(catalog => {
+    const years = catalog.filters?.years?.length
+      ? `${catalog.filters.year_mode === 'exclude' ? 'hors ' : ''}${catalog.filters.years.join(', ')}`
+      : t('catalogs_all_years');
+    const typeLabel = {
+      movie: t('stat_films'),
+      series: t('stat_series'),
+      anime: 'Anime'
+    }[catalog.type] || catalog.type;
+    const guide = catalogManagerData.guides.find(item => item.id === catalog.filters?.guide_id);
+    return `<div class="manager-row">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${catalog.enabled ? '●' : '○'} ${escHtml(catalog.name)}</div>
+        <div class="manager-row-meta">${escHtml(typeLabel)} · ${escHtml(years)} · ${catalog.source_urls.length ? `${catalog.source_urls.length} ${t('catalogs_source_count')}` : t('catalogs_all_sources')}${guide ? ` · guide ${escHtml(guide.name)}` : ''}</div>
+        <div class="manager-row-meta">
+          ${catalog.updates_enabled ? '↻ Mises à jour actives' : `⏸ Contenu gelé${catalog.frozen_at ? ` depuis le ${new Date(catalog.frozen_at).toLocaleString()}` : ''}`}
+          · ${catalog.enabled ? 'Visible dans le manifeste Stremio' : 'Masqué du manifeste Stremio'}
+        </div>
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="editCatalog('${catalog.id}')">${t('catalogs_edit')}</button>
+        <button class="btn-sm" onclick="toggleCatalogUpdates('${catalog.id}', ${!catalog.updates_enabled})">${catalog.updates_enabled ? 'Geler les mises à jour' : 'Reprendre les mises à jour'}</button>
+        <button class="btn-sm" onclick="toggleCatalogExposure('${catalog.id}', ${!catalog.enabled})">${catalog.enabled ? 'Masquer de Stremio' : 'Afficher dans Stremio'}</button>
+        <button class="btn-danger btn-sm" onclick="deleteCatalog('${catalog.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function previewPastebin() {
+  const url = document.getElementById('pastebinUrl').value.trim();
+  const output = document.getElementById('pastebinPreview');
+  if (!url) return;
+  output.textContent = 'Analyse en cours…';
+  const response = await fetch('/api/pastebins/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      url,
+      maxPages: Math.min(Number(document.getElementById('pastebinMaxPages').value) || 25, 100),
+      assume_required_tags: document.getElementById('pastebinAssumeRequiredTags').checked
+    })
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${data.items.toLocaleString()} médias · ${data.visited} pages${data.tags_assumed ? ' · conformité aux tags déclarée' : ' · tags vérifiés titre par titre'}${data.duplicates ? ` · ${data.duplicates.toLocaleString()} doublons retirés` : ''} · ${Object.entries(data.categories).map(([k,v]) => `${k}: ${v}`).join(' · ')}${data.truncated ? ' · aperçu limité' : ''}`
+    : (data.error || 'Erreur');
+}
+window.previewPastebin = previewPastebin;
+
+async function savePastebin() {
+  const id = document.getElementById('pastebinEditId').value;
+  const response = await fetch(id ? `/api/pastebins/${id}` : '/api/pastebins', {
+    method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: document.getElementById('pastebinName').value,
+      url: document.getElementById('pastebinUrl').value.trim(),
+      force: document.getElementById('pastebinForce').value,
+      max_depth: Number(document.getElementById('pastebinMaxDepth').value) || 0,
+      max_pages: Number(document.getElementById('pastebinMaxPages').value) || 1000,
+      assume_required_tags: document.getElementById('pastebinAssumeRequiredTags').checked,
+      sync_interval_minutes: document.getElementById('pastebinInterval').value || null
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetPastebinForm();
+  await loadSourceManager();
+}
+window.savePastebin = savePastebin;
+window.addPastebin = savePastebin;
+
+async function editPastebin(id) {
+  const source = catalogManagerData.pastebins.find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/pastebin/${id}`)).json();
+  document.getElementById('pastebinEditId').value = id;
+  document.getElementById('pastebinName').value = source.name || '';
+  document.getElementById('pastebinUrl').value = secrets.url || '';
+  document.getElementById('pastebinForce').value = source.force || 'auto';
+  document.getElementById('pastebinMaxDepth').value = source.maxDepth ?? 5;
+  document.getElementById('pastebinMaxPages').value = source.maxPages || 1000;
+  document.getElementById('pastebinInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('pastebinAssumeRequiredTags').checked = source.assume_required_tags !== false;
+  document.getElementById('pastebinSubmit').textContent = 'Enregistrer';
+  document.getElementById('pastebinCancel').hidden = false;
+}
+window.editPastebin = editPastebin;
+
+function resetPastebinForm() {
+  document.getElementById('pastebinEditId').value = '';
+  document.getElementById('pastebinName').value = '';
+  document.getElementById('pastebinUrl').value = '';
+  document.getElementById('pastebinForce').value = 'auto';
+  document.getElementById('pastebinMaxDepth').value = 5;
+  document.getElementById('pastebinMaxPages').value = 1000;
+  document.getElementById('pastebinInterval').value = '';
+  document.getElementById('pastebinAssumeRequiredTags').checked = true;
+  document.getElementById('pastebinPreview').textContent = '';
+  document.getElementById('pastebinSubmit').textContent = 'Ajouter';
+  document.getElementById('pastebinCancel').hidden = true;
+}
+window.resetPastebinForm = resetPastebinForm;
+
+async function togglePastebin(id, paused) {
+  await fetch(`/api/pastebins/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  loadCatalogManager();
+}
+window.togglePastebin = togglePastebin;
+
+async function deletePastebin(id) {
+  if (!confirm('Supprimer cette source Pastebin ?')) return;
+  await fetch(`/api/pastebins/${id}`, { method: 'DELETE' });
+  loadCatalogManager();
+}
+window.deletePastebin = deletePastebin;
+
+function webdavPayload() {
+  return {
+    source_id: document.getElementById('webdavEditId').value || null,
+    name: document.getElementById('webdavName').value.trim(),
+    url: document.getElementById('webdavUrl').value.trim(),
+    username: document.getElementById('webdavUsername').value,
+    password: document.getElementById('webdavPassword').value,
+    force: document.getElementById('webdavForce').value,
+    max_depth: Number(document.getElementById('webdavMaxDepth').value),
+    max_items: Number(document.getElementById('webdavMaxItems').value) || 10000000,
+    extensions: document.getElementById('webdavExtensions').value,
+    sync_interval_minutes: document.getElementById('webdavInterval').value || null,
+    use_proxy: document.getElementById('webdavUseProxy').checked,
+    clear_credentials: document.getElementById('webdavClearCredentials').checked
+  };
+}
+
+function renderWebdavSources() {
+  const container = document.getElementById('webdavList');
+  if (!container) return;
+  if (!catalogManagerData.webdav.length) {
+    container.innerHTML = '<p class="text-muted">Aucune source WebDAV configurée.</p>';
+    return;
+  }
+  container.innerHTML = catalogManagerData.webdav.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} webdav`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'WebDAV')} <span class="source-name-badge">WebDAV</span> ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">
+          classement ${escHtml(source.force || 'auto')}
+          · profondeur ${Number(source.max_depth)}
+          · limite de lot ${Number(source.max_items).toLocaleString()} fichiers
+          · ${source.extensions.map(value => `.${escHtml(value)}`).join(', ')}
+          ${source.use_proxy ? ' · proxy global' : ' · connexion directe'}
+        </div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editWebdavSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="revealSourceSecret('webdav','${source.id}',this)">Révéler l’URL</button>
+        <button class="btn-sm" onclick="revealSourceSecret('webdav','${source.id}',this,true)">Copier l’URL</button>
+        ${source.has_username ? `<button class="btn-sm" data-secret="username" onclick="revealSourceSecret('webdav','${source.id}',this,true)">Copier l’utilisateur</button>` : ''}
+        ${source.has_password ? `<button class="btn-sm" data-secret="password" onclick="revealSourceSecret('webdav','${source.id}',this,true)">Copier le mot de passe</button>` : ''}
+        <button class="btn-sm" onclick="toggleWebdavSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteWebdavSource('${source.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`).join('');
+}
+
+async function previewWebdavSource() {
+  const output = document.getElementById('webdavPreview');
+  const payload = webdavPayload();
+  if (!payload.url) return;
+  output.textContent = 'Parcours WebDAV en cours…';
+  const response = await fetch('/api/webdav-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${data.directories} dossier(s) parcouru(s) · ${data.items} fichier(s) vidéo trouvé(s)`
+      + (data.sample?.length ? ` · exemples : ${data.sample.join(' · ')}` : '')
+    : (data.error || 'Erreur');
+}
+window.previewWebdavSource = previewWebdavSource;
+
+async function saveWebdavSource() {
+  const id = document.getElementById('webdavEditId').value;
+  const response = await fetch(id ? `/api/webdav-sources/${id}` : '/api/webdav-sources', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(webdavPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetWebdavForm();
+  await loadSourceManager();
+}
+window.saveWebdavSource = saveWebdavSource;
+
+async function editWebdavSource(id) {
+  const source = catalogManagerData.webdav.find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/webdav/${id}`)).json();
+  document.getElementById('webdavEditId').value = id;
+  document.getElementById('webdavName').value = source.name || '';
+  document.getElementById('webdavUrl').value = secrets.url || '';
+  document.getElementById('webdavUsername').value = '';
+  document.getElementById('webdavUsername').placeholder = source.has_username ? 'Laisser vide pour conserver' : '';
+  document.getElementById('webdavPassword').value = '';
+  document.getElementById('webdavPassword').placeholder = source.has_password ? 'Laisser vide pour conserver' : '';
+  document.getElementById('webdavForce').value = source.force || 'auto';
+  document.getElementById('webdavMaxDepth').value = source.max_depth ?? 8;
+  document.getElementById('webdavMaxItems').value = source.max_items || 10000000;
+  document.getElementById('webdavExtensions').value = (source.extensions || []).join(',');
+  document.getElementById('webdavInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('webdavUseProxy').checked = Boolean(source.use_proxy);
+  document.getElementById('webdavClearCredentials').checked = false;
+  document.getElementById('webdavSubmit').textContent = 'Enregistrer';
+  document.getElementById('webdavCancel').hidden = false;
+}
+window.editWebdavSource = editWebdavSource;
+
+function resetWebdavForm() {
+  document.getElementById('webdavEditId').value = '';
+  document.getElementById('webdavName').value = '';
+  document.getElementById('webdavUrl').value = '';
+  document.getElementById('webdavUsername').value = '';
+  document.getElementById('webdavUsername').placeholder = '';
+  document.getElementById('webdavPassword').value = '';
+  document.getElementById('webdavPassword').placeholder = '';
+  document.getElementById('webdavForce').value = 'auto';
+  document.getElementById('webdavMaxDepth').value = 8;
+  document.getElementById('webdavMaxItems').value = 10000000;
+  document.getElementById('webdavExtensions').value = 'mkv,mp4,avi,mov,m4v,webm,ts,m2ts,iso,strm';
+  document.getElementById('webdavInterval').value = '';
+  document.getElementById('webdavUseProxy').checked = false;
+  document.getElementById('webdavClearCredentials').checked = false;
+  document.getElementById('webdavPreview').textContent = '';
+  document.getElementById('webdavSubmit').textContent = 'Ajouter';
+  document.getElementById('webdavCancel').hidden = true;
+}
+window.resetWebdavForm = resetWebdavForm;
+
+async function toggleWebdavSource(id, paused) {
+  const response = await fetch(`/api/webdav-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.toggleWebdavSource = toggleWebdavSource;
+
+async function deleteWebdavSource(id) {
+  if (!confirm('Supprimer cette source WebDAV ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/webdav-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteWebdavSource = deleteWebdavSource;
+
+let detectedMediaServerTargets = [];
+
+function mediaServerPayload() {
+  return {
+    source_id: document.getElementById('mediaServerEditId').value || null,
+    kind: document.getElementById('mediaServerKind').value,
+    name: document.getElementById('mediaServerName').value.trim(),
+    url: document.getElementById('mediaServerUrl').value.trim(),
+    api_key: document.getElementById('mediaServerApiKey').value,
+    targets: [...document.querySelectorAll('#mediaServerTargets input:checked')].map(input => input.value),
+    target_labels: detectedMediaServerTargets.filter(target =>
+      document.querySelector(`#mediaServerTargets input[value="${CSS.escape(target.id)}"]`)?.checked
+    ),
+    max_items: Number(document.getElementById('mediaServerMaxItems').value) || 10000000,
+    page_size: Number(document.getElementById('mediaServerPageSize').value) || 500,
+    sync_interval_minutes: document.getElementById('mediaServerInterval').value || null,
+    use_proxy: document.getElementById('mediaServerUseProxy').checked
+  };
+}
+
+function renderMediaServerTargets(targets, selected = []) {
+  detectedMediaServerTargets = targets || [];
+  const container = document.getElementById('mediaServerTargets');
+  if (!container) return;
+  container.innerHTML = detectedMediaServerTargets.length
+    ? detectedMediaServerTargets.map(target => `<label class="catalog-source-choice">
+        <input type="checkbox" value="${escHtml(target.id)}" ${selected.length ? (selected.includes(target.id) ? 'checked' : '') : 'checked'}>
+        <span>${escHtml(target.name)} <small>(${target.kind === 'collection' ? 'collection' : 'bibliothèque'} · ${target.type})</small></span>
+      </label>`).join('')
+    : '<span class="text-muted">Détectez d’abord les bibliothèques disponibles.</span>';
+}
+
+function renderMediaServerSources() {
+  const container = document.getElementById('mediaServerList');
+  if (!container) return;
+  const sources = catalogManagerData.mediaServers || [];
+  if (!sources.length) {
+    container.innerHTML = '<p class="text-muted">Aucun serveur Plex/Jellyfin configuré.</p>';
+    return;
+  }
+  container.innerHTML = sources.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} ${source.kind} plex jellyfin`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name)} <span class="source-name-badge">${source.kind === 'plex' ? 'Plex' : 'Jellyfin'}</span> ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">
+          ${(source.target_labels || []).map(target => escHtml(target.name)).join(' · ') || `${source.targets?.length || 0} cible(s)`}
+          · limite de lot ${Number(source.max_items).toLocaleString()}
+          ${source.use_proxy ? ' · proxy global' : ' · connexion directe'}
+        </div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editMediaServerSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="revealSourceSecret('media-server','${source.id}',this)">Révéler l’URL</button>
+        <button class="btn-sm" data-secret="api_key" onclick="revealSourceSecret('media-server','${source.id}',this,true)">Copier le jeton</button>
+        <button class="btn-sm" onclick="toggleMediaServerSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteMediaServerSource('${source.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`).join('');
+}
+
+async function previewMediaServerSource() {
+  const output = document.getElementById('mediaServerPreview');
+  output.textContent = 'Détection des bibliothèques…';
+  const response = await fetch('/api/media-server-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mediaServerPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    output.textContent = data.error || 'Erreur';
+    return;
+  }
+  const selected = [...document.querySelectorAll('#mediaServerTargets input:checked')].map(input => input.value);
+  renderMediaServerTargets(data.targets || [], selected);
+  output.textContent = `${data.targets?.length || 0} bibliothèque(s) ou collection(s) détectée(s) sur ${data.server}`;
+}
+window.previewMediaServerSource = previewMediaServerSource;
+
+async function saveMediaServerSource() {
+  const id = document.getElementById('mediaServerEditId').value;
+  const response = await fetch(id ? `/api/media-server-sources/${id}` : '/api/media-server-sources', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(mediaServerPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetMediaServerForm();
+  await loadSourceManager();
+}
+window.saveMediaServerSource = saveMediaServerSource;
+
+async function editMediaServerSource(id) {
+  const source = (catalogManagerData.mediaServers || []).find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/media-server/${id}`)).json();
+  document.getElementById('mediaServerEditId').value = id;
+  document.getElementById('mediaServerKind').value = source.kind;
+  document.getElementById('mediaServerName').value = source.name || '';
+  document.getElementById('mediaServerUrl').value = secrets.url || '';
+  document.getElementById('mediaServerApiKey').value = '';
+  document.getElementById('mediaServerApiKey').placeholder = source.has_api_key ? 'Laisser vide pour conserver' : '';
+  document.getElementById('mediaServerMaxItems').value = source.max_items || 10000000;
+  document.getElementById('mediaServerPageSize').value = source.page_size || 500;
+  document.getElementById('mediaServerInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('mediaServerUseProxy').checked = Boolean(source.use_proxy);
+  renderMediaServerTargets(source.target_labels || [], source.targets || []);
+  document.getElementById('mediaServerSubmit').textContent = 'Enregistrer';
+  document.getElementById('mediaServerCancel').hidden = false;
+}
+window.editMediaServerSource = editMediaServerSource;
+
+function resetMediaServerForm() {
+  document.getElementById('mediaServerEditId').value = '';
+  document.getElementById('mediaServerKind').value = 'plex';
+  document.getElementById('mediaServerName').value = '';
+  document.getElementById('mediaServerUrl').value = '';
+  document.getElementById('mediaServerApiKey').value = '';
+  document.getElementById('mediaServerApiKey').placeholder = '';
+  document.getElementById('mediaServerMaxItems').value = 10000000;
+  document.getElementById('mediaServerPageSize').value = 500;
+  document.getElementById('mediaServerInterval').value = '';
+  document.getElementById('mediaServerUseProxy').checked = false;
+  document.getElementById('mediaServerPreview').textContent = '';
+  renderMediaServerTargets([]);
+  document.getElementById('mediaServerSubmit').textContent = 'Ajouter';
+  document.getElementById('mediaServerCancel').hidden = true;
+}
+window.resetMediaServerForm = resetMediaServerForm;
+
+async function toggleMediaServerSource(id, paused) {
+  const response = await fetch(`/api/media-server-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.toggleMediaServerSource = toggleMediaServerSource;
+
+async function deleteMediaServerSource(id) {
+  if (!confirm('Supprimer cette source Plex/Jellyfin ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/media-server-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteMediaServerSource = deleteMediaServerSource;
+
+function streamFusionPayload() {
+  return {
+    source_id: document.getElementById('streamFusionEditId').value || null,
+    name: document.getElementById('streamFusionName').value.trim(),
+    url: document.getElementById('streamFusionUrl').value.trim(),
+    key_id: document.getElementById('streamFusionKeyId').value,
+    secret: document.getElementById('streamFusionSecret').value,
+    max_items_per_sync: Number(document.getElementById('streamFusionMaxItems').value) || 10000000,
+    page_size: Number(document.getElementById('streamFusionPageSize').value) || 1000,
+    request_delay_ms: Number(document.getElementById('streamFusionDelay').value) || 0,
+    sync_interval_minutes: document.getElementById('streamFusionInterval').value || null,
+    use_proxy: document.getElementById('streamFusionUseProxy').checked
+  };
+}
+
+function renderStreamFusionSources() {
+  const container = document.getElementById('streamFusionList');
+  if (!container) return;
+  const sources = catalogManagerData.streamfusion || [];
+  if (!sources.length) {
+    container.innerHTML = '<p class="text-muted">Aucune instance StreamFusion configurée.</p>';
+    return;
+  }
+  container.innerHTML = sources.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} streamfusion`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'StreamFusion')} <span class="source-name-badge">StreamFusion</span> ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">cache privé · limite de lot ${Number(source.max_items_per_sync).toLocaleString()} · pages de ${Number(source.page_size).toLocaleString()} ${source.use_proxy ? '· proxy global' : '· connexion directe'}</div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key)}','${encodeURIComponent(source.name || '')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editStreamFusionSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="revealSourceSecret('streamfusion','${source.id}',this)">Révéler l’URL</button>
+        <button class="btn-sm" data-secret="key_id" onclick="revealSourceSecret('streamfusion','${source.id}',this,true)">Copier le Key ID</button>
+        <button class="btn-sm" data-secret="secret" onclick="revealSourceSecret('streamfusion','${source.id}',this,true)">Copier le secret</button>
+        <button class="btn-sm" onclick="toggleStreamFusionSource('${source.id}',${!source.paused})">${source.paused ? 'Reprendre' : 'Mettre en pause'}</button>
+        <button class="btn-danger btn-sm" onclick="deleteStreamFusionSource('${source.id}')">Supprimer</button>
+      </div>
+    </div>`).join('');
+}
+
+async function previewStreamFusionSource() {
+  const output = document.getElementById('streamFusionPreview');
+  output.textContent = 'Authentification et lecture de l’export privé…';
+  const response = await fetch('/api/streamfusion-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(streamFusionPayload())
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `✓ API Peer valide · ${data.items} élément test lu${data.has_more ? ' · davantage disponible' : ''}`
+    : `✗ ${data.error || 'Test impossible'}`;
+}
+window.previewStreamFusionSource = previewStreamFusionSource;
+
+async function saveStreamFusionSource() {
+  const id = document.getElementById('streamFusionEditId').value;
+  const response = await fetch(id ? `/api/streamfusion-sources/${id}` : '/api/streamfusion-sources', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(streamFusionPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Enregistrement impossible');
+  resetStreamFusionForm();
+  await loadSourceManager();
+}
+window.saveStreamFusionSource = saveStreamFusionSource;
+
+async function editStreamFusionSource(id) {
+  const source = (catalogManagerData.streamfusion || []).find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/streamfusion/${id}`)).json();
+  document.getElementById('streamFusionEditId').value = id;
+  document.getElementById('streamFusionName').value = source.name || '';
+  document.getElementById('streamFusionUrl').value = secrets.url || '';
+  document.getElementById('streamFusionKeyId').value = '';
+  document.getElementById('streamFusionKeyId').placeholder = source.has_key_id ? 'Laisser vide pour conserver' : '';
+  document.getElementById('streamFusionSecret').value = '';
+  document.getElementById('streamFusionSecret').placeholder = source.has_secret ? 'Laisser vide pour conserver' : '';
+  document.getElementById('streamFusionMaxItems').value = source.max_items_per_sync || 10000000;
+  document.getElementById('streamFusionPageSize').value = source.page_size || 1000;
+  document.getElementById('streamFusionDelay').value = source.request_delay_ms ?? 100;
+  document.getElementById('streamFusionInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('streamFusionUseProxy').checked = source.use_proxy;
+  document.getElementById('streamFusionSubmit').textContent = 'Enregistrer';
+  document.getElementById('streamFusionCancel').hidden = false;
+}
+window.editStreamFusionSource = editStreamFusionSource;
+
+function resetStreamFusionForm() {
+  document.getElementById('streamFusionEditId').value = '';
+  document.getElementById('streamFusionName').value = '';
+  document.getElementById('streamFusionUrl').value = '';
+  document.getElementById('streamFusionKeyId').value = '';
+  document.getElementById('streamFusionKeyId').placeholder = '';
+  document.getElementById('streamFusionSecret').value = '';
+  document.getElementById('streamFusionSecret').placeholder = '';
+  document.getElementById('streamFusionMaxItems').value = 10000000;
+  document.getElementById('streamFusionPageSize').value = 1000;
+  document.getElementById('streamFusionDelay').value = 100;
+  document.getElementById('streamFusionInterval').value = '';
+  document.getElementById('streamFusionUseProxy').checked = false;
+  document.getElementById('streamFusionPreview').textContent = '';
+  document.getElementById('streamFusionSubmit').textContent = 'Ajouter';
+  document.getElementById('streamFusionCancel').hidden = true;
+}
+window.resetStreamFusionForm = resetStreamFusionForm;
+
+async function toggleStreamFusionSource(id, paused) {
+  const response = await fetch(`/api/streamfusion-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Modification impossible');
+  await loadSourceManager();
+}
+window.toggleStreamFusionSource = toggleStreamFusionSource;
+
+async function deleteStreamFusionSource(id) {
+  if (!confirm('Supprimer cette source StreamFusion ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/streamfusion-sources/${id}`, { method: 'DELETE' });
+  await loadSourceManager();
+}
+window.deleteStreamFusionSource = deleteStreamFusionSource;
+
+function cometNetPayload() {
+  return {
+    source_id: document.getElementById('cometNetEditId').value || null,
+    name: document.getElementById('cometNetName').value.trim(),
+    url: document.getElementById('cometNetUrl').value.trim(),
+    max_items_per_sync: Number(document.getElementById('cometNetMaxItems').value) || 10000000
+  };
+}
+
+function cometNetConnectionLabel(source) {
+  if (source.paused) return '<span class="source-runtime-paused">En pause</span>';
+  const state = source.connection || {};
+  const labels = {
+    connected: '<span class="source-runtime-ok">Connecté</span>',
+    connecting: 'Connexion…',
+    reconnecting: '<span class="source-runtime-error">Reconnexion…</span>',
+    error: '<span class="source-runtime-error">Erreur</span>',
+    disconnected: 'Déconnecté'
+  };
+  return labels[state.status] || escHtml(state.status || 'Déconnecté');
+}
+
+function renderCometNetSources() {
+  const container = document.getElementById('cometNetList');
+  if (!container) return;
+  const sources = catalogManagerData.cometnet || [];
+  if (!sources.length) {
+    container.innerHTML = '<p class="text-muted">Aucun pair CometNet ciblé.</p>';
+    return;
+  }
+  container.innerHTML = sources.map(source => {
+    const state = source.connection || {};
+    const inbox = source.inbox || {};
+    const nodeId = source.peer_node_id || state.peer_node_id;
+    return `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} cometnet ${source.peer_alias || ''}`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'CometNet')} <span class="source-name-badge">CometNet passif</span> ${cometNetConnectionLabel(source)}</div>
+        <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">
+          Pair : ${escHtml(source.peer_alias || state.peer_alias || 'sans alias')}
+          ${nodeId ? `· identité ${escHtml(nodeId.slice(0, 12))}…` : ''}
+          · reçues ${Number(inbox.received || 0).toLocaleString()}
+          · en attente ${Number(inbox.pending || 0).toLocaleString()}
+          · session ${Number(state.received_session || 0).toLocaleString()}
+          ${state.invalid_session ? `· rejetées ${Number(state.invalid_session).toLocaleString()}` : ''}
+        </div>
+        <div class="manager-row-meta">
+          Dernier message : ${state.last_message_at ? fmtDate(state.last_message_at) : 'jamais'}
+          · dernière annonce conservée : ${inbox.last_received_at ? fmtDate(inbox.last_received_at) : 'jamais'}
+          · limite de lot ${Number(source.max_items_per_sync || 10000000).toLocaleString()}
+        </div>
+        ${state.last_error ? `<div class="source-runtime-error">${escHtml(state.last_error)}</div>` : ''}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key)}','${encodeURIComponent(source.name || '')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editCometNetSource('${source.id}')">Modifier</button>
+        ${sourceSecretActions('cometnet', source.id)}
+        <button class="btn-sm" onclick="toggleCometNetSource('${source.id}',${!source.paused})">${source.paused ? 'Reprendre' : 'Mettre en pause'}</button>
+        <button class="btn-danger btn-sm" onclick="deleteCometNetSource('${source.id}')">Supprimer</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function refreshCometNetSources() {
+  if (!document.getElementById('cometNetList')) return;
+  try {
+    const response = await fetch('/api/cometnet-sources');
+    if (!response.ok) return;
+    catalogManagerData.cometnet = await response.json();
+    renderCometNetSources();
+    updateSourceGroupCounts();
+  } catch {}
+}
+
+async function previewCometNetSource() {
+  const output = document.getElementById('cometNetPreview');
+  output.textContent = 'Connexion et vérification de l’identité cryptographique…';
+  const response = await fetch('/api/cometnet-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cometNetPayload())
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `✓ Pair CometNet valide · ${data.peer_alias || 'sans alias'} · ${data.peer_node_id.slice(0, 16)}… · protocole ${data.protocol_version}`
+    : `✗ ${data.error || 'Test impossible'}`;
+}
+window.previewCometNetSource = previewCometNetSource;
+
+async function saveCometNetSource() {
+  const id = document.getElementById('cometNetEditId').value;
+  const response = await fetch(id ? `/api/cometnet-sources/${id}` : '/api/cometnet-sources', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cometNetPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Enregistrement impossible');
+  resetCometNetForm();
+  await loadSourceManager();
+}
+window.saveCometNetSource = saveCometNetSource;
+
+async function editCometNetSource(id) {
+  const source = (catalogManagerData.cometnet || []).find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/cometnet/${id}`)).json();
+  document.getElementById('cometNetEditId').value = id;
+  document.getElementById('cometNetName').value = source.name || '';
+  document.getElementById('cometNetUrl').value = secrets.url || '';
+  document.getElementById('cometNetMaxItems').value = source.max_items_per_sync || 10000000;
+  document.getElementById('cometNetSubmit').textContent = 'Enregistrer';
+  document.getElementById('cometNetCancel').hidden = false;
+}
+window.editCometNetSource = editCometNetSource;
+
+function resetCometNetForm() {
+  document.getElementById('cometNetEditId').value = '';
+  document.getElementById('cometNetName').value = '';
+  document.getElementById('cometNetUrl').value = '';
+  document.getElementById('cometNetMaxItems').value = 10000000;
+  document.getElementById('cometNetPreview').textContent = '';
+  document.getElementById('cometNetSubmit').textContent = 'Ajouter';
+  document.getElementById('cometNetCancel').hidden = true;
+}
+window.resetCometNetForm = resetCometNetForm;
+
+async function toggleCometNetSource(id, paused) {
+  const response = await fetch(`/api/cometnet-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Modification impossible');
+  await loadSourceManager();
+}
+window.toggleCometNetSource = toggleCometNetSource;
+
+async function deleteCometNetSource(id) {
+  if (!confirm('Supprimer ce pair CometNet ciblé ? Sa boîte de réception sera supprimée, mais les médias déjà indexés seront conservés.')) return;
+  const response = await fetch(`/api/cometnet-sources/${id}`, { method: 'DELETE' });
+  if (!response.ok) alert((await response.json()).error || 'Suppression impossible');
+  await loadSourceManager();
+}
+window.deleteCometNetSource = deleteCometNetSource;
+
+setInterval(() => {
+  const section = document.getElementById('section-sources');
+  if (section?.classList.contains('active')) refreshCometNetSources();
+}, 5000);
+
+function waCustomPayload() {
+  return {
+    source_id: document.getElementById('wacustomEditId').value || null,
+    name: document.getElementById('wacustomName').value.trim(),
+    url: document.getElementById('wacustomUrl').value.trim(),
+    admin_password: document.getElementById('wacustomPassword').value,
+    max_items_per_sync: Number(document.getElementById('wacustomMaxItems').value) || 10000000,
+    page_size: Number(document.getElementById('wacustomPageSize').value) || 1000,
+    request_delay_ms: Number(document.getElementById('wacustomDelay').value) || 0,
+    sync_interval_minutes: document.getElementById('wacustomInterval').value || null
+  };
+}
+
+function renderWaCustomSources() {
+  const container = document.getElementById('wacustomList');
+  if (!container) return;
+  if (!catalogManagerData.wacustom.length) {
+    container.innerHTML = '<p class="text-muted">Aucune instance WaCustom configurée.</p>';
+    return;
+  }
+  container.innerHTML = catalogManagerData.wacustom.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} wacustom wasource`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'WaCustom')} <span class="source-name-badge">WaCustom</span> ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">
+          limite de lot ${Number(source.max_items_per_sync).toLocaleString()} éléments
+          · page ${Number(source.page_size).toLocaleString()}
+          · délai ${Number(source.request_delay_ms).toLocaleString()} ms
+        </div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editWaCustomSource('${source.id}')">Modifier</button>
+        ${sourceSecretActions('wacustom', source.id)}
+        ${source.has_admin_password ? `<button class="btn-sm" data-secret="admin_password" onclick="revealSourceSecret('wacustom','${source.id}',this,true)">Copier le mot de passe</button>` : ''}
+        <button class="btn-sm" onclick="toggleWaCustomSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteWaCustomSource('${source.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`).join('');
+}
+
+async function previewWaCustomSource() {
+  const output = document.getElementById('wacustomPreview');
+  const payload = waCustomPayload();
+  if (!payload.url) return;
+  output.textContent = 'Connexion à WaCustom…';
+  const response = await fetch('/api/wacustom-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${Number(data.total || 0).toLocaleString()} contenu(s) WASource disponibles`
+    : (data.error || 'Erreur');
+}
+window.previewWaCustomSource = previewWaCustomSource;
+
+async function saveWaCustomSource() {
+  const id = document.getElementById('wacustomEditId').value;
+  const response = await fetch(id ? `/api/wacustom-sources/${id}` : '/api/wacustom-sources', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(waCustomPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetWaCustomForm();
+  await loadSourceManager();
+}
+window.saveWaCustomSource = saveWaCustomSource;
+
+async function editWaCustomSource(id) {
+  const source = catalogManagerData.wacustom.find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/wacustom/${id}`)).json();
+  document.getElementById('wacustomEditId').value = id;
+  document.getElementById('wacustomName').value = source.name || '';
+  document.getElementById('wacustomUrl').value = secrets.url || '';
+  document.getElementById('wacustomPassword').value = '';
+  document.getElementById('wacustomPassword').placeholder = source.has_admin_password
+    ? 'Laisser vide pour conserver'
+    : '';
+  document.getElementById('wacustomMaxItems').value = source.max_items_per_sync || 10000000;
+  document.getElementById('wacustomPageSize').value = source.page_size || 1000;
+  document.getElementById('wacustomDelay').value = source.request_delay_ms ?? 250;
+  document.getElementById('wacustomInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('wacustomSubmit').textContent = 'Enregistrer';
+  document.getElementById('wacustomCancel').hidden = false;
+}
+window.editWaCustomSource = editWaCustomSource;
+
+function resetWaCustomForm() {
+  document.getElementById('wacustomEditId').value = '';
+  document.getElementById('wacustomName').value = '';
+  document.getElementById('wacustomUrl').value = '';
+  document.getElementById('wacustomPassword').value = '';
+  document.getElementById('wacustomPassword').placeholder = '';
+  document.getElementById('wacustomMaxItems').value = 10000000;
+  document.getElementById('wacustomPageSize').value = 1000;
+  document.getElementById('wacustomDelay').value = 250;
+  document.getElementById('wacustomInterval').value = '';
+  document.getElementById('wacustomPreview').textContent = '';
+  document.getElementById('wacustomSubmit').textContent = 'Ajouter';
+  document.getElementById('wacustomCancel').hidden = true;
+}
+window.resetWaCustomForm = resetWaCustomForm;
+
+async function toggleWaCustomSource(id, paused) {
+  const response = await fetch(`/api/wacustom-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.toggleWaCustomSource = toggleWaCustomSource;
+
+async function deleteWaCustomSource(id) {
+  if (!confirm('Supprimer cette source WaCustom ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/wacustom-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteWaCustomSource = deleteWaCustomSource;
+
+function newznabPayload() {
+  return {
+    name: document.getElementById('newznabSourceName').value.trim(),
+    kind: document.getElementById('newznabSourceKind').value,
+    url: document.getElementById('newznabSourceUrl').value.trim(),
+    api_key: document.getElementById('newznabApiKey').value.trim(),
+    movie_categories: document.getElementById('newznabMovieCategories').value.trim(),
+    series_categories: document.getElementById('newznabSeriesCategories').value.trim(),
+    max_items_per_category: Number(document.getElementById('newznabMaxItems').value) || 10000000,
+    request_delay_ms: Number(document.getElementById('newznabRequestDelay').value) || 750,
+    lookback_hours: Number(document.getElementById('newznabLookbackHours').value) || 24,
+    sync_interval_minutes: document.getElementById('newznabInterval').value || null
+  };
+}
+
+function indexerKindLabel(kind) {
+  return {
+    newznab: 'Newznab',
+    prowlarr: 'Prowlarr',
+    jackett: 'Jackett',
+    nzbhydra2: 'NZBHydra2'
+  }[kind] || 'Newznab';
+}
+
+function updateIndexerHelp() {
+  const kind = document.getElementById('newznabSourceKind')?.value || 'newznab';
+  const input = document.getElementById('newznabSourceUrl');
+  const help = document.getElementById('indexerUrlHelp');
+  const examples = {
+    newznab: ['https://site.fr/api', 'URL complète de l’API Newznab.'],
+    prowlarr: ['http://prowlarr:9696/1/api', 'Copiez l’URL Torznab/Newznab d’un indexeur Prowlarr. Une source par indexeur est recommandée.'],
+    jackett: ['http://jackett:9117/api/v2.0/indexers/mon-indexeur/results/torznab/api', 'URL Torznab d’un indexeur Jackett. L’endpoint « all » est accepté, mais chaque indexeur séparé donne un meilleur suivi.'],
+    nzbhydra2: ['http://nzbhydra2:5076/api', 'URL de l’API Newznab de NZBHydra2.']
+  };
+  if (input) input.placeholder = examples[kind][0];
+  if (help) help.textContent = examples[kind][1];
+}
+window.updateIndexerHelp = updateIndexerHelp;
+
+function renderNewznabSources() {
+  const container = document.getElementById('newznabSourceList');
+  if (!container) return;
+  if (!catalogManagerData.newznab.length) {
+    container.innerHTML = `<p class="text-muted">${t('sources_newznab_none')}</p>`;
+    return;
+  }
+  container.innerHTML = catalogManagerData.newznab.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} ${source.kind}`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'Indexeur')} <span class="source-name-badge">${indexerKindLabel(source.kind)}</span> ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">
+          ${t('sources_newznab_categories_short')} :
+          ${(source.catalogs || []).map(catalog => `${escHtml(catalog.name)} ${escHtml(catalog.category_ids)}`).join(' · ')}
+          · limite de lot ${source.max_items_per_category.toLocaleString()} éléments/catégorie/synchronisation
+          · pages de ${source.page_size} (limite serveur)
+          · délai ${source.request_delay_ms} ms
+          · recouvrement ${source.lookback_hours} h
+        </div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        ${(source.catalogs || []).map(catalog =>
+          `<button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(catalog.source_key).replace(/'/g, '%27')}','${encodeURIComponent(`${source.name} — ${catalog.name}`).replace(/'/g, '%27')}')">${t('sources_catalog_action')} ${escHtml(catalog.name)}</button>`
+        ).join('')}
+        <button class="btn-sm" onclick="editNewznabSource('${source.id}')">Modifier</button>
+        ${sourceSecretActions('indexer', source.id, source.has_api_key)}
+        <button class="btn-sm" onclick="toggleNewznabSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteNewznabSource('${source.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`).join('');
+}
+
+async function previewNewznabSource() {
+  const output = document.getElementById('newznabSourcePreview');
+  const payload = newznabPayload();
+  if (!payload.url || !payload.api_key) return;
+  output.textContent = t('sources_newznab_testing');
+  const response = await fetch('/api/newznab-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${t('sources_newznab_connection_ok')} · ${t('sources_newznab_server_limit')} ${data.server_max} · ${data.categories.length} ${t('sources_newznab_categories_available')}`
+    : (data.error || 'Erreur');
+}
+window.previewNewznabSource = previewNewznabSource;
+
+async function saveNewznabSource() {
+  const id = document.getElementById('newznabEditId').value;
+  const response = await fetch(id ? `/api/newznab-sources/${id}` : '/api/newznab-sources', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newznabPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetNewznabForm();
+  await loadSourceManager();
+}
+window.saveNewznabSource = saveNewznabSource;
+window.addNewznabSource = saveNewznabSource;
+
+async function editNewznabSource(id) {
+  const source = catalogManagerData.newznab.find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/indexer/${id}`)).json();
+  document.getElementById('newznabEditId').value = id;
+  document.getElementById('newznabSourceName').value = source.name || '';
+  document.getElementById('newznabSourceKind').value = source.kind || 'newznab';
+  document.getElementById('newznabSourceUrl').value = secrets.url || '';
+  document.getElementById('newznabApiKey').value = '';
+  document.getElementById('newznabApiKey').placeholder = 'Laisser vide pour conserver la clé';
+  document.getElementById('newznabMovieCategories').value = source.categories?.movie || '';
+  document.getElementById('newznabSeriesCategories').value = source.categories?.series || '';
+  document.getElementById('newznabMaxItems').value = source.max_items_per_category || 10000000;
+  document.getElementById('newznabRequestDelay').value = source.request_delay_ms || 750;
+  document.getElementById('newznabLookbackHours').value = source.lookback_hours || 24;
+  document.getElementById('newznabInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('newznabSubmit').textContent = 'Enregistrer';
+  document.getElementById('newznabCancel').hidden = false;
+  updateIndexerHelp();
+}
+window.editNewznabSource = editNewznabSource;
+
+function resetNewznabForm() {
+  document.getElementById('newznabEditId').value = '';
+  document.getElementById('newznabSourceName').value = '';
+  document.getElementById('newznabSourceKind').value = 'newznab';
+  document.getElementById('newznabSourceUrl').value = '';
+  document.getElementById('newznabApiKey').value = '';
+  document.getElementById('newznabApiKey').placeholder = '';
+  document.getElementById('newznabMovieCategories').value = '2000';
+  document.getElementById('newznabSeriesCategories').value = '5000';
+  document.getElementById('newznabMaxItems').value = 10000000;
+  document.getElementById('newznabRequestDelay').value = 750;
+  document.getElementById('newznabLookbackHours').value = 24;
+  document.getElementById('newznabInterval').value = '';
+  document.getElementById('newznabSourcePreview').textContent = '';
+  document.getElementById('newznabSubmit').textContent = 'Ajouter';
+  document.getElementById('newznabCancel').hidden = true;
+  updateIndexerHelp();
+}
+window.resetNewznabForm = resetNewznabForm;
+
+async function renameNewznabSource(id, encodedName) {
+  const name = prompt(t('sources_rename_prompt'), decodeURIComponent(encodedName));
+  if (!name?.trim()) return;
+  const response = await fetch(`/api/newznab-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() })
+  });
+  if (!response.ok) return alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.renameNewznabSource = renameNewznabSource;
+
+async function toggleNewznabSource(id, paused) {
+  const response = await fetch(`/api/newznab-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.toggleNewznabSource = toggleNewznabSource;
+
+async function deleteNewznabSource(id) {
+  if (!confirm(t('sources_newznab_delete_confirm'))) return;
+  await fetch(`/api/newznab-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteNewznabSource = deleteNewznabSource;
+
+function renderStremioSources() {
+  const container = document.getElementById('stremioSourceList');
+  if (!container) return;
+  if (!catalogManagerData.stremio.length) {
+    container.innerHTML = `<p class="text-muted">${t('sources_stremio_none')}</p>`;
+    return;
+  }
+  container.innerHTML = catalogManagerData.stremio.map(source => `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.display_url} stremio`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name)} ${source.paused ? '⏸' : '●'}</div>
+        <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.display_url))}</div>
+        <div class="manager-row-meta">${(source.catalogs || []).length} catalogue(s) · limite de sécurité ${Number(source.max_items_per_catalog || 10000000).toLocaleString()} par catalogue</div>
+        <div style="margin-top:6px">${(source.catalogs || []).map(catalog =>
+          `<span class="src-cat badge-${catalog.type === 'series' ? 'series' : 'films'}">${escHtml(catalog.name)}</span>`
+        ).join(' ')}</div>
+        ${sourceRuntimeHtml(source)}
+      </div>
+      <div class="manager-row-actions">
+        ${(source.catalogs || []).filter(catalog => catalog.enabled !== false && catalog.supported !== false).map(catalog =>
+          `<button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(catalog.source_key).replace(/'/g, '%27')}','${encodeURIComponent(`${source.name} — ${catalog.name}`).replace(/'/g, '%27')}','${catalog.type === 'movie' ? 'movie' : catalog.type === 'anime' ? 'anime' : 'series'}')">${t('sources_catalog_action')} ${escHtml(catalog.name)}</button>`
+        ).join('')}
+        <button class="btn-sm" onclick="editStremioSource('${source.id}')">Modifier</button>
+        ${sourceSecretActions('stremio', source.id)}
+        <button class="btn-sm" onclick="toggleStremioSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteStremioSource('${source.id}')">${t('sources_delete')}</button>
+      </div>
+    </div>`).join('');
+}
+
+let editableStremioCatalogs = [];
+
+function renderEditableStremioCatalogs(catalogs = []) {
+  editableStremioCatalogs = catalogs.map(catalog => ({ ...catalog }));
+  const container = document.getElementById('stremioCatalogChoices');
+  if (!container) return;
+  container.innerHTML = editableStremioCatalogs.length
+    ? editableStremioCatalogs.map((catalog, index) => `<label class="catalog-source-choice">
+        <input type="checkbox" data-stremio-catalog-index="${index}"
+          ${catalog.enabled === false || catalog.supported === false ? '' : 'checked'}
+          ${catalog.supported === false ? 'disabled' : ''}>
+        <span><strong>${escHtml(catalog.name || catalog.id)}</strong><br><small class="text-muted">${escHtml(catalog.type)} · ${escHtml(catalog.id)}${catalog.supported === false ? ' · type non encore pris en charge' : ''}</small></span>
+      </label>`).join('')
+    : '<span class="text-muted">Prévisualisez un manifeste pour choisir ses catalogues.</span>';
+}
+
+async function previewStremioSource() {
+  const url = document.getElementById('stremioSourceUrl').value.trim();
+  const output = document.getElementById('stremioSourcePreview');
+  if (!url) return;
+  output.textContent = 'Analyse en cours…';
+  const response = await fetch('/api/stremio-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url })
+  });
+  const data = await response.json();
+  if (response.ok) renderEditableStremioCatalogs(data.catalogs.map(catalog => ({ ...catalog, enabled: true })));
+  output.textContent = response.ok
+    ? `${data.name} · ${data.catalogs.length} catalogue(s) : ${data.catalogs.map(catalog => catalog.name).join(', ')}`
+    : (data.error || 'Erreur');
+}
+window.previewStremioSource = previewStremioSource;
+
+async function saveStremioSource() {
+  const id = document.getElementById('stremioEditId').value;
+  const catalogs = editableStremioCatalogs.map((catalog, index) => ({
+    ...catalog,
+    enabled: document.querySelector(`[data-stremio-catalog-index="${index}"]`)?.checked !== false
+  }));
+  const response = await fetch(id ? `/api/stremio-sources/${id}` : '/api/stremio-sources', {
+    method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: document.getElementById('stremioSourceName').value,
+      url: document.getElementById('stremioSourceUrl').value.trim(),
+      max_items_per_catalog: Number(document.getElementById('stremioMaxItems').value) || 10000000,
+      sync_interval_minutes: document.getElementById('stremioInterval').value || null,
+      catalogs
+    })
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetStremioForm();
+  loadSourceManager();
+}
+window.saveStremioSource = saveStremioSource;
+window.addStremioSource = saveStremioSource;
+
+async function editStremioSource(id) {
+  const source = catalogManagerData.stremio.find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/stremio/${id}`)).json();
+  document.getElementById('stremioEditId').value = id;
+  document.getElementById('stremioSourceName').value = source.name || '';
+  document.getElementById('stremioSourceUrl').value = secrets.url || '';
+  document.getElementById('stremioMaxItems').value = source.max_items_per_catalog || 10000000;
+  document.getElementById('stremioInterval').value = source.sync_interval_minutes || '';
+  renderEditableStremioCatalogs(source.catalogs || []);
+  document.getElementById('stremioSubmit').textContent = 'Enregistrer';
+  document.getElementById('stremioCancel').hidden = false;
+}
+window.editStremioSource = editStremioSource;
+
+function resetStremioForm() {
+  document.getElementById('stremioEditId').value = '';
+  document.getElementById('stremioSourceName').value = '';
+  document.getElementById('stremioSourceUrl').value = '';
+  document.getElementById('stremioMaxItems').value = 10000000;
+  document.getElementById('stremioInterval').value = '';
+  document.getElementById('stremioSourcePreview').textContent = '';
+  renderEditableStremioCatalogs([]);
+  document.getElementById('stremioSubmit').textContent = 'Ajouter';
+  document.getElementById('stremioCancel').hidden = true;
+}
+window.resetStremioForm = resetStremioForm;
+
+async function renameStremioSource(id, encodedName) {
+  const name = prompt(t('sources_rename_prompt'), decodeURIComponent(encodedName));
+  if (!name?.trim()) return;
+  const response = await fetch(`/api/stremio-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() })
+  });
+  if (!response.ok) return alert((await response.json()).error || 'Erreur');
+  loadSourceManager();
+}
+window.renameStremioSource = renameStremioSource;
+
+async function toggleStremioSource(id, paused) {
+  await fetch(`/api/stremio-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  loadSourceManager();
+}
+window.toggleStremioSource = toggleStremioSource;
+
+async function deleteStremioSource(id) {
+  if (!confirm('Supprimer ce manifeste Stremio ? Les médias déjà indexés sont conservés.')) return;
+  await fetch(`/api/stremio-sources/${id}`, { method: 'DELETE' });
+  loadSourceManager();
+}
+window.deleteStremioSource = deleteStremioSource;
+
+async function previewCatalog() {
+  const output = document.getElementById('catalogPreview');
+  const response = await fetch('/api/catalogs/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(catalogPayload())
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `${Number(data.count || 0).toLocaleString()} média(s) alimenteraient ce catalogue`
+    : (data.error || 'Erreur');
+}
+window.previewCatalog = previewCatalog;
+
+async function loadManifestHistory() {
+  const container = document.getElementById('manifestHistory');
+  if (!container) return;
+  try {
+    const response = await fetch('/api/manifest/history?limit=30');
+    const data = await response.json();
+    const labels = {
+      catalog_created: 'Catalogue créé',
+      catalog_updated: 'Catalogue modifié',
+      catalog_published: 'Catalogue affiché dans Stremio',
+      catalog_hidden: 'Catalogue masqué de Stremio',
+      catalog_updates_paused: 'Alimentation du catalogue suspendue',
+      catalog_updates_resumed: 'Alimentation du catalogue reprise',
+      catalog_renamed: 'Catalogue renommé',
+      catalog_deleted: 'Catalogue supprimé',
+      configuration_imported: 'Configuration importée'
+    };
+    container.innerHTML = data.items?.length
+      ? `<div class="manifest-history-head">Révision actuelle : <strong>${data.revision}</strong> · Dernière actualisation du contenu : ${data.last_catalog_refresh ? fmtDate(data.last_catalog_refresh) : 'jamais'}</div>
+        ${data.items.map(item => `<div class="manifest-history-row">
+          <span class="manifest-revision">r${item.revision}</span>
+          <span><strong>${escHtml(labels[item.event] || item.event)}</strong>${item.catalog_name ? ` — ${escHtml(item.catalog_name)}` : ''}</span>
+          <span class="text-muted">${fmtDate(item.created_at)}</span>
+        </div>`).join('')}`
+      : '<span class="text-muted">Aucun changement de manifeste enregistré depuis l’activation de l’historique.</span>';
+  } catch {
+    container.innerHTML = '<span class="text-muted">Historique indisponible.</span>';
+  }
+}
+window.loadManifestHistory = loadManifestHistory;
+
+async function saveCatalog() {
+  const id = document.getElementById('catalogEditId').value;
+  const response = await fetch(id ? `/api/catalogs/${id}` : '/api/catalogs', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(catalogPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Erreur');
+  resetCatalogForm();
+  await loadCatalogManager();
+}
+window.saveCatalog = saveCatalog;
+
+function editCatalog(id) {
+  const catalog = catalogManagerData.catalogs.find(item => item.id === id);
+  if (!catalog) return;
+  document.getElementById('catalogEditId').value = catalog.id;
+  document.getElementById('catalogFormTitle').textContent = t('catalogs_edit');
+  document.getElementById('catalogName').value = catalog.name;
+  document.getElementById('catalogMediaType').value = catalog.type;
+  renderCatalogCompositionChoices(catalog.filters?.catalog_ids || []);
+  document.getElementById('catalogYearMode').value = catalog.filters?.year_mode || 'include';
+  document.getElementById('catalogYears').value = (catalog.filters?.years || []).join(', ');
+  document.getElementById('catalogYearMin').value = catalog.filters?.year_min || '';
+  document.getElementById('catalogYearMax').value = catalog.filters?.year_max || '';
+  document.getElementById('catalogKeywordsInclude').value = (catalog.filters?.keywords_include || []).join(', ');
+  document.getElementById('catalogKeywordsExclude').value = (catalog.filters?.keywords_exclude || []).join(', ');
+  renderCatalogGuideChoices(catalog.filters?.guide_id || '');
+  for (const [id, values] of [
+    ['catalogGenresInclude', catalog.filters?.genres_include || []],
+    ['catalogGenresExclude', catalog.filters?.genres_exclude || []]
+  ]) {
+    [...document.getElementById(id).options].forEach(option => {
+      option.selected = values.map(Number).includes(Number(option.value));
+    });
+  }
+  renderCatalogSourceChoices(catalog.source_urls);
+  document.getElementById('catalogName').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+window.editCatalog = editCatalog;
+
+async function updateCatalogState(id, payload) {
+  const response = await fetch(`/api/catalogs/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  if (!response.ok) alert((await response.json()).error || 'Erreur');
+  loadCatalogManager();
+}
+
+async function toggleCatalogUpdates(id, updates_enabled) {
+  await updateCatalogState(id, { updates_enabled });
+}
+window.toggleCatalogUpdates = toggleCatalogUpdates;
+
+async function toggleCatalogExposure(id, enabled) {
+  await updateCatalogState(id, { enabled });
+}
+window.toggleCatalogExposure = toggleCatalogExposure;
+
+async function deleteCatalog(id) {
+  if (!confirm('Supprimer ce catalogue ?')) return;
+  await fetch(`/api/catalogs/${id}`, { method: 'DELETE' });
+  loadCatalogManager();
+}
+window.deleteCatalog = deleteCatalog;
+
+function resetCatalogForm() {
+  document.getElementById('catalogEditId').value = '';
+  document.getElementById('catalogFormTitle').textContent = t('catalogs_create');
+  ['catalogName','catalogYears','catalogYearMin','catalogYearMax','catalogKeywordsInclude','catalogKeywordsExclude']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('catalogMediaType').value = 'movie';
+  renderCatalogCompositionChoices([]);
+  document.getElementById('catalogGuide').value = '';
+  document.getElementById('catalogYearMode').value = 'include';
+  for (const id of ['catalogGenresInclude', 'catalogGenresExclude']) {
+    [...document.getElementById(id).options].forEach(option => { option.selected = false; });
+  }
+  document.getElementById('catalogPreview').textContent = '';
+  renderCatalogSourceChoices();
+}
+window.resetCatalogForm = resetCatalogForm;
 
 // ═══════════════════════════ SYNC ══════════════════════════════════════
 
@@ -777,7 +2825,7 @@ async function loadAutoRefreshStatus() {
     const interval = cfg.refresh_interval || '180';
     const state = document.getElementById('autoRefreshState');
     if (enabled) {
-      state.textContent = '✅ ' + t('sync_auto_enabled') + ' (' + interval + ' min)';
+      state.textContent = `✅ ${t('sync_auto_enabled')} · fréquence par défaut ${interval} min · échéances vérifiées chaque minute`;
       state.style.color = 'var(--success)';
     } else {
       state.textContent = '⏸ ' + t('sync_auto_disabled');
@@ -790,29 +2838,39 @@ async function startSync() {
   try {
     const r = await fetch('/api/sync', { method: 'POST' });
     const d = await r.json();
-    if (!r.ok) { alert(d.error || 'Erreur'); return; }
+    if (!r.ok && r.status !== 409) { alert(d.error || 'Erreur'); return; }
     document.getElementById('syncStatusBox').style.display = 'block';
-    pollSync();
+    await refreshSyncStatus();
   } catch (e) { alert('Erreur réseau'); }
 }
 window.startSync = startSync;
 
+async function refreshSyncStatus() {
+  try {
+    const r = await fetch(`/api/sync/status?_=${Date.now()}`, { cache: 'no-store' });
+    const st = await r.json();
+    updateSyncUI(st);
+    if (st.running) pollSync();
+    return st;
+  } catch (e) {
+    console.error('refreshSyncStatus', e);
+    return null;
+  }
+}
+
 function pollSync() {
-  if (syncPoller) clearInterval(syncPoller);
+  if (syncPoller) return;
   syncPoller = setInterval(async () => {
-    try {
-      const r  = await fetch('/api/sync/status');
-      const st = await r.json();
-      updateSyncUI(st);
-      if (!st.running) {
-        clearInterval(syncPoller);
-        syncPoller = null;
-        loadStats();
-        loadOverview();
-        loadSyncHistory();
-      }
-    } catch (e) { console.error('pollSync', e); }
-  }, 1500);
+    const st = await refreshSyncStatus();
+    if (st && !st.running) {
+      clearInterval(syncPoller);
+      syncPoller = null;
+      loadStats();
+      loadOverview();
+      loadSyncHistory();
+      loadSourceManager();
+    }
+  }, 1000);
 }
 
 function updateSyncUI(st) {
@@ -1108,6 +3166,109 @@ window.testApprise = testApprise;
 
 // ═══════════════════════════ MAINTENANCE ═══════════════════════════════
 
+const maintenanceLabels = {
+  documentaries: 'maintenance_count_documentaries',
+  false_documentaries: 'maintenance_count_false_documentaries',
+  false_emissions: 'maintenance_count_false_emissions',
+  concerts: 'maintenance_count_concerts',
+  false_concerts: 'maintenance_count_false_concerts',
+  spectacles: 'maintenance_count_spectacles',
+  anime_candidates: 'maintenance_count_anime'
+};
+
+function renderMaintenanceAnalysis(data) {
+  const container = document.getElementById('maintenanceAnalysis');
+  const panel = document.getElementById('maintenanceApplyPanel');
+  if (!container || !panel) return;
+  container.innerHTML = `
+    <div class="config-grid">
+      ${Object.entries(maintenanceLabels).map(([key, label]) => `
+        <div class="field" style="padding:12px;border:1px solid var(--border);border-radius:8px">
+          <span class="text-muted" style="font-size:12px">${escHtml(t(label))}</span>
+          <strong style="display:block;font-size:22px;margin-top:3px">${Number(data.counts?.[key] || 0).toLocaleString()}</strong>
+        </div>`).join('')}
+    </div>`;
+  document.getElementById('maintenanceAnalysisMeta').textContent =
+    `${Number(data.media_count || 0).toLocaleString()} médias analysés · ${Number(data.database_only_count || 0).toLocaleString()} correction(s) locale(s) proposée(s)`;
+  panel.style.display = 'block';
+}
+
+async function analyzeMaintenance() {
+  const btn = document.getElementById('maintenanceAnalyzeBtn');
+  const meta = document.getElementById('maintenanceAnalysisMeta');
+  btn.disabled = true;
+  meta.textContent = 'Analyse en lecture seule…';
+  try {
+    const response = await fetch('/api/maintenance/analysis');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Analyse impossible');
+    renderMaintenanceAnalysis(data);
+  } catch (error) {
+    meta.textContent = `✗ ${error.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+window.analyzeMaintenance = analyzeMaintenance;
+
+async function applyMaintenance() {
+  const includeAnime = document.getElementById('maintenanceIncludeAnime').checked;
+  const warning = includeAnime
+    ? 'La sauvegarde sera créée avant les corrections. La vérification TMDB peut durer plusieurs minutes. Continuer ?'
+    : 'Une sauvegarde SQLite sera créée avant les corrections. Continuer ?';
+  if (!confirm(warning)) return;
+  const btn = document.getElementById('maintenanceApplyBtn');
+  const output = document.getElementById('maintenanceApplyResult');
+  btn.disabled = true;
+  output.textContent = includeAnime ? 'Sauvegarde puis vérification TMDB en cours…' : 'Sauvegarde puis corrections en cours…';
+  try {
+    const response = await fetch('/api/maintenance/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ include_anime: includeAnime })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Maintenance impossible');
+    const backup = String(data.backup_path || '').split('/').pop();
+    output.textContent = `✓ ${Number(data.changed || 0).toLocaleString()} correction(s) · sauvegarde ${backup}`;
+    await Promise.all([analyzeMaintenance(), loadMaintenanceHistory(), loadStats(), loadLibraryCounts()]);
+  } catch (error) {
+    output.textContent = `✗ ${error.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+window.applyMaintenance = applyMaintenance;
+
+async function loadMaintenanceHistory() {
+  const container = document.getElementById('maintenanceHistory');
+  if (!container) return;
+  try {
+    const response = await fetch('/api/maintenance/history?limit=10');
+    const rows = await response.json();
+    if (!response.ok) throw new Error(rows.error || 'Historique indisponible');
+    if (!rows.length) {
+      container.innerHTML = '<p class="text-muted">Aucune opération de maintenance.</p>';
+      return;
+    }
+    container.innerHTML = rows.map(row => {
+      const date = new Date(row.started_at).toLocaleString();
+      const backup = row.backup_path ? String(row.backup_path).split('/').pop() : null;
+      const changed = row.details?.changed ?? row.details?.reclassified ?? row.details?.result?.changed;
+      return `<div class="manager-row">
+        <div class="manager-row-main">
+          <div class="manager-row-title">${row.status === 'error' ? '✗' : row.status === 'running' ? '↻' : '✓'} ${escHtml(row.action)}</div>
+          <div class="manager-row-meta">${escHtml(date)}${changed !== undefined ? ` · ${Number(changed).toLocaleString()} correction(s)` : ''}${backup ? ` · sauvegarde ${escHtml(backup)}` : ''}</div>
+          ${row.error_message ? `<div class="manager-row-meta" style="color:var(--danger)">${escHtml(row.error_message)}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  } catch (error) {
+    container.innerHTML = `<p style="color:var(--danger)">✗ ${escHtml(error.message)}</p>`;
+  }
+}
+window.loadMaintenanceHistory = loadMaintenanceHistory;
+
 async function reclassifyAnimes() {
   const btn    = document.getElementById('reclassifyAnimesBtn');
   const result = document.getElementById('reclassifyAnimesResult');
@@ -1241,6 +3402,7 @@ async function fixFalseEmissions() {
 window.fixFalseEmissions = fixFalseEmissions;
 
 async function reclassifyAll() {
+  if (!confirm('Cette action peut déplacer de nombreux médias. Une sauvegarde SQLite sera créée avant application. Continuer ?')) return;
   const btn    = document.getElementById('reclassifyAllBtn');
   const result = document.getElementById('reclassifyAllResult');
   btn.disabled = true;
@@ -1268,12 +3430,13 @@ async function reclassifyAll() {
     }
     result.style.display = 'block';
     if (d.reclassified > 0) { loadStats(); loadLibraryCounts(); }
+    loadMaintenanceHistory();
   } catch (e) {
     result.innerHTML = `<span style="color:var(--danger)">✗ Erreur réseau</span>`;
     result.style.display = 'block';
   } finally {
     btn.disabled = false;
-    btn.textContent = '▶ Lancer';
+    btn.textContent = t('maintenance_source_apply');
   }
 }
 window.reclassifyAll = reclassifyAll;
@@ -1404,6 +3567,135 @@ window.addRssField = function (value, force, name) {
 
 // ═══════════════════════════ INTEGRATIONS ══════════════════════════════
 
+let metadataProviders = [];
+
+function metadataProviderPayload() {
+  return {
+    source_id: document.getElementById('metadataProviderEditId').value || null,
+    name: document.getElementById('metadataProviderName').value.trim(),
+    url: document.getElementById('metadataProviderUrl').value.trim(),
+    priority: Number(document.getElementById('metadataProviderPriority').value) || 100,
+    use_proxy: document.getElementById('metadataProviderUseProxy').checked
+  };
+}
+
+async function loadMetadataProviders() {
+  const container = document.getElementById('metadataProviderList');
+  if (!container) return;
+  try {
+    const response = await fetch('/api/metadata-providers');
+    metadataProviders = await response.json();
+    if (!metadataProviders.length) {
+      container.innerHTML = '<p class="text-muted">Aucun addon de métadonnées configuré.</p>';
+      return;
+    }
+    container.innerHTML = metadataProviders.map(source => `
+      <div class="manager-row">
+        <div class="manager-row-main">
+          <div class="manager-row-title">${escHtml(source.name)} <span class="source-name-badge">priorité ${source.priority}</span> ${source.paused ? '⏸' : '●'}</div>
+          <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+          <div class="manager-row-meta">${source.use_proxy ? 'proxy global' : 'connexion directe'}</div>
+        </div>
+        <div class="manager-row-actions">
+          <button type="button" class="btn-sm" onclick="editMetadataProvider('${source.id}')">Modifier</button>
+          <button type="button" class="btn-sm" onclick="revealSourceSecret('metadata','${source.id}',this)">Révéler l’URL</button>
+          <button type="button" class="btn-sm" onclick="testMetadataProvider('${source.id}')">Tester</button>
+          <button type="button" class="btn-sm" onclick="toggleMetadataProvider('${source.id}',${!source.paused})">${source.paused ? 'Reprendre' : 'Mettre en pause'}</button>
+          <button type="button" class="btn-danger btn-sm" onclick="deleteMetadataProvider('${source.id}')">Supprimer</button>
+        </div>
+      </div>`).join('');
+  } catch (error) {
+    container.innerHTML = `<p class="config-msg err">${escHtml(error.message)}</p>`;
+  }
+}
+
+async function previewMetadataProvider(payload = metadataProviderPayload()) {
+  const output = document.getElementById('metadataProviderPreview');
+  output.textContent = 'Lecture du manifeste et détection des catalogues de recherche…';
+  const response = await fetch('/api/metadata-providers/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `✓ ${data.name} — ${data.catalogs.length} catalogue(s) de recherche : ${data.catalogs.map(catalog => `${catalog.name} (${catalog.type})`).join(', ')}`
+    : `✗ ${data.error || 'Test impossible'}`;
+  return response.ok;
+}
+window.previewMetadataProvider = previewMetadataProvider;
+
+async function saveMetadataProvider() {
+  const id = document.getElementById('metadataProviderEditId').value;
+  const response = await fetch(id ? `/api/metadata-providers/${id}` : '/api/metadata-providers', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(metadataProviderPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Enregistrement impossible');
+  resetMetadataProviderForm();
+  await loadMetadataProviders();
+}
+window.saveMetadataProvider = saveMetadataProvider;
+
+async function editMetadataProvider(id) {
+  const source = metadataProviders.find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/metadata/${id}`)).json();
+  document.getElementById('metadataProviderEditId').value = id;
+  document.getElementById('metadataProviderName').value = source.name || '';
+  document.getElementById('metadataProviderUrl').value = secrets.url || '';
+  document.getElementById('metadataProviderPriority').value = source.priority || 100;
+  document.getElementById('metadataProviderUseProxy').checked = source.use_proxy;
+  document.getElementById('metadataProviderSubmit').textContent = 'Enregistrer';
+  document.getElementById('metadataProviderCancel').hidden = false;
+}
+window.editMetadataProvider = editMetadataProvider;
+
+function resetMetadataProviderForm() {
+  document.getElementById('metadataProviderEditId').value = '';
+  document.getElementById('metadataProviderName').value = '';
+  document.getElementById('metadataProviderUrl').value = '';
+  document.getElementById('metadataProviderPriority').value = 100;
+  document.getElementById('metadataProviderUseProxy').checked = true;
+  document.getElementById('metadataProviderPreview').textContent = '';
+  document.getElementById('metadataProviderSubmit').textContent = 'Ajouter';
+  document.getElementById('metadataProviderCancel').hidden = true;
+}
+window.resetMetadataProviderForm = resetMetadataProviderForm;
+
+async function testMetadataProvider(id) {
+  const source = metadataProviders.find(item => item.id === id);
+  const secrets = await (await fetch(`/api/source-secrets/metadata/${id}`)).json();
+  await previewMetadataProvider({
+    source_id: id,
+    name: source.name,
+    url: secrets.url,
+    priority: source.priority,
+    use_proxy: source.use_proxy
+  });
+}
+window.testMetadataProvider = testMetadataProvider;
+
+async function toggleMetadataProvider(id, paused) {
+  const response = await fetch(`/api/metadata-providers/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Modification impossible');
+  await loadMetadataProviders();
+}
+window.toggleMetadataProvider = toggleMetadataProvider;
+
+async function deleteMetadataProvider(id) {
+  if (!confirm('Supprimer cet addon de métadonnées ?')) return;
+  await fetch(`/api/metadata-providers/${id}`, { method: 'DELETE' });
+  await loadMetadataProviders();
+}
+window.deleteMetadataProvider = deleteMetadataProvider;
+
 window.addProwlarrFeed = function (force) {
   const url = (document.getElementById('prowlarr_url')?.value || '').trim().replace(/\/$/, '');
   const key = (document.getElementById('prowlarr_apikey')?.value || '').trim();
@@ -1427,32 +3719,25 @@ async function loadConfig() {
     const r = await fetch('/api/config');
     const cfg = await r.json();
 
-    ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
-     'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
-     'proxy_password', 'refresh_interval', 'discord_webhook_url',
-     'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey',
+    ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
+     'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
+     'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
+     'proxy_password', 'refresh_interval', 'image_cache_ttl_hours', 'image_cache_max_mb',
+     'availability_missing_scans', 'availability_expiration_days', 'discord_webhook_url',
      'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
       const el = document.getElementById(k);
       if (el) el.value = cfg[k] || '';
     });
 
-    ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
+    ['rpdb_enabled', 'postersplus_enabled', 'image_cache_enabled', 'proxy_enabled', 'auto_refresh_enabled',
+     'availability_enabled',
      'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
-     'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled'].forEach(k => {
+     'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled',
+     'kitsu_enabled'].forEach(k => {
       const el = document.getElementById(k);
       if (el) el.checked = cfg[k] === 'true';
     });
-
-    const container = document.getElementById('additionalRssContainer');
-    container.innerHTML = '';
-    rssFieldCounter = 0;
-    try {
-      const urls = JSON.parse(cfg.rss_additional_urls || '[]');
-      urls.forEach(item => {
-        if (typeof item === 'object') addRssField(item.url, item.force, item.name);
-        else addRssField(item, 'auto', '');
-      });
-    } catch (e) { console.error('parse rss_additional_urls', e); }
+    await loadMetadataProviders();
 
   } catch (e) { console.error('loadConfig', e); }
 }
@@ -1463,30 +3748,24 @@ async function saveConfig(e) {
   msg.textContent = '';
 
   const cfg = {};
-  ['rss_films_name', 'rss_films_url', 'rss_films_force', 'required_tags', 'tmdb_api_key', 'tvdb_api_key',
-   'mal_client_id', 'rpdb_api_key', 'omdb_api_key', 'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
-   'proxy_password', 'refresh_interval', 'discord_webhook_url',
-   'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey',
+  ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
+   'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
+   'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
+   'proxy_password', 'refresh_interval', 'image_cache_ttl_hours', 'image_cache_max_mb',
+   'availability_missing_scans', 'availability_expiration_days', 'discord_webhook_url',
    'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
     const el = document.getElementById(k);
     if (el) cfg[k] = el.value;
   });
 
-  ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
+  ['rpdb_enabled', 'postersplus_enabled', 'image_cache_enabled', 'proxy_enabled', 'auto_refresh_enabled',
+   'availability_enabled',
    'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
-   'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled'].forEach(k => {
+   'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled',
+   'kitsu_enabled'].forEach(k => {
     const el = document.getElementById(k);
     if (el) cfg[k] = el.checked ? 'true' : 'false';
   });
-
-  const urls = [];
-  document.querySelectorAll('.rss-field-block').forEach(block => {
-    const url   = block.querySelector('.additional-rss-url')?.value?.trim();
-    const force = block.querySelector('.additional-rss-force')?.value || 'auto';
-    const name  = block.querySelector('.additional-rss-name')?.value?.trim() || '';
-    if (url) urls.push({ url, force, name });
-  });
-  cfg.rss_additional_urls = JSON.stringify(urls);
 
   try {
     const r = await fetch('/api/config', {
@@ -1508,6 +3787,26 @@ async function saveConfig(e) {
   }
   setTimeout(() => { msg.textContent = ''; }, 4000);
 }
+
+async function testPostersPlus() {
+  const output = document.getElementById('postersplusTestResult');
+  const template = document.getElementById('postersplus_url_template').value.trim();
+  output.textContent = 'Génération de l’affiche de test…';
+  const response = await fetch('/api/postersplus/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    output.textContent = result.error || 'Test PostersPlus impossible';
+    return;
+  }
+  output.innerHTML = `<span class="source-runtime-ok">✓ ${escHtml(result.media.name)}</span>
+    <div style="margin-top:8px"><img src="${escHtml(result.poster_url)}" alt="Affiche PostersPlus"
+      style="width:140px;border-radius:8px;border:1px solid var(--border)"></div>`;
+}
+window.testPostersPlus = testPostersPlus;
 window.saveConfig = saveConfig;
 
 // ═══════════════════════════ HELPERS ═══════════════════════════════════
@@ -1556,7 +3855,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadInstallUrl();
 
   // Vérifier si une sync est en cours au chargement
-  fetch('/api/sync/status').then(r => r.json()).then(st => {
+  fetch(`/api/sync/status?_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).then(st => {
     if (st && st.running) {
       navigate('sync');
       updateSyncUI(st);

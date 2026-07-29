@@ -1,12 +1,56 @@
 const axios = require('axios');
 const xml2js = require('xml2js');
 const { SocksProxyAgent } = require('socks-proxy-agent');
+const PastebinParser = require('./pastebin-parser');
+const StremioManifestParser = require('./stremio-manifest-parser');
+const NewznabParser = require('./newznab-parser');
+const WebDavParser = require('./webdav-parser');
+const WaCustomParser = require('./wacustom-parser');
+const MDBListGuideParser = require('./mdblist-guide-parser');
+const MediaServerParser = require('./media-server-parser');
+const StreamFusionParser = require('./streamfusion-parser');
+const CometNetParser = require('./cometnet-parser');
+const ReleaseParser = require('./release-parser');
 
 class RSSParser {
   constructor(config, db) {
     this.config = config;
     this.db = db;
+    this.releaseParser = new ReleaseParser(db);
     this.axiosConfig = this.getAxiosConfig();
+    this.pastebinParser = new PastebinParser(
+      db,
+      () => this.getAxiosConfig(),
+      title => this.filterByRequiredTags(title)
+    );
+    this.stremioManifestParser = new StremioManifestParser(db, () => this.getAxiosConfig());
+    this.newznabParser = new NewznabParser(
+      db,
+      () => this.getAxiosConfig(),
+      (items, force, sourceUrl) => this._parseItems(items, force, sourceUrl)
+    );
+    this.webdavParser = new WebDavParser(
+      db,
+      () => this.getAxiosConfig(),
+      (items, force, sourceUrl) => this._parseItems(items, force, sourceUrl)
+    );
+    this.waCustomParser = new WaCustomParser(
+      db,
+      () => this.getAxiosConfig(),
+      title => this.filterByRequiredTags(title)
+    );
+    this.mdblistGuideParser = new MDBListGuideParser(db, () => this.getAxiosConfig());
+    this.mediaServerParser = new MediaServerParser(db, () => this.getAxiosConfig());
+    this.streamFusionParser = new StreamFusionParser(
+      db,
+      () => this.getAxiosConfig(),
+      title => this.filterByRequiredTags(title)
+    );
+    this.cometNetParser = new CometNetParser(
+      db,
+      title => this.extractQuality(title),
+      title => this.filterByRequiredTags(title)
+    );
   }
 
   getAxiosConfig() {
@@ -44,26 +88,38 @@ class RSSParser {
     return config;
   }
 
-  async fetchRSS(url) {
+  safeUrl(value) {
     try {
-      console.log(`Fetching RSS: ${url}`);
+      const url = new URL(value);
+      return `${url.origin}${url.pathname}${url.search ? '?…' : ''}`;
+    } catch {
+      return '[URL invalide]';
+    }
+  }
+
+  async fetchRSS(url, { stateKey = url, sourceKind = 'rss' } = {}) {
+    const startedAt = this.db.beginSourceSync(stateKey, sourceKind);
+    try {
+      console.log(`Fetching RSS: ${this.safeUrl(url)}`);
       const response = await axios.get(url, this.axiosConfig);
       const parser = new xml2js.Parser({ explicitArray: false });
       const result = await parser.parseStringPromise(response.data);
-
       this.db.recordFeedSuccess(url);
 
       if (result.rss && result.rss.channel && result.rss.channel.item) {
         const items = Array.isArray(result.rss.channel.item)
           ? result.rss.channel.item
           : [result.rss.channel.item];
+        this.db.finishSourceSync(stateKey, { sourceKind, startedAt, itemsFetched: items.length });
         return items;
       }
+      this.db.finishSourceSync(stateKey, { sourceKind, startedAt, itemsFetched: 0 });
       return [];
     } catch (error) {
-      console.error(`Error fetching RSS ${url}:`, error.message);
+      console.error(`Error fetching RSS ${this.safeUrl(url)}:`, error.message);
       const httpStatus = error.response?.status || null;
-      this.db.recordFeedError(url, error.message, httpStatus);
+      this.db.failSourceSync(stateKey, { sourceKind, startedAt, errorMessage: error.message, httpStatus });
+      if (stateKey !== url) this.db.recordFeedError(url, error.message, httpStatus);
       return [];
     }
   }
@@ -151,7 +207,7 @@ class RSSParser {
     return null;
   }
 
-  parseReleaseName(title) {
+  parseReleaseName(title, structured = null) {
     const info = {
       name: title,
       year: null,
@@ -160,7 +216,8 @@ class RSSParser {
       isAnime: false,
       isEmission: false,
       isConcert: false,
-      isSpectacle: false
+      isSpectacle: false,
+      typeConfidence: 'low'
     };
 
     // Documentaires
@@ -178,6 +235,7 @@ class RSSParser {
     if (/\b(TALKSHOW|TALK[\.\-]SHOW|VARIET[EÉ]|EMISSION|[EÉ]MISSION)\b/i.test(title)) {
       info.isEmission = true;
       info.isSeries   = true;
+      info.typeConfidence = 'high';
     }
 
     // Concerts / Live
@@ -191,12 +249,27 @@ class RSSParser {
     }
 
     // Séries (pattern S01E01, Saison X, Season X)
-    if (/\bS\d{2}(E\d{2,3})?\b/i.test(title) || /\b(Saison|Season)\s*\d+\b/i.test(title)) {
+    if (
+      /\bS\d{1,3}(?:[\s._-]*E\d{1,4})?\b/i.test(title)
+      || /\b\d{1,3}x\d{1,4}\b/i.test(title)
+      || /\b(Saison|Season)\s*\d+\b/i.test(title)
+      || /\b(?:Episode|Épisode|Ep)\s*\d+\b/i.test(title)
+    ) {
       info.isSeries = true;
+      info.typeConfidence = 'high';
     }
 
-    const yearMatch = title.match(/[.\s](19\d{2}|20\d{2})[.\s]/);
-    if (yearMatch) {
+    if (structured && !structured._error) {
+      info.isDoc = info.isDoc || structured.documentary === true;
+      info.isSeries = info.isSeries
+        || (Array.isArray(structured.seasons) && structured.seasons.length > 0)
+        || (Array.isArray(structured.episodes) && structured.episodes.length > 0);
+      if (info.isSeries) info.typeConfidence = 'high';
+      if (Number.isInteger(structured.year)) info.year = String(structured.year);
+    }
+
+    const yearMatch = title.match(/(?:^|[.\s_([])(19\d{2}|20\d{2})(?=$|[.\s_\])])/);
+    if (!info.year && yearMatch) {
       info.year = yearMatch[1];
     }
 
@@ -212,8 +285,10 @@ class RSSParser {
 
     if (info.isSeries) {
       cleanName = cleanName
-        .replace(/\s+S\d{2}(E\d{2,3}(-E?\d{2,3})?)?.*/i, '')
+        .replace(/\s+S\d{1,3}(E\d{1,4}(-E?\d{1,4})?)?.*/i, '')
+        .replace(/\s+\d{1,3}x\d{1,4}.*/i, '')
         .replace(/\s+(Saison|Season)\s*\d+.*/i, '')
+        .replace(/\s+(?:Episode|Épisode|Ep)\s*\d+.*/i, '')
         .trim();
     }
 
@@ -222,7 +297,20 @@ class RSSParser {
       cleanName = parts[0].trim();
     }
 
+    const structuredTitle = typeof structured?.title === 'string'
+      ? structured.title.replace(/\s+/g, ' ').trim()
+      : '';
+    if (
+      structuredTitle
+      && structuredTitle.length >= 2
+      && /[\p{L}\p{N}]/u.test(structuredTitle)
+      && !/^(?:season|saison|episode|unknown)$/i.test(structuredTitle)
+    ) {
+      cleanName = structuredTitle;
+    }
+
     info.cleanName = cleanName;
+    info.structured = structured && !structured._error ? structured : null;
     return info;
   }
 
@@ -230,7 +318,10 @@ class RSSParser {
     const raw = this.db.getConfig('required_tags') || '';
     const tags = raw.split(',').map(t => t.trim()).filter(t => t.length > 0);
     if (tags.length === 0) return true;
-    return tags.some(tag => new RegExp('\\b' + tag + '\\b', 'i').test(title));
+    return tags.some(tag => {
+      const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, 'iu').test(title);
+    });
   }
 
   applyForce(catalogType, type, force) {
@@ -251,13 +342,16 @@ class RSSParser {
     const effectiveForce = (force && force !== 'auto') ? force : (urlHint || 'auto');
 
     if (urlHint && (force === 'auto' || !force)) {
-      console.log(`[RSS] URL hint "${urlHint}" détecté automatiquement depuis : ${(sourceUrl || '').substring(0, 60)}`);
+      console.log(`[RSS] URL hint "${urlHint}" détecté automatiquement depuis : ${this.safeUrl(sourceUrl)}`);
     }
 
+    const acceptedItems = items.filter(item => item?.title && this.filterByRequiredTags(item.title));
+    const structuredResults = this.releaseParser.parseMany(acceptedItems.map(item => item.title));
     const parsed = [];
-    for (const item of items) {
+    for (let itemIndex = 0; itemIndex < acceptedItems.length; itemIndex++) {
+      const item = acceptedItems[itemIndex];
       if (!this.filterByRequiredTags(item.title)) continue;
-      const info = this.parseReleaseName(item.title);
+      const info = this.parseReleaseName(item.title, structuredResults[itemIndex]);
       const releaseId = typeof item.guid === 'object' && item.guid._ ? item.guid._ : (item.guid || item.link);
       // Priorité titre : animé > concert > spectacle > doc > émission > série > film
       const detectedCatalog = info.isAnime     ? 'animés'
@@ -280,26 +374,38 @@ class RSSParser {
         pubDate: item.pubDate,
         source_url: sourceUrl,
         source_force: force,
-        quality: this.extractQuality(item.title),
-        hash: this.extractHash(item)
+        quality: [
+          info.structured?.resolution,
+          info.structured?.quality,
+          this.extractQuality(item.title)
+        ].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(' ') || null,
+        hash: this.extractHash(item),
+        parsed_release: info.structured,
+        type_confidence: info.typeConfidence
       });
     }
     return parsed;
   }
 
-  async parseFilmsRSS() {
+  async parseFilmsRSS({ forceAll = false, defaultIntervalMinutes = 180 } = {}) {
     const rssUrl = this.db.getConfig('rss_films_url');
-    if (!rssUrl) {
+    if (!rssUrl || this.db.getConfig('rss_films_paused') === 'true') {
       console.log('No RSS Films URL configured');
       return [];
     }
 
+    const stateKey = 'rss:rss-main';
+    const intervalMinutes = Math.min(Math.max(
+      Number(this.db.getConfig('rss_films_sync_interval')) || Number(defaultIntervalMinutes) || 180,
+      5
+    ), 43200);
+    if (!forceAll && !this.db.isSourceDue(stateKey, intervalMinutes)) return [];
     const force = this.db.getConfig('rss_films_force') || 'auto';
-    const items = await this.fetchRSS(rssUrl);
+    const items = await this.fetchRSS(rssUrl, { stateKey });
     return this._parseItems(items, force, rssUrl);
   }
 
-  async parseAdditionalRSS() {
+  async parseAdditionalRSS({ forceAll = false, defaultIntervalMinutes = 180 } = {}) {
     let additionalUrls = [];
     try {
       const raw = this.db.getConfig('rss_additional_urls');
@@ -318,25 +424,59 @@ class RSSParser {
     for (const entry of additionalUrls) {
       const rssUrl = typeof entry === 'string' ? entry : entry.url;
       const force = typeof entry === 'string' ? 'auto' : (entry.force || 'auto');
+      const sourceId = typeof entry === 'string'
+        ? `legacy-${Buffer.from(rssUrl || '').toString('base64url').slice(0, 16)}`
+        : entry.id;
+      const stateKey = `rss:${sourceId}`;
+      const configuredInterval = typeof entry === 'object'
+        ? (Number(entry.syncIntervalMinutes) || Number(defaultIntervalMinutes) || 180)
+        : (Number(defaultIntervalMinutes) || 180);
+      const intervalMinutes = Math.min(Math.max(configuredInterval, 5), 43200);
 
-      if (!rssUrl || !rssUrl.trim()) continue;
-      console.log('[RSS] Parsing additional feed:', rssUrl.substring(0, 50) + '... (force: ' + force + ')');
+      if (!rssUrl || !rssUrl.trim() || (typeof entry === 'object' && entry.paused === true)) continue;
+      if (!forceAll && !this.db.isSourceDue(stateKey, intervalMinutes)) continue;
+      console.log('[RSS] Parsing additional feed:', this.safeUrl(rssUrl) + ' (force: ' + force + ')');
 
       try {
-        const items = await this.fetchRSS(rssUrl.trim());
+        const items = await this.fetchRSS(rssUrl.trim(), { stateKey });
         allParsed.push(...this._parseItems(items, force, rssUrl.trim()));
       } catch (err) {
-        console.error('[RSS] Error parsing additional feed:', rssUrl.substring(0, 50), err.message);
+        console.error('[RSS] Error parsing additional feed:', this.safeUrl(rssUrl), err.message);
       }
     }
 
     return allParsed;
   }
 
-  async parseAll() {
-    const filmsItems = await this.parseFilmsRSS();
-    const additionalItems = await this.parseAdditionalRSS();
-    return { films: [...filmsItems, ...additionalItems] };
+  async parseAll(options = {}) {
+    const defaultIntervalMinutes = Number(options.defaultIntervalMinutes)
+      || Number(this.db.getConfig('refresh_interval')) || 180;
+    const parserOptions = { ...options, defaultIntervalMinutes };
+    const guides = await this.mdblistGuideParser.syncAll(parserOptions);
+    const filmsItems = await this.parseFilmsRSS(parserOptions);
+    const additionalItems = await this.parseAdditionalRSS(parserOptions);
+    const pastebinItems = await this.pastebinParser.parseAll(parserOptions);
+    const stremioItems = await this.stremioManifestParser.parseAll(parserOptions);
+    const newznabItems = await this.newznabParser.parseAll(parserOptions);
+    const webdavItems = await this.webdavParser.parseAll(parserOptions);
+    const waCustomItems = await this.waCustomParser.parseAll(parserOptions);
+    const mediaServerItems = await this.mediaServerParser.parseAll(parserOptions);
+    const streamFusionItems = await this.streamFusionParser.parseAll(parserOptions);
+    const cometNetItems = await this.cometNetParser.parseAll(parserOptions);
+    return {
+      films: [
+        ...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems,
+        ...newznabItems, ...webdavItems, ...waCustomItems, ...mediaServerItems, ...streamFusionItems,
+        ...cometNetItems
+      ],
+      pendingCursorKeys: [
+        ...(this.newznabParser.lastPendingCursorKeys || []),
+        ...(this.waCustomParser.lastPendingCursorKeys || []),
+        ...(this.streamFusionParser.lastPendingCursorKeys || [])
+      ],
+      pendingCometNetKeys: this.cometNetParser.lastPendingInboxKeys || [],
+      guides
+    };
   }
 }
 

@@ -3,7 +3,9 @@ const { SocksProxyAgent } = require('socks-proxy-agent');
 const TVDBService     = require('./services/tvdbService');
 const MALService      = require('./services/malService');
 const AniListService  = require('./services/anilistService');
+const KitsuService    = require('./services/kitsuService');
 const OMDbService     = require('./services/omdbService');
+const StremioMetadataService = require('./services/stremioMetadataService');
 
 // Genres TMDB qui indiquent une émission TV plutôt qu'une série narrative
 const EMISSIONS_GENRE_IDS = new Set([10763, 10764, 10766, 10767]); // News, Reality, Soap, Talk
@@ -29,6 +31,80 @@ const EMISSION_DISQUALIFYING_GENRE_IDS = new Set([878, 14, 10765, 16, 27]);
 // Drama (18), Comédie (35), Romance (10749), Action (28), Horreur (27), SF (878), Fantastique (14), Thriller (53)
 const CONCERT_DISQUALIFYING_GENRE_IDS = new Set([18, 35, 10749, 28, 27, 878, 14, 53]);
 
+const DOCUMENTARY_KEYWORDS = new Set(['documentary', 'docuseries']);
+const SPECTACLE_KEYWORDS = new Set([
+  'stand-up comedy', 'stand up comedy', 'comedy special', 'one-man show',
+  'one-woman show', 'stage play', 'theatre', 'theater', 'circus', 'magic show'
+]);
+const CONCERT_KEYWORDS = new Set([
+  'concert', 'concert film', 'live performance', 'music festival', 'live music'
+]);
+const EMISSION_KEYWORDS = new Set([
+  'talk show', 'game show', 'reality show', 'variety show', 'television news', 'magazine show'
+]);
+const EMISSION_TV_TYPES = new Set(['news', 'reality', 'talk show']);
+const DOCUMENTARY_TV_TYPES = new Set(['documentary']);
+
+function normalizeMatchTitle(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchTitleVariants(value) {
+  const normalized = normalizeMatchTitle(value);
+  const withoutArticle = normalized.replace(
+    /^(?:the|a|an|le|la|les|l|un|une|des|der|die|das|ein|eine|el|los|las|il|lo|i)\s+/,
+    ''
+  );
+  return [...new Set([normalized, withoutArticle].filter(Boolean))];
+}
+
+function levenshteinRatio(left, right) {
+  if (left === right) return 1;
+  if (!left || !right) return 0;
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i++) {
+    let diagonal = previous[0];
+    previous[0] = i;
+    for (let j = 1; j <= right.length; j++) {
+      const above = previous[j];
+      previous[j] = Math.min(
+        previous[j] + 1,
+        previous[j - 1] + 1,
+        diagonal + (left[i - 1] === right[j - 1] ? 0 : 1)
+      );
+      diagonal = above;
+    }
+  }
+  return 1 - (previous[right.length] / Math.max(left.length, right.length));
+}
+
+function tokenDice(left, right) {
+  const leftTokens = new Set(left.split(' ').filter(Boolean));
+  const rightTokens = new Set(right.split(' ').filter(Boolean));
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  let common = 0;
+  for (const token of leftTokens) if (rightTokens.has(token)) common++;
+  return (2 * common) / (leftTokens.size + rightTokens.size);
+}
+
+function parseStoredReasons(value) {
+  if (Array.isArray(value)) return value;
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 class TMDBMatcher {
   constructor(db) {
     this.db   = db;
@@ -36,7 +112,20 @@ class TMDBMatcher {
     this.tvdb    = new TVDBService(db);
     this.mal     = new MALService(db);
     this.anilist = new AniListService(db);
+    this.kitsu   = new KitsuService(db, () => this.getAxiosConfig());
     this.omdb    = new OMDbService(db);
+    this.stremioMetadata = new StremioMetadataService(db, () => this.getAxiosConfig());
+  }
+
+  linkDirectIdentities(item, mediaId) {
+    if (!mediaId) return;
+    const identities = [
+      mediaId,
+      ...(Array.isArray(item.direct_meta?.external_ids) ? item.direct_meta.external_ids : [])
+    ];
+    for (const externalId of new Set(identities.filter(Boolean))) {
+      this.db.linkMediaIdentity(mediaId, externalId);
+    }
   }
 
   getApiKey() {
@@ -96,68 +185,88 @@ class TMDBMatcher {
     throw new Error(`Max retries (${maxRetries}) exceeded for ${url}`);
   }
 
-  async searchMovie(title, year = null, language = 'fr-FR') {
-    const apiKey = this.getApiKey();
-    if (!apiKey) return null;
-    try {
-      const params = { api_key: apiKey, query: title, language, include_adult: true };
-      if (year) params.year = year;
-      const response = await this._fetchWithRetry(
-        `${this.baseUrl}/search/movie`, params, this.getAxiosConfig()
-      );
-      if (response.data.results && response.data.results.length > 0) {
-        const movie = response.data.results[0];
-        const externalIds = await this.getExternalIds('movie', movie.id);
-        return {
-          tmdb_id: movie.id,
-          imdb_id: externalIds?.imdb_id || null,
-          name: movie.title,
-          year: movie.release_date ? movie.release_date.substring(0, 4) : null,
-          poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : null,
-          background: movie.backdrop_path ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}` : null,
-          description: movie.overview || null,
-          genres: movie.genre_ids || [],
-          vote_average: movie.vote_average || null,
-          original_language: movie.original_language || null,
-          origin_country: []
-        };
-      }
-      return null;
-    } catch (error) {
-      console.error(`[TMDB] Error searching movie "${title}":`, error.message);
-      return null;
-    }
+  async searchMovie(title, year = null, language = 'fr-FR', expectedTitle = title, expectedYear = year) {
+    return this.searchMediaCandidates('movie', title, year, language, expectedTitle, expectedYear);
   }
 
-  async searchTVShow(title, year = null, language = 'fr-FR') {
+  async searchTVShow(title, year = null, language = 'fr-FR', expectedTitle = title, expectedYear = year) {
+    return this.searchMediaCandidates('tv', title, year, language, expectedTitle, expectedYear);
+  }
+
+  scoreCandidate(candidate, expectedTitle, expectedYear, mediaType) {
+    const expectedVariants = matchTitleVariants(expectedTitle);
+    const candidateTitles = [
+      candidate.title, candidate.name, candidate.original_title, candidate.original_name
+    ].flatMap(matchTitleVariants).filter(Boolean);
+    const titleSimilarity = expectedVariants.reduce((outerBest, expected) => Math.max(
+      outerBest,
+      candidateTitles.reduce((best, candidateTitle) => Math.max(
+        best,
+        levenshteinRatio(expected, candidateTitle),
+        tokenDice(expected, candidateTitle)
+      ), 0)
+    ), 0);
+    const exactTitle = expectedVariants.some(expected => candidateTitles.includes(expected));
+    const candidateYear = String(candidate.release_date || candidate.first_air_date || '').slice(0, 4);
+    const requestedYear = /^\d{4}$/.test(String(expectedYear || '')) ? Number(expectedYear) : null;
+    const actualYear = /^\d{4}$/.test(candidateYear) ? Number(candidateYear) : null;
+    let yearPoints = 0;
+    let yearReason = 'année inconnue';
+    if (requestedYear && actualYear) {
+      const difference = Math.abs(requestedYear - actualYear);
+      yearPoints = difference === 0 ? 15 : difference === 1 ? 8 : difference === 2 ? 2 : -12;
+      yearReason = difference === 0 ? 'année exacte' : `écart de ${difference} an(s)`;
+    }
+    const popularityPoints = Math.min(5, Math.log10(Math.max(1, Number(candidate.popularity) || 1)) * 2);
+    const score = Math.max(0, Math.min(
+      100,
+      titleSimilarity * 70 + (exactTitle ? 15 : 0) + yearPoints + popularityPoints
+    ));
+    return {
+      candidate,
+      score,
+      reasons: [
+        `titre ${Math.round(titleSimilarity * 100)} %`,
+        yearReason,
+        mediaType === 'tv' ? 'type série' : 'type film'
+      ]
+    };
+  }
+
+  async searchMediaCandidates(
+    mediaType, title, year = null, language = 'fr-FR',
+    expectedTitle = title, expectedYear = year
+  ) {
     const apiKey = this.getApiKey();
     if (!apiKey) return null;
     try {
       const params = { api_key: apiKey, query: title, language, include_adult: true };
-      if (year) params.first_air_date_year = year;
+      if (year) params[mediaType === 'tv' ? 'first_air_date_year' : 'year'] = year;
       const response = await this._fetchWithRetry(
-        `${this.baseUrl}/search/tv`, params, this.getAxiosConfig()
+        `${this.baseUrl}/search/${mediaType}`, params, this.getAxiosConfig()
       );
-      if (response.data.results && response.data.results.length > 0) {
-        const show = response.data.results[0];
-        const externalIds = await this.getExternalIds('tv', show.id);
-        return {
-          tmdb_id: show.id,
-          imdb_id: externalIds?.imdb_id || null,
-          name: show.name,
-          year: show.first_air_date ? show.first_air_date.substring(0, 4) : null,
-          poster: show.poster_path ? `https://image.tmdb.org/t/p/w500${show.poster_path}` : null,
-          background: show.backdrop_path ? `https://image.tmdb.org/t/p/original${show.backdrop_path}` : null,
-          description: show.overview || null,
-          genres: show.genre_ids || [],
-          vote_average: show.vote_average || null,
-          original_language: show.original_language || null,
-          origin_country: show.origin_country || []
-        };
+      const ranked = (response.data.results || [])
+        .slice(0, 20)
+        .map(candidate => this.scoreCandidate(candidate, expectedTitle, expectedYear, mediaType))
+        .sort((left, right) => right.score - left.score);
+      const best = ranked[0];
+      const minimum = Math.min(95, Math.max(
+        0, Number(this.db.getConfig('tmdb_match_min_confidence')) || 58
+      ));
+      if (!best || best.score < minimum) {
+        if (best) {
+          console.log(`[TMDB] Candidat refusé pour "${expectedTitle}" : ${best.score.toFixed(1)} < ${minimum}`);
+        }
+        return null;
       }
-      return null;
+      const detailed = await this.fetchByTmdbId(best.candidate.id, mediaType, language);
+      if (!detailed) return null;
+      detailed.match_confidence = Math.round(best.score * 10) / 10;
+      detailed.match_reasons = best.reasons;
+      detailed.match_provider = 'tmdb';
+      return detailed;
     } catch (error) {
-      console.error(`[TMDB] Error searching TV "${title}":`, error.message);
+      console.error(`[TMDB] Error searching ${mediaType} "${title}":`, error.message);
       return null;
     }
   }
@@ -182,11 +291,31 @@ class TMDBMatcher {
   async matchItem(item) {
     const isTV = item.type === 'series';
     const search = isTV
-      ? (t, y, l) => this.searchTVShow(t, y, l)
-      : (t, y, l) => this.searchMovie(t, y, l);
+      ? (t, y, l) => this.searchTVShow(t, y, l, item.cleanName, item.year)
+      : (t, y, l) => this.searchMovie(t, y, l, item.cleanName, item.year);
 
     // Titre simplifié : on garde seulement les 3 premiers mots pour les titres longs
     const simplifiedName = item.cleanName.split(' ').slice(0, 3).join(' ');
+
+    if (
+      item.source_force === 'auto'
+      && item.type_confidence === 'low'
+      && item.cleanName
+    ) {
+      const [movieCandidate, tvCandidate] = await Promise.all([
+        this.searchMovie(item.cleanName, item.year, 'fr-FR', item.cleanName, item.year),
+        this.searchTVShow(item.cleanName, item.year, 'fr-FR', item.cleanName, item.year)
+      ]);
+      const candidates = [movieCandidate, tvCandidate].filter(Boolean)
+        .sort((left, right) => (right.match_confidence || 0) - (left.match_confidence || 0));
+      if (candidates[0]) {
+        candidates[0].match_reasons = [
+          ...(candidates[0].match_reasons || []),
+          'type film/série comparé automatiquement'
+        ];
+        return candidates[0];
+      }
+    }
 
     const attempts = [
       // 1. Exact + année, français
@@ -223,6 +352,7 @@ class TMDBMatcher {
   async matchAnimeItem(item) {
     let malResult    = null;
     let anilistResult = null;
+    let kitsuResult = null;
 
     // ── 1. MAL (si clé configurée) ────────────────────────────────────────────
     if (this.mal.isConfigured()) {
@@ -248,11 +378,24 @@ class TMDBMatcher {
       }
     }
 
-    // ── 3. Matching TMDB avec titres normalisés ───────────────────────────────
-    if (malResult || anilistResult) {
-      // Priorité MAL, AniList en complément
-      const primary   = malResult || anilistResult;
-      const secondary = malResult ? anilistResult : null;
+    // ── 3. Kitsu (sans clé) ───────────────────────────────────────────────────
+    if (this.kitsu.isEnabled()) {
+      try {
+        kitsuResult = await this.kitsu.search(item.cleanName, item.year);
+        if (kitsuResult) {
+          console.log(`[Kitsu] ✓ "${item.cleanName}" → "${kitsuResult.title}" (id:${kitsuResult.kitsu_id})`);
+        }
+      } catch (err) {
+        console.error(`[Kitsu] Erreur pour "${item.cleanName}":`, err.message);
+      }
+    }
+
+    // ── 4. Matching TMDB avec titres normalisés ───────────────────────────────
+    if (malResult || anilistResult || kitsuResult) {
+      // Priorité MAL, puis AniList et Kitsu en compléments
+      const primary = malResult || anilistResult || kitsuResult;
+      const secondaryResults = [anilistResult, kitsuResult]
+        .filter(result => result && result !== primary);
 
       const isTV = (primary.stremio_type === 'series') || item.type === 'series';
       const search = isTV
@@ -271,18 +414,18 @@ class TMDBMatcher {
 
       // Titres principaux (MAL prioritaire)
       addTitle(primary.title);
-      if (secondary) addTitle(secondary.title);
+      secondaryResults.forEach(result => addTitle(result.title));
 
       // Titres alternatifs
       addTitle(primary.title_romaji ?? primary.title_ja);
-      if (secondary) {
-        addTitle(secondary.title_romaji);
-        addTitle(secondary.title_ja);
-      }
+      secondaryResults.forEach(result => {
+        addTitle(result.title_romaji);
+        addTitle(result.title_ja);
+      });
       addTitle(primary.title_ja);
       addTitle(item.cleanName); // toujours en dernier fallback
 
-      const bestYear = primary.year || (secondary && secondary.year) || item.year;
+      const bestYear = primary.year || secondaryResults.find(result => result.year)?.year || item.year;
 
       // Tentatives : premier titre + année, puis tous les titres sans année
       const attempts = [
@@ -317,8 +460,38 @@ class TMDBMatcher {
       console.log(`[Anime→TMDB] Aucun résultat TMDB pour "${primary.title}" (${item.cleanName})`);
     }
 
-    // Fallback : matching standard TMDB sans normalisateur
-    return this.matchItem(item);
+    // ── 5. Fallback fournisseur de métadonnées Stremio ───────────────────────
+    const standardMatch = await this.matchItem(item);
+    if (standardMatch) return standardMatch;
+
+    const stremioMatch = await this.stremioMetadata.search(item);
+    if (stremioMatch) return stremioMatch;
+
+    // ── 6. ID anime natif ─────────────────────────────────────────────────────
+    // Ces identifiants sont résolus dans Stremio par un addon de métadonnées
+    // compatible (AIOMetadata, Kitsu Anime, etc.), sans imposer un faux IMDb ID.
+    const native = kitsuResult
+      ? { ...kitsuResult, id: `kitsu:${kitsuResult.kitsu_id}` }
+      : malResult
+      ? { ...malResult, id: `mal:${malResult.mal_id}` }
+      : anilistResult
+      ? { ...anilistResult, id: `anilist:${anilistResult.anilist_id}` }
+      : null;
+    if (!native) return null;
+
+    return {
+      imdb_id: native.id,
+      tmdb_id: null,
+      name: native.title || item.cleanName,
+      year: native.year || item.year || null,
+      poster: native.poster || null,
+      background: native.background || null,
+      description: native.synopsis || null,
+      genres: [],
+      vote_average: native.score || null,
+      original_language: 'ja',
+      origin_country: ['JP']
+    };
   }
 
   async matchBatch(items, onProgress = null) {
@@ -340,6 +513,10 @@ class TMDBMatcher {
 
       // 1. Dédup par release exacte (indexer_rlz_id)
       if (this.db.hasRelease(item.indexer_rlz_id)) {
+        this.db.markReleaseSeenByIndexer(
+          item.indexer_rlz_id,
+          item.availability_scan_token || null
+        );
         alreadyInDb++;
         matched++;
         if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
@@ -348,6 +525,7 @@ class TMDBMatcher {
 
       // 1b. Dédup par hash (quand disponible) — même torrent depuis un feed différent
       if (item.hash && this.db.hasReleaseByHash(item.hash)) {
+        this.db.markReleaseSeenByHash(item.hash, item.availability_scan_token || null);
         alreadyInDb++;
         matched++;
         console.log(`[TMDB] ↩ Doublon hash détecté : ${item.cleanName} (${item.hash})`);
@@ -355,29 +533,96 @@ class TMDBMatcher {
         continue;
       }
 
-      // 2. Pour les séries : si le show est déjà en base (même titre TMDB), on ajoute juste la release
-      if (item.type === 'series') {
-        // On ne peut pas faire ça sans connaître le nom TMDB... on le sait uniquement après match.
-        // On vérifie via cleanName (approximatif) — si match confirmé, on ajoutera la release plus bas.
+      // 1c. Les API Newznab fournissent souvent directement un identifiant TMDB.
+      // Si le média est déjà indexé, aucune requête TMDB supplémentaire n'est nécessaire.
+      if (item.tmdb_id) {
+        const existingByTmdb = this.db.getMediaByTmdbId(item.tmdb_id, item.type);
+        if (existingByTmdb) {
+          this.db.addRelease({
+            media_imdb_id: existingByTmdb.imdb_id,
+            release_name: item.release_name,
+            indexer_rlz_id: item.indexer_rlz_id,
+            source_url: item.source_url || null,
+            quality: item.quality || null,
+            hash: item.hash || null,
+            scan_token: item.availability_scan_token || null
+          });
+          alreadyInDb++;
+          matched++;
+          console.log(`[TMDB] ↩ ID TMDB déjà connu : ${existingByTmdb.name} (${existingByTmdb.imdb_id})`);
+          if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
+          continue;
+        }
+      }
+
+      // 1d. Les imports structurés (WaCustom, StreamFusion, CometNet, manifestes)
+      // fournissent souvent déjà un IMDb. Si ce média est connu, enregistrer la
+      // release immédiatement évite un appel OMDb/TMDB et la temporisation réseau
+      // pour chaque ligne d'un gros rattrapage.
+      if (item.direct_meta && /^tt\d+$/i.test(item.direct_meta.imdb_id || '')) {
+        const externalIds = Array.isArray(item.direct_meta.external_ids)
+          ? item.direct_meta.external_ids
+          : [];
+        const existingDirect = this.db.getMediaByImdbId(item.direct_meta.imdb_id)
+          || externalIds.map(externalId => this.db.getMediaByExternalId(externalId)).find(Boolean);
+        if (existingDirect) {
+          this.db.addRelease({
+            media_imdb_id: existingDirect.imdb_id,
+            release_name: item.release_name,
+            indexer_rlz_id: item.indexer_rlz_id,
+            source_url: item.source_url || null,
+            quality: item.quality || null,
+            hash: item.hash || null,
+            scan_token: item.availability_scan_token || null
+          });
+          this.linkDirectIdentities(item, existingDirect.imdb_id);
+          alreadyInDb++;
+          matched++;
+          if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
+          continue;
+        }
       }
 
       // 3. Recherche TMDB (via MAL si animé, sinon multi-tentatives standard)
       let match = null;
       try {
         const isAnime = item.catalog_type === 'animés';
-        match = isAnime ? await this.matchAnimeItem(item) : await this.matchItem(item);
+        match = item.direct_meta
+          ? item.direct_meta
+          : item.tmdb_id
+          ? await this.fetchByTmdbId(item.tmdb_id, item.type === 'series' ? 'tv' : 'movie')
+          : (isAnime ? await this.matchAnimeItem(item) : await this.matchItem(item));
+        if (!match && !isAnime) {
+          match = await this.stremioMetadata.search(item);
+        }
       } catch (err) {
         console.error(`[TMDB] Erreur inattendue sur "${item.cleanName}":`, err.message);
       }
 
       if (match && match.imdb_id) {
         let catalogType = item.catalog_type;
+        const resolvedType = match.media_type === 'tv'
+          ? 'series'
+          : match.media_type === 'movie'
+          ? 'movie'
+          : item.type;
+        if (
+          item.source_force === 'auto'
+          && item.type_confidence === 'low'
+          && resolvedType !== item.type
+        ) {
+          item.type = resolvedType;
+          if (catalogType === 'films' || catalogType === 'series') {
+            catalogType = resolvedType === 'series' ? 'series' : 'films';
+          }
+          console.log(`[Matching] Type corrigé automatiquement : ${item.cleanName} → ${resolvedType}`);
+        }
 
         // ── Appel OMDb (concerts & spectacles) ──────────────────────────────
         // On appelle OMDb uniquement si la clé est configurée et que le média
         // n'est pas déjà dans une catégorie spécifique (animés).
         let omdbResult = null;
-        if (this.omdb.isConfigured() && catalogType !== 'animés') {
+        if (this.omdb.isConfigured() && catalogType !== 'animés' && /^tt\d+$/i.test(match.imdb_id)) {
           try {
             omdbResult = await this.omdb.fetch(match.imdb_id);
           } catch (err) {
@@ -386,20 +631,32 @@ class TMDBMatcher {
         }
 
         if (match.genres) {
+          const keywordSet = new Set((match.keywords || []).map(keyword => normalizeMatchTitle(keyword)));
+          const hasKeyword = expected => [...expected]
+            .some(keyword => keywordSet.has(normalizeMatchTitle(keyword)));
+          const tvType = normalizeMatchTitle(match.tv_type);
           const isDocGenre      = match.genres.includes(DOCUMENTARY_GENRE_ID);
+          const isDocKeyword    = hasKeyword(DOCUMENTARY_KEYWORDS);
+          const isDocTvType     = DOCUMENTARY_TV_TYPES.has(tvType);
+          const isDocumentary   = isDocGenre || isDocKeyword || isDocTvType;
           const isAnimeGenre    = match.genres.includes(ANIMATION_GENRE_ID);
           const isMusicGenre    = match.genres.includes(MUSIC_GENRE_ID);
+          const isConcertKeyword = hasKeyword(CONCERT_KEYWORDS);
+          const isSpectacleKeyword = hasKeyword(SPECTACLE_KEYWORDS);
           const isEmissionGenre = match.genres.some(g => EMISSIONS_GENRE_IDS.has(g));
+          const isEmissionMetadata = isEmissionGenre
+            || hasKeyword(EMISSION_KEYWORDS)
+            || EMISSION_TV_TYPES.has(tvType);
           const isJapanese      = match.original_language === 'ja'
                                 || (Array.isArray(match.origin_country) && match.origin_country.includes('JP'));
 
           // ── Couche de sécurité documentaires : s'applique toujours, quel que soit le flux ──
           // Mais annulée si des genres contradictoires sont présents (Action, SF, Fantastique, Horreur)
-          if (isDocGenre && catalogType !== 'documentaires') {
+          if (isDocumentary && catalogType !== 'documentaires') {
             const hasDisqualifier = match.genres.some(g => DOC_DISQUALIFYING_GENRE_IDS.has(g));
-            if (!hasDisqualifier) {
+            if (!hasDisqualifier || isDocKeyword || isDocTvType) {
               catalogType = 'documentaires';
-              console.log(`[TMDB] ↪ Forcé en documentaire (genre 99) : ${match.name}`);
+              console.log(`[TMDB] ↪ Forcé en documentaire (genre/type/mot-clé) : ${match.name}`);
             } else {
               console.log(`[TMDB] ↪ Genre 99 ignoré — genres contradictoires présents : ${match.name}`);
             }
@@ -408,15 +665,15 @@ class TMDBMatcher {
           // ── Détection concert : TMDB genre Music (10402) + confirmation OMDb ──
           // Ne s'applique pas si déjà classé explicitement en spectacles ou animés.
           // Disqualifié si le film a des genres narratifs (biopic, comédie musicale…).
-          if (isMusicGenre && !isDocGenre
+          if ((isMusicGenre || isConcertKeyword) && !isDocumentary
               && catalogType !== 'concerts' && catalogType !== 'animés') {
             const hasConcertDisqualifier = match.genres.some(g => CONCERT_DISQUALIFYING_GENRE_IDS.has(g));
             const omdbConfirmsMusic      = this.omdb.isMusicGenre(omdbResult);
             // Concert si : pas de genres narratifs disqualifiants ET OMDb confirme "Music"
             // OU : flux forcé en concerts (déjà géré en amont)
-            if (!hasConcertDisqualifier && omdbConfirmsMusic) {
+            if (!hasConcertDisqualifier && (omdbConfirmsMusic || isConcertKeyword)) {
               catalogType = 'concerts';
-              console.log(`[TMDB+OMDb] ↪ Classé en concert (genre 10402 + OMDb Music) : ${match.name}`);
+              console.log(`[TMDB+OMDb] ↪ Classé en concert (métadonnées concordantes) : ${match.name}`);
             } else if (isMusicGenre && !hasConcertDisqualifier) {
               console.log(`[TMDB] ↪ Genre Music sans confirmation OMDb — conservé ${catalogType} : ${match.name}`);
             }
@@ -429,19 +686,19 @@ class TMDBMatcher {
             const titleLower    = (item.release_name || item.cleanName || '').toLowerCase();
             const hasTitleHint  = /\b(stand[\-\s]?up|one[\-\s]man[\-\s]show|one[\-\s]woman[\-\s]show|spectacle|th[eé][aâ]tre|cirque|magic\s*show|humori[st]te|caf[eé][\-\s]?th[eé][aâ]tre)\b/i.test(titleLower);
             const omdbIsStandup = this.omdb.isStandupComedy(omdbResult);
-            if (hasTitleHint || omdbIsStandup) {
+            if (hasTitleHint || omdbIsStandup || isSpectacleKeyword) {
               catalogType = 'spectacles';
               console.log(`[TMDB+OMDb] ↪ Classé en spectacle (titre/OMDb) : ${match.name}`);
             }
           }
 
           // ── Reclassifications auto (uniquement si le flux est en mode auto) ──
-          if (item.source_force === 'auto' && !isDocGenre
+          if (item.source_force === 'auto' && !isDocumentary
               && catalogType !== 'concerts' && catalogType !== 'spectacles') {
             if (isAnimeGenre && isJapanese) {
               catalogType = 'animés';
               console.log(`[TMDB] ↪ Reclassifié en animé (genre 16 + JP) : ${match.name}`);
-            } else if (isEmissionGenre && catalogType === 'series') {
+            } else if (isEmissionMetadata && catalogType === 'series') {
               const hasEmissionDisqualifier = match.genres.some(g => EMISSION_DISQUALIFYING_GENRE_IDS.has(g));
               if (!hasEmissionDisqualifier) {
                 catalogType = 'emissions';
@@ -465,26 +722,46 @@ class TMDBMatcher {
         }
 
         // Vérifier si ce média (imdb_id) est déjà en base
-        const existingMedia = this.db.getMediaByImdbId(match.imdb_id);
+        const externalIds = Array.isArray(item.direct_meta?.external_ids)
+          ? item.direct_meta.external_ids
+          : [];
+        const existingMedia = this.db.getMediaByImdbId(match.imdb_id)
+          || externalIds.map(externalId => this.db.getMediaByExternalId(externalId)).find(Boolean);
 
         if (existingMedia) {
+          const mediaId = existingMedia.imdb_id;
+          this.db.addMedia({
+            ...existingMedia,
+            poster: match.poster || existingMedia.poster,
+            background: match.background || existingMedia.background,
+            description: match.description || existingMedia.description,
+            genres: match.genres?.length ? match.genres : existingMedia.genres,
+            keywords: match.keywords?.length ? match.keywords : existingMedia.keywords,
+            vote_average: match.vote_average || existingMedia.vote_average,
+            match_confidence: match.match_confidence ?? existingMedia.match_confidence,
+            match_provider: match.match_provider || existingMedia.match_provider,
+            match_reasons: match.match_reasons || parseStoredReasons(existingMedia.match_reasons),
+            release_name: item.release_name
+          });
           // Média déjà connu : on ajoute juste la nouvelle release
           this.db.addRelease({
-            media_imdb_id: match.imdb_id,
+            media_imdb_id: mediaId,
             release_name: item.release_name,
             indexer_rlz_id: item.indexer_rlz_id,
             source_url: item.source_url || null,
             quality: item.quality || null,
-            hash: item.hash || null
+            hash: item.hash || null,
+            scan_token: item.availability_scan_token || null
           });
+          this.linkDirectIdentities(item, mediaId);
           matched++;
           alreadyInDb++;
-          console.log(`[TMDB] ↩ Nouvelle release pour média existant : ${match.name} (${match.imdb_id})`);
+          console.log(`[TMDB] ↩ Nouvelle release pour média existant : ${match.name} (${mediaId})`);
         } else {
           // Nouveau média
           const mediaData = {
             imdb_id: match.imdb_id,
-            tmdb_id: match.tmdb_id.toString(),
+            tmdb_id: match.tmdb_id ? match.tmdb_id.toString() : null,
             type: item.type,
             catalog_type: catalogType,
             name: match.name,
@@ -493,7 +770,11 @@ class TMDBMatcher {
             background: match.background,
             description: match.description,
             genres: match.genres,
+            keywords: match.keywords || [],
             vote_average: match.vote_average,
+            match_confidence: match.match_confidence ?? null,
+            match_provider: match.match_provider || (item.direct_meta ? 'source-directe' : null),
+            match_reasons: match.match_reasons || [],
             release_name: item.release_name
           };
 
@@ -505,8 +786,10 @@ class TMDBMatcher {
               indexer_rlz_id: item.indexer_rlz_id,
               source_url: item.source_url || null,
               quality: item.quality || null,
-              hash: item.hash || null
+              hash: item.hash || null,
+              scan_token: item.availability_scan_token || null
             });
+            this.linkDirectIdentities(item, match.imdb_id);
             matched++;
             results.push(mediaData);
             console.log(`[TMDB] ✓ ${item.cleanName} → ${match.name} (${match.imdb_id})`);
@@ -542,7 +825,8 @@ class TMDBMatcher {
               indexer_rlz_id: item.indexer_rlz_id,
               source_url: item.source_url || null,
               quality: item.quality || null,
-              hash: item.hash || null
+              hash: item.hash || null,
+              scan_token: item.availability_scan_token || null
             });
             matched++;
             alreadyInDb++;
@@ -558,7 +842,11 @@ class TMDBMatcher {
               background: null,
               description: null,
               genres: [],
+              keywords: [],
               vote_average: null,
+              match_confidence: null,
+              match_provider: 'tvdb',
+              match_reasons: ['fallback TVDB'],
               release_name: item.release_name
             };
             const mediaSaved = this.db.addMedia(mediaData);
@@ -569,7 +857,8 @@ class TMDBMatcher {
                 indexer_rlz_id: item.indexer_rlz_id,
                 source_url: item.source_url || null,
                 quality: item.quality || null,
-                hash: item.hash || null
+                hash: item.hash || null,
+                scan_token: item.availability_scan_token || null
               });
               matched++;
               results.push(mediaData);
@@ -598,8 +887,9 @@ class TMDBMatcher {
         onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
       }
 
-      // Rate limiting : ~30 req/sec
-      if (i < items.length - 1) {
+      // Les métadonnées directes n'utilisent pas le réseau, sauf si OMDb est
+      // configuré pour classifier un média encore inconnu.
+      if (i < items.length - 1 && (!item.direct_meta || this.omdb.isConfigured())) {
         await new Promise(resolve => setTimeout(resolve, 33));
       }
     }
@@ -648,17 +938,18 @@ class TMDBMatcher {
     }
   }
 
-  async fetchByTmdbId(tmdbId, mediaType) {
+  async fetchByTmdbId(tmdbId, mediaType, language = 'fr-FR') {
     const apiKey = this.getApiKey();
     if (!apiKey) return null;
     try {
       const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
       const response = await this._fetchWithRetry(
         `${this.baseUrl}/${endpoint}/${tmdbId}`,
-        { api_key: apiKey, append_to_response: 'external_ids' },
+        { api_key: apiKey, language, append_to_response: 'external_ids,keywords' },
         this.getAxiosConfig()
       );
       const d = response.data;
+      const keywordRows = d.keywords?.keywords || d.keywords?.results || [];
       return {
         tmdb_id: d.id,
         imdb_id: d.external_ids?.imdb_id || d.imdb_id || null,
@@ -668,8 +959,13 @@ class TMDBMatcher {
         background: d.backdrop_path ? `https://image.tmdb.org/t/p/original${d.backdrop_path}` : null,
         description: d.overview || null,
         genres: (d.genres || []).map(g => g.id),
+        keywords: keywordRows.map(keyword => keyword.name).filter(Boolean),
         vote_average: d.vote_average || null,
-        media_type: mediaType
+        original_language: d.original_language || null,
+        origin_country: d.origin_country || d.production_countries?.map(country => country.iso_3166_1) || [],
+        tv_type: endpoint === 'tv' ? d.type || null : null,
+        media_type: mediaType,
+        match_provider: 'tmdb'
       };
     } catch (err) {
       console.error(`[TMDB] fetchByTmdbId error for ${mediaType}/${tmdbId}:`, err.message);
@@ -736,6 +1032,7 @@ class TMDBMatcher {
         background: match.background || null,
         description: match.description || null,
         genres: match.genres || [],
+        keywords: match.keywords || [],
         vote_average: match.vote_average || null,
         release_name: failedRelease.release_name
       };
