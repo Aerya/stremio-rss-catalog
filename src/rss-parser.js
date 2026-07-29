@@ -9,6 +9,7 @@ const WaCustomParser = require('./wacustom-parser');
 const MDBListGuideParser = require('./mdblist-guide-parser');
 const MediaServerParser = require('./media-server-parser');
 const StreamFusionParser = require('./streamfusion-parser');
+const CometNetParser = require('./cometnet-parser');
 
 class RSSParser {
   constructor(config, db) {
@@ -31,6 +32,11 @@ class RSSParser {
     this.mdblistGuideParser = new MDBListGuideParser(db, () => this.getAxiosConfig());
     this.mediaServerParser = new MediaServerParser(db, () => this.getAxiosConfig());
     this.streamFusionParser = new StreamFusionParser(db, () => this.getAxiosConfig());
+    this.cometNetParser = new CometNetParser(
+      db,
+      title => this.extractQuality(title),
+      title => this.filterByRequiredTags(title)
+    );
   }
 
   getAxiosConfig() {
@@ -401,16 +407,19 @@ class RSSParser {
     const waCustomItems = await this.waCustomParser.parseAll(parserOptions);
     const mediaServerItems = await this.mediaServerParser.parseAll(parserOptions);
     const streamFusionItems = await this.streamFusionParser.parseAll(parserOptions);
+    const cometNetItems = await this.cometNetParser.parseAll(parserOptions);
     return {
       films: [
         ...filmsItems, ...additionalItems, ...pastebinItems, ...stremioItems,
-        ...newznabItems, ...webdavItems, ...waCustomItems, ...mediaServerItems, ...streamFusionItems
+        ...newznabItems, ...webdavItems, ...waCustomItems, ...mediaServerItems, ...streamFusionItems,
+        ...cometNetItems
       ],
       pendingCursorKeys: [
         ...(this.newznabParser.lastPendingCursorKeys || []),
         ...(this.waCustomParser.lastPendingCursorKeys || []),
         ...(this.streamFusionParser.lastPendingCursorKeys || [])
       ],
+      pendingCometNetKeys: this.cometNetParser.lastPendingInboxKeys || [],
       guides
     };
   }

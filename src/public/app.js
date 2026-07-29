@@ -812,7 +812,8 @@ window.createCatalogForSource = createCatalogForSource;
 // ═══════════════════════════ CATALOGUES ═══════════════════════════════
 
 let catalogManagerData = {
-  catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [], webdav: [], wacustom: [], mediaServers: [], guides: []
+  catalogs: [], pastebins: [], rss: [], stremio: [], newznab: [], webdav: [], wacustom: [],
+  mediaServers: [], streamfusion: [], cometnet: [], guides: []
 };
 
 function csvValues(id) {
@@ -844,17 +845,17 @@ function catalogPayload() {
 
 async function loadCatalogManager() {
   try {
-    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes, waCustomRes, mediaServerRes, streamFusionRes, guideRes] = await Promise.all([
+    const [catalogRes, pasteRes, rssRes, stremioRes, newznabRes, webdavRes, waCustomRes, mediaServerRes, streamFusionRes, cometNetRes, guideRes] = await Promise.all([
       fetch('/api/catalogs'), fetch('/api/pastebins'), fetch('/api/rss-sources'),
       fetch('/api/stremio-sources'), fetch('/api/newznab-sources'), fetch('/api/webdav-sources'),
       fetch('/api/wacustom-sources'), fetch('/api/media-server-sources'),
-      fetch('/api/streamfusion-sources'), fetch('/api/mdblist-guides')
+      fetch('/api/streamfusion-sources'), fetch('/api/cometnet-sources'), fetch('/api/mdblist-guides')
     ]);
-    const [catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, streamfusion, guides] = await Promise.all([
+    const [catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, streamfusion, cometnet, guides] = await Promise.all([
       catalogRes.json(), pasteRes.json(), rssRes.json(), stremioRes.json(), newznabRes.json(),
-      webdavRes.json(), waCustomRes.json(), mediaServerRes.json(), streamFusionRes.json(), guideRes.json()
+      webdavRes.json(), waCustomRes.json(), mediaServerRes.json(), streamFusionRes.json(), cometNetRes.json(), guideRes.json()
     ]);
-    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, streamfusion, guides };
+    catalogManagerData = { catalogs, pastebins, rss, stremio, newznab, webdav, wacustom, mediaServers, streamfusion, cometnet, guides };
     renderRssSources();
     renderPastebins();
     renderNewznabSources();
@@ -863,6 +864,7 @@ async function loadCatalogManager() {
     renderWaCustomSources();
     renderMediaServerSources();
     renderStreamFusionSources();
+    renderCometNetSources();
     renderMDBListGuides();
     renderCatalogGuideChoices();
     renderCatalogSourceChoices();
@@ -976,6 +978,7 @@ function updateSourceGroupCounts() {
     webdavGroupCount: catalogManagerData.webdav.length,
     mediaserverGroupCount: (catalogManagerData.mediaServers || []).length,
     streamfusionGroupCount: (catalogManagerData.streamfusion || []).length,
+    cometnetGroupCount: (catalogManagerData.cometnet || []).length,
     wacustomGroupCount: catalogManagerData.wacustom.length,
     indexerGroupCount: catalogManagerData.newznab.length,
     stremioGroupCount: catalogManagerData.stremio.length
@@ -1031,7 +1034,7 @@ async function importConfiguration() {
     ? (includeSecrets ? '\nLes secrets présents seront importés.' : '\nLes secrets présents resteront exclus.')
     : '';
   if (!confirm(
-    `Import valide : ${counts.rss} RSS, ${counts.pastebin} Pastebin, ${counts.webdav || 0} WebDAV, ${counts.wacustom || 0} WaStream/WaCustom, ${counts.media_servers || 0} Plex/Jellyfin, ${counts.streamfusion || 0} StreamFusion, ${counts.indexers} indexeurs, ${counts.stremio} manifestes et ${counts.catalogs} catalogues.${secretWarning}\n\nUne sauvegarde SQLite sera créée avant application. Continuer ?`
+    `Import valide : ${counts.rss} RSS, ${counts.pastebin} Pastebin, ${counts.webdav || 0} WebDAV, ${counts.wacustom || 0} WaStream/WaCustom, ${counts.media_servers || 0} Plex/Jellyfin, ${counts.streamfusion || 0} StreamFusion, ${counts.cometnet || 0} CometNet, ${counts.indexers} indexeurs, ${counts.stremio} manifestes et ${counts.catalogs} catalogues.${secretWarning}\n\nUne sauvegarde SQLite sera créée avant application. Continuer ?`
   )) return;
   const response = await fetch('/api/config/import', {
     method: 'POST',
@@ -1181,6 +1184,12 @@ function renderCatalogSourceChoices(selected = []) {
       name: source.name,
       url: source.source_key,
       kind: 'Cache privé StreamFusion',
+      paused: source.paused
+    })),
+    ...(catalogManagerData.cometnet || []).map(source => ({
+      name: source.name,
+      url: source.source_key,
+      kind: 'Annonces CometNet reçues',
       paused: source.paused
     })),
     ...catalogManagerData.newznab.flatMap(source => (source.catalogs || []).map(catalog => ({
@@ -1971,6 +1980,156 @@ async function deleteStreamFusionSource(id) {
   await loadSourceManager();
 }
 window.deleteStreamFusionSource = deleteStreamFusionSource;
+
+function cometNetPayload() {
+  return {
+    source_id: document.getElementById('cometNetEditId').value || null,
+    name: document.getElementById('cometNetName').value.trim(),
+    url: document.getElementById('cometNetUrl').value.trim(),
+    max_items_per_sync: Number(document.getElementById('cometNetMaxItems').value) || 5000
+  };
+}
+
+function cometNetConnectionLabel(source) {
+  if (source.paused) return '<span class="source-runtime-paused">En pause</span>';
+  const state = source.connection || {};
+  const labels = {
+    connected: '<span class="source-runtime-ok">Connecté</span>',
+    connecting: 'Connexion…',
+    reconnecting: '<span class="source-runtime-error">Reconnexion…</span>',
+    error: '<span class="source-runtime-error">Erreur</span>',
+    disconnected: 'Déconnecté'
+  };
+  return labels[state.status] || escHtml(state.status || 'Déconnecté');
+}
+
+function renderCometNetSources() {
+  const container = document.getElementById('cometNetList');
+  if (!container) return;
+  const sources = catalogManagerData.cometnet || [];
+  if (!sources.length) {
+    container.innerHTML = '<p class="text-muted">Aucun pair CometNet ciblé.</p>';
+    return;
+  }
+  container.innerHTML = sources.map(source => {
+    const state = source.connection || {};
+    const inbox = source.inbox || {};
+    const nodeId = source.peer_node_id || state.peer_node_id;
+    return `
+    <div class="manager-row source-entry" data-source-search="${escHtml(`${source.name} ${source.url} cometnet ${source.peer_alias || ''}`.toLowerCase())}">
+      <div class="manager-row-main">
+        <div class="manager-row-title">${escHtml(source.name || 'CometNet')} <span class="source-name-badge">CometNet passif</span> ${cometNetConnectionLabel(source)}</div>
+        <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
+        <div class="manager-row-meta">
+          Pair : ${escHtml(source.peer_alias || state.peer_alias || 'sans alias')}
+          ${nodeId ? `· identité ${escHtml(nodeId.slice(0, 12))}…` : ''}
+          · reçues ${Number(inbox.received || 0).toLocaleString()}
+          · en attente ${Number(inbox.pending || 0).toLocaleString()}
+          · session ${Number(state.received_session || 0).toLocaleString()}
+          ${state.invalid_session ? `· rejetées ${Number(state.invalid_session).toLocaleString()}` : ''}
+        </div>
+        <div class="manager-row-meta">
+          Dernier message : ${state.last_message_at ? fmtDate(state.last_message_at) : 'jamais'}
+          · dernière annonce conservée : ${inbox.last_received_at ? fmtDate(inbox.last_received_at) : 'jamais'}
+          · plafond de traitement ${Number(source.max_items_per_sync || 5000).toLocaleString()}
+        </div>
+        ${state.last_error ? `<div class="source-runtime-error">${escHtml(state.last_error)}</div>` : ''}
+      </div>
+      <div class="manager-row-actions">
+        <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key)}','${encodeURIComponent(source.name || '')}')">${t('sources_catalog_action')}</button>
+        <button class="btn-sm" onclick="editCometNetSource('${source.id}')">Modifier</button>
+        ${sourceSecretActions('cometnet', source.id)}
+        <button class="btn-sm" onclick="toggleCometNetSource('${source.id}',${!source.paused})">${source.paused ? 'Reprendre' : 'Mettre en pause'}</button>
+        <button class="btn-danger btn-sm" onclick="deleteCometNetSource('${source.id}')">Supprimer</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function refreshCometNetSources() {
+  if (!document.getElementById('cometNetList')) return;
+  try {
+    const response = await fetch('/api/cometnet-sources');
+    if (!response.ok) return;
+    catalogManagerData.cometnet = await response.json();
+    renderCometNetSources();
+    updateSourceGroupCounts();
+  } catch {}
+}
+
+async function previewCometNetSource() {
+  const output = document.getElementById('cometNetPreview');
+  output.textContent = 'Connexion et vérification de l’identité cryptographique…';
+  const response = await fetch('/api/cometnet-sources/preview', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cometNetPayload())
+  });
+  const data = await response.json();
+  output.textContent = response.ok
+    ? `✓ Pair CometNet valide · ${data.peer_alias || 'sans alias'} · ${data.peer_node_id.slice(0, 16)}… · protocole ${data.protocol_version}`
+    : `✗ ${data.error || 'Test impossible'}`;
+}
+window.previewCometNetSource = previewCometNetSource;
+
+async function saveCometNetSource() {
+  const id = document.getElementById('cometNetEditId').value;
+  const response = await fetch(id ? `/api/cometnet-sources/${id}` : '/api/cometnet-sources', {
+    method: id ? 'PUT' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cometNetPayload())
+  });
+  const data = await response.json();
+  if (!response.ok) return alert(data.error || 'Enregistrement impossible');
+  resetCometNetForm();
+  await loadSourceManager();
+}
+window.saveCometNetSource = saveCometNetSource;
+
+async function editCometNetSource(id) {
+  const source = (catalogManagerData.cometnet || []).find(item => item.id === id);
+  if (!source) return;
+  const secrets = await (await fetch(`/api/source-secrets/cometnet/${id}`)).json();
+  document.getElementById('cometNetEditId').value = id;
+  document.getElementById('cometNetName').value = source.name || '';
+  document.getElementById('cometNetUrl').value = secrets.url || '';
+  document.getElementById('cometNetMaxItems').value = source.max_items_per_sync || 5000;
+  document.getElementById('cometNetSubmit').textContent = 'Enregistrer';
+  document.getElementById('cometNetCancel').hidden = false;
+}
+window.editCometNetSource = editCometNetSource;
+
+function resetCometNetForm() {
+  document.getElementById('cometNetEditId').value = '';
+  document.getElementById('cometNetName').value = '';
+  document.getElementById('cometNetUrl').value = '';
+  document.getElementById('cometNetMaxItems').value = 5000;
+  document.getElementById('cometNetPreview').textContent = '';
+  document.getElementById('cometNetSubmit').textContent = 'Ajouter';
+  document.getElementById('cometNetCancel').hidden = true;
+}
+window.resetCometNetForm = resetCometNetForm;
+
+async function toggleCometNetSource(id, paused) {
+  const response = await fetch(`/api/cometnet-sources/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paused })
+  });
+  if (!response.ok) alert((await response.json()).error || 'Modification impossible');
+  await loadSourceManager();
+}
+window.toggleCometNetSource = toggleCometNetSource;
+
+async function deleteCometNetSource(id) {
+  if (!confirm('Supprimer ce pair CometNet ciblé ? Sa boîte de réception sera supprimée, mais les médias déjà indexés seront conservés.')) return;
+  const response = await fetch(`/api/cometnet-sources/${id}`, { method: 'DELETE' });
+  if (!response.ok) alert((await response.json()).error || 'Suppression impossible');
+  await loadSourceManager();
+}
+window.deleteCometNetSource = deleteCometNetSource;
+
+setInterval(() => {
+  const section = document.getElementById('section-sources');
+  if (section?.classList.contains('active')) refreshCometNetSources();
+}, 5000);
 
 function waCustomPayload() {
   return {

@@ -226,6 +226,18 @@ class DatabaseManager {
         ON guide_items(guide_id, tmdb_id);
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS cometnet_inbox (
+        item_key TEXT PRIMARY KEY,
+        source_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        received_at INTEGER NOT NULL,
+        processed_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_cometnet_inbox_pending
+        ON cometnet_inbox(source_id, processed_at, received_at);
+    `);
+
     // Migration depuis l'ancien schéma catalog_items si nécessaire
     const alreadyMigrated = this.db.prepare("SELECT value FROM config WHERE key = 'schema_v2_migrated'").get();
     if (!alreadyMigrated) {
@@ -1266,6 +1278,70 @@ class DatabaseManager {
     const row = this.db.prepare('SELECT * FROM source_sync_state WHERE source_key = ?').get(sourceKey);
     if (!row) return null;
     return { ...row, cursor: JSON.parse(row.cursor_json || '{}') };
+  }
+
+  enqueueCometNetItem(sourceId, itemKey, payload) {
+    const now = Date.now();
+    return this.db.prepare(`
+      INSERT OR IGNORE INTO cometnet_inbox
+        (item_key, source_id, payload_json, received_at, processed_at)
+      VALUES (?, ?, ?, ?, NULL)
+    `).run(itemKey, sourceId, JSON.stringify(payload), now).changes > 0;
+  }
+
+  getPendingCometNetItems(sourceId, limit = 5000) {
+    return this.db.prepare(`
+      SELECT item_key, payload_json, received_at
+      FROM cometnet_inbox
+      WHERE source_id = ? AND processed_at IS NULL
+      ORDER BY received_at ASC
+      LIMIT ?
+    `).all(sourceId, Math.min(Math.max(Number(limit) || 5000, 1), 50000)).map(row => ({
+      item_key: row.item_key,
+      payload: JSON.parse(row.payload_json),
+      received_at: row.received_at
+    }));
+  }
+
+  markCometNetItemsProcessed(itemKeys) {
+    const keys = [...new Set((itemKeys || []).filter(Boolean))];
+    if (!keys.length) return 0;
+    const statement = this.db.prepare(`
+      UPDATE cometnet_inbox SET processed_at = ?, payload_json = '{}'
+      WHERE item_key = ? AND processed_at IS NULL
+    `);
+    const transaction = this.db.transaction(values => values.reduce(
+      (count, key) => count + statement.run(Date.now(), key).changes,
+      0
+    ));
+    return transaction(keys);
+  }
+
+  getCometNetInboxStats(sourceId) {
+    return this.db.prepare(`
+      SELECT
+        COUNT(*) AS received,
+        SUM(CASE WHEN processed_at IS NULL THEN 1 ELSE 0 END) AS pending,
+        MAX(received_at) AS last_received_at
+      FROM cometnet_inbox
+      WHERE source_id = ?
+    `).get(sourceId) || { received: 0, pending: 0, last_received_at: null };
+  }
+
+  deleteCometNetInbox(sourceId) {
+    return this.db.prepare('DELETE FROM cometnet_inbox WHERE source_id = ?').run(sourceId).changes;
+  }
+
+  compactCometNetInbox(retentionDays = 30) {
+    const compacted = this.db.prepare(`
+      UPDATE cometnet_inbox SET payload_json = '{}'
+      WHERE processed_at IS NOT NULL AND payload_json != '{}'
+    `).run().changes;
+    const cutoff = Date.now() - Math.min(Math.max(Number(retentionDays) || 30, 1), 365) * 86400000;
+    const deleted = this.db.prepare(`
+      DELETE FROM cometnet_inbox WHERE processed_at IS NOT NULL AND processed_at < ?
+    `).run(cutoff).changes;
+    return { compacted, deleted };
   }
 
   listSourceSyncStates() {

@@ -23,6 +23,7 @@ const rssParser = new RSSParser({}, db);
 const tmdbMatcher = new TMDBMatcher(db);
 const stremioAddon = new StremioAddon(db);
 const webui = new WebUI(db, rssParser, tmdbMatcher, stremioAddon);
+rssParser.cometNetParser.start();
 
 // Démarrer le serveur
 webui.listen(PORT);
@@ -39,12 +40,14 @@ process.on('unhandledRejection', (reason) => {
 // Gestion propre de l'arrêt
 process.on('SIGINT', () => {
   console.log('\n\n🛑 Arrêt en cours...');
+  rssParser.cometNetParser.stop();
   db.close();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   console.log('\n\n🛑 Arrêt en cours...');
+  rssParser.cometNetParser.stop();
   db.close();
   process.exit(0);
 });

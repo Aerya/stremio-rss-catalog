@@ -260,7 +260,7 @@ class WebUI {
         'rss_films_name', 'rss_films_url', 'rss_films_force',
         'rss_films_paused', 'rss_films_sync_interval', 'rss_additional_urls',
         'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources', 'webdav_sources',
-        'wacustom_sources', 'media_server_sources', 'streamfusion_sources', 'mdblist_guides',
+        'wacustom_sources', 'media_server_sources', 'streamfusion_sources', 'cometnet_sources', 'mdblist_guides',
         'stremio_metadata_sources'
       ]);
       const config = Object.fromEntries(Object.entries(this.db.getAllConfig())
@@ -295,6 +295,7 @@ class WebUI {
           wacustom: this.rssParser.waCustomParser.getSources().map(redactUrl),
           media_servers: this.rssParser.mediaServerParser.getSources().map(redactUrl),
           streamfusion: this.rssParser.streamFusionParser.getSources().map(redactUrl),
+          cometnet: this.rssParser.cometNetParser.getSources().map(redactUrl),
           metadata_providers: this.tmdbMatcher.stremioMetadata.getSources().map(redactUrl),
           guides: this.rssParser.mdblistGuideParser.getSources().map(redactUrl)
         },
@@ -330,6 +331,7 @@ class WebUI {
             wacustom: payload.sources.wacustom?.length || 0,
             media_servers: payload.sources.media_servers?.length || 0,
             streamfusion: payload.sources.streamfusion?.length || 0,
+            cometnet: payload.sources.cometnet?.length || 0,
             metadata_providers: payload.sources.metadata_providers?.length || 0,
             guides: payload.sources.guides?.length || 0,
             catalogs: payload.catalogs.length
@@ -395,6 +397,9 @@ class WebUI {
       this.db.setConfig('streamfusion_sources', JSON.stringify(mergeSources(
         this.rssParser.streamFusionParser.getSources(), payload.sources.streamfusion, ['url', 'keyId', 'secret']
       )));
+      this.db.setConfig('cometnet_sources', JSON.stringify(mergeSources(
+        this.rssParser.cometNetParser.getSources(), payload.sources.cometnet, ['url']
+      )));
       this.db.setConfig('stremio_metadata_sources', JSON.stringify(mergeSources(
         this.tmdbMatcher.stremioMetadata.getSources(), payload.sources.metadata_providers, ['url']
       )));
@@ -414,6 +419,7 @@ class WebUI {
       });
       this.stremioAddon.clearCache();
       this.startAutoRefresh();
+      this.rssParser.cometNetParser.reconcile();
       res.json({ success: true, backup_path: backupPath });
     });
 
@@ -428,6 +434,7 @@ class WebUI {
       if (kind === 'wacustom') source = this.rssParser.waCustomParser.getSources().find(item => item.id === id);
       if (kind === 'media-server') source = this.rssParser.mediaServerParser.getSources().find(item => item.id === id);
       if (kind === 'streamfusion') source = this.rssParser.streamFusionParser.getSources().find(item => item.id === id);
+      if (kind === 'cometnet') source = this.rssParser.cometNetParser.getSources().find(item => item.id === id);
       if (kind === 'metadata') source = this.tmdbMatcher.stremioMetadata.getSources().find(item => item.id === id);
       if (kind === 'guide') source = this.rssParser.mdblistGuideParser.getSources().find(item => item.id === id);
       if (!source) return res.status(404).json({ error: 'Source introuvable' });
@@ -1403,6 +1410,110 @@ class WebUI {
       res.json({ success: true });
     });
 
+    // ─── Pairs CometNet ciblés (réception passive) ────────────────────────
+    const cometNetParser = this.rssParser.cometNetParser;
+    const cometNetForApi = source => {
+      const inbox = this.db.getCometNetInboxStats(source.id);
+      return {
+        id: source.id,
+        name: source.name,
+        url: source.url,
+        paused: Boolean(source.paused),
+        max_items_per_sync: Number(source.maxItemsPerSync) || 5000,
+        source_key: cometNetParser.sourceKey(source.id),
+        peer_node_id: source.peerNodeId || null,
+        peer_alias: source.peerAlias || null,
+        connection: cometNetParser.getState(source.id),
+        inbox: {
+          received: Number(inbox.received) || 0,
+          pending: Number(inbox.pending) || 0,
+          last_received_at: inbox.last_received_at || null
+        },
+        runtime: this.getSourceRuntime(cometNetParser.sourceKey(source.id), null)
+      };
+    };
+    const cometNetPayload = (body, existing = null) => ({
+      ...(existing || {}),
+      ...(body.name !== undefined
+        ? { name: String(body.name).trim() || existing?.name || 'CometNet' }
+        : {}),
+      ...(body.url !== undefined ? { url: cometNetParser.normalizeUrl(body.url) } : {}),
+      ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
+      ...(body.max_items_per_sync !== undefined ? {
+        maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 5000, 1), 50000)
+      } : {})
+    });
+
+    this.app.get('/api/cometnet-sources', this.authMiddleware.bind(this), (req, res) => {
+      res.json(cometNetParser.getSources().map(cometNetForApi));
+    });
+
+    this.app.post('/api/cometnet-sources/preview', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const existing = req.body.source_id
+          ? cometNetParser.getSources().find(source => source.id === req.body.source_id)
+          : null;
+        const source = cometNetPayload(req.body, existing);
+        res.json(await cometNetParser.inspect(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.post('/api/cometnet-sources', this.authMiddleware.bind(this), async (req, res) => {
+      try {
+        const source = cometNetPayload(req.body);
+        if (!source.url) return res.status(400).json({ error: 'URL WebSocket requise' });
+        source.id = crypto.randomUUID();
+        const inspected = await cometNetParser.inspect(source);
+        source.peerNodeId = inspected.peer_node_id;
+        source.peerAlias = inspected.peer_alias;
+        const sources = cometNetParser.getSources();
+        sources.push(source);
+        cometNetParser.saveSources(sources);
+        cometNetParser.refreshSource(source.id);
+        res.status(201).json(cometNetForApi(source));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.put('/api/cometnet-sources/:id', this.authMiddleware.bind(this), async (req, res) => {
+      const sources = cometNetParser.getSources();
+      const index = sources.findIndex(source => source.id === req.params.id);
+      if (index < 0) return res.status(404).json({ error: 'Source introuvable' });
+      try {
+        const current = sources[index];
+        const next = cometNetPayload(req.body, current);
+        const connectionChanged = next.url !== current.url;
+        if (connectionChanged) {
+          delete next.peerNodeId;
+          delete next.peerAlias;
+          const inspected = await cometNetParser.inspect(next);
+          next.peerNodeId = inspected.peer_node_id;
+          next.peerAlias = inspected.peer_alias;
+          this.db.deleteSourceSyncState(cometNetParser.sourceKey(next.id));
+        }
+        sources[index] = next;
+        cometNetParser.saveSources(sources);
+        cometNetParser.refreshSource(next.id);
+        res.json(cometNetForApi(next));
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    });
+
+    this.app.delete('/api/cometnet-sources/:id', this.authMiddleware.bind(this), (req, res) => {
+      const sources = cometNetParser.getSources();
+      const next = sources.filter(source => source.id !== req.params.id);
+      if (next.length === sources.length) return res.status(404).json({ error: 'Source introuvable' });
+      cometNetParser.disconnect(req.params.id, false);
+      cometNetParser.saveSources(next);
+      this.db.deleteSourceSyncState(cometNetParser.sourceKey(req.params.id));
+      const inboxDeleted = this.db.deleteCometNetInbox(req.params.id);
+      res.json({ success: true, inbox_deleted: inboxDeleted });
+    });
+
     // ─── Services d'identification Stremio ────────────────────────────────
     const metadataService = this.tmdbMatcher.stremioMetadata;
     const metadataForApi = source => ({
@@ -1840,8 +1951,9 @@ class WebUI {
       const hasWaCustom = this.rssParser.waCustomParser.getSources().some(source => !source.paused);
       const hasMediaServer = this.rssParser.mediaServerParser.getSources().some(source => !source.paused);
       const hasStreamFusion = this.rssParser.streamFusionParser.getSources().some(source => !source.paused);
+      const hasCometNet = this.rssParser.cometNetParser.getSources().some(source => !source.paused);
       const hasRss = this.getRssSources().some(source => !source.paused);
-      if (!hasRss && !hasPastebin && !hasStremio && !hasNewznab && !hasWebdav && !hasWaCustom && !hasMediaServer && !hasStreamFusion) {
+      if (!hasRss && !hasPastebin && !hasStremio && !hasNewznab && !hasWebdav && !hasWaCustom && !hasMediaServer && !hasStreamFusion && !hasCometNet) {
         return res.status(400).json({ error: 'Au moins une source active est requise' });
       }
       if ((hasRss || hasPastebin || hasNewznab || hasWebdav) && !tmdbKey) {
@@ -2408,6 +2520,9 @@ class WebUI {
     this.rssParser.streamFusionParser.getSources().forEach(source => {
       nameMap[this.rssParser.streamFusionParser.sourceKey(source.id)] = source.name || 'StreamFusion';
     });
+    this.rssParser.cometNetParser.getSources().forEach(source => {
+      nameMap[this.rssParser.cometNetParser.sourceKey(source.id)] = source.name || 'CometNet';
+    });
     return nameMap;
   }
 
@@ -2486,6 +2601,7 @@ class WebUI {
           this.db.setConfig('last_catalog_refresh', String(Date.now()));
         }
         this.db.commitPendingSourceCursors(rssData.pendingCursorKeys);
+        this.db.markCometNetItemsProcessed(rssData.pendingCometNetKeys);
         this.syncStatus.stage = rssData.guides?.updated
           ? `${rssData.guides.updated} guide(s) actualisé(s), aucun nouveau contenu à traiter`
           : (forceAll ? 'Aucun élément trouvé' : 'Aucune source arrivée à échéance');
@@ -2555,6 +2671,7 @@ class WebUI {
       this.stremioAddon.clearCache();
       this.db.setConfig('last_catalog_refresh', String(Date.now()));
       this.db.commitPendingSourceCursors(rssData.pendingCursorKeys);
+      this.db.markCometNetItemsProcessed(rssData.pendingCometNetKeys);
 
       const discordEnabled = this.db.getConfig('discord_notifications_enabled') === 'true';
       const webhookUrl     = this.db.getConfig('discord_webhook_url');

@@ -14,6 +14,10 @@ const WebUI = require('../src/webui');
 const WaCustomParser = require('../src/wacustom-parser');
 const MediaServerParser = require('../src/media-server-parser');
 const StreamFusionParser = require('../src/streamfusion-parser');
+const CometNetParser = require('../src/cometnet-parser');
+const { signableBytes, publicKeyId } = require('../src/cometnet-parser');
+const { WebSocketServer } = require('ws');
+const { encode, decode } = require('@msgpack/msgpack');
 
 const header = 'CAT;TMDB;TITLE;SAISON;GROUPES;CAST;DIRECTOR;NETWORK;YEAR;GENRES;RES;URLS=https://alldebrid.com/f/';
 const movieRow = "film;123;Film Test;;[];[];[];[];2026;[28];['MULTI - 1080p'];['abc']";
@@ -29,6 +33,39 @@ function streamFusionToken(secret, value) {
   const signed = Buffer.concat([Buffer.from([0x80]), timestamp, iv, encrypted]);
   const signature = crypto.createHmac('sha256', key.subarray(0, 16)).update(signed).digest();
   return Buffer.concat([signed, signature]).toString('base64url');
+}
+
+function cometNetIdentity() {
+  const pair = crypto.generateKeyPairSync('ec', { namedCurve: 'secp256k1' });
+  const publicKey = pair.publicKey.export({ type: 'spki', format: 'der' }).toString('hex');
+  return { privateKey: pair.privateKey, publicKey, nodeId: publicKeyId(publicKey) };
+}
+
+function signedCometNetMessage(identity, fields) {
+  const message = {
+    version: '1.0',
+    ...fields,
+    timestamp: Date.now() / 1000,
+    sender_id: identity.nodeId,
+    signature: ''
+  };
+  message.signature = crypto.sign('sha256', signableBytes(message), identity.privateKey).toString('hex');
+  return message;
+}
+
+function signedCometNetTorrent(identity, fields) {
+  const torrent = {
+    ...fields,
+    contributor_id: identity.nodeId,
+    contributor_public_key: identity.publicKey,
+    contributor_signature: ''
+  };
+  torrent.contributor_signature = crypto.sign(
+    'sha256',
+    signableBytes(torrent, 'contributor_signature'),
+    identity.privateKey
+  ).toString('hex');
+  return torrent;
 }
 
 async function main() {
@@ -673,6 +710,95 @@ async function main() {
       true
     );
     console.log('✓ Import StreamFusion chiffré, signé, paginé et incrémental via l’API Peer');
+
+    const cometPeer = cometNetIdentity();
+    const cometContributor = cometNetIdentity();
+    const cometServer = new WebSocketServer({ port: 0 });
+    await new Promise(resolve => cometServer.once('listening', resolve));
+    let cometPongReceived = false;
+    cometServer.on('connection', socket => {
+      socket.once('message', raw => {
+        const clientHandshake = decode(Buffer.from(raw));
+        assert.equal(clientHandshake.type, 'handshake');
+        socket.send(encode(signedCometNetMessage(cometPeer, {
+          type: 'handshake',
+          public_key: cometPeer.publicKey,
+          listen_port: 8765,
+          public_url: null,
+          alias: 'Pair CometNet de test',
+          capabilities: [],
+          network_token: null
+        })));
+        socket.send(encode(signedCometNetMessage(cometPeer, {
+          type: 'ping',
+          nonce: 'integration-ping'
+        })));
+        const torrent = signedCometNetTorrent(cometContributor, {
+          info_hash: '1234567890abcdef1234567890abcdef12345678',
+          title: 'CometNet.Movie.2026.FRENCH.1080p',
+          size: 123456789,
+          seeders: 42,
+          tracker: 'test',
+          imdb_id: 'tt0000950',
+          file_index: 0,
+          season: null,
+          episode: null,
+          sources: [],
+          parsed: { title: 'CometNet Movie', year: 2026, resolution: '1080p' },
+          updated_at: Date.now() / 1000,
+          pool_id: null
+        });
+        const tampered = { ...torrent, info_hash: 'abcdef1234567890abcdef1234567890abcdef12' };
+        socket.send(encode(signedCometNetMessage(cometPeer, {
+          type: 'torrent_announce',
+          torrents: [torrent, tampered],
+          ttl: 5,
+          visited_nodes: [cometPeer.nodeId]
+        })));
+      });
+      socket.on('message', raw => {
+        const message = decode(Buffer.from(raw));
+        if (message.type === 'pong' && message.nonce === 'integration-ping') cometPongReceived = true;
+      });
+    });
+    const cometNetParser = new CometNetParser(db, title => title.includes('1080p') ? '1080p' : null);
+    const cometNetSource = {
+      id: 'cometnet-test',
+      name: 'CometNet de test',
+      url: `ws://127.0.0.1:${cometServer.address().port}`,
+      maxItemsPerSync: 100
+    };
+    db.setConfig('cometnet_sources', JSON.stringify([cometNetSource]));
+    try {
+      const inspected = await cometNetParser.inspect(cometNetSource);
+      assert.equal(inspected.peer_node_id, cometPeer.nodeId);
+      assert.equal(inspected.peer_alias, 'Pair CometNet de test');
+      cometNetParser.start();
+      const waitUntil = async predicate => {
+        const deadline = Date.now() + 3000;
+        while (Date.now() < deadline) {
+          if (predicate()) return;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
+        throw new Error('Délai du test CometNet dépassé');
+      };
+      await waitUntil(() => db.getCometNetInboxStats(cometNetSource.id).pending === 1);
+      await waitUntil(() => cometPongReceived);
+      assert.equal(cometNetParser.getState(cometNetSource.id).status, 'connected');
+      assert.equal(cometNetParser.getState(cometNetSource.id).invalid_session, 1);
+      const cometItems = await cometNetParser.parseAll();
+      assert.equal(cometItems.length, 1);
+      assert.equal(cometItems[0].direct_meta.imdb_id, 'tt0000950');
+      assert.equal(cometItems[0].source_url, 'cometnet:cometnet-test');
+      assert.equal(db.markCometNetItemsProcessed(cometNetParser.lastPendingInboxKeys), 1);
+      assert.equal(db.getCometNetInboxStats(cometNetSource.id).pending, 0);
+    } finally {
+      cometNetParser.stop();
+      await new Promise(resolve => cometServer.close(resolve));
+      try { fs.unlinkSync(cometNetParser.identityPath('cometnet-test')); } catch {}
+      try { fs.unlinkSync(cometNetParser.identityPath('test-cometnet-test')); } catch {}
+    }
+    console.log('✓ Réception CometNet ciblée, passive, signée et persistante');
 
     const newznabSource = {
       id: 'newznab-test',

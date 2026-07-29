@@ -260,6 +260,7 @@
           <button class="source-tab" data-source-tab="indexer" onclick="selectSourceTab('indexer')">Indexeurs</button>
           <button class="source-tab" data-source-tab="wacustom" onclick="selectSourceTab('wacustom')">WaStream/WaCustom</button>
           <button class="source-tab" data-source-tab="streamfusion" onclick="selectSourceTab('streamfusion')">StreamFusion</button>
+          <button class="source-tab" data-source-tab="cometnet" onclick="selectSourceTab('cometnet')">CometNet</button>
           <button class="source-tab" data-source-tab="stremio" onclick="selectSourceTab('stremio')">Stremio</button>
           <button class="source-tab" data-source-tab="diagnostics" onclick="selectSourceTab('diagnostics')">Diagnostics</button>
         </div>
@@ -604,6 +605,38 @@
         </div>
         <div id="streamFusionPreview" class="text-muted" style="margin-top:10px"></div>
         <div id="streamFusionList" style="margin-top:14px"></div>
+      </details>
+
+      <details class="card source-group" data-source-group="cometnet">
+        <summary><span>Pairs CometNet ciblés</span> <span class="source-group-count" id="cometnetGroupCount"></span></summary>
+        <p class="text-muted" style="margin:8px 0 14px">
+          Se connecte uniquement au pair indiqué et reçoit passivement ses nouvelles annonces.
+          Aucune liste de pairs n’est demandée et aucune connexion vers les autres pairs n’est ouverte.
+          La couverture est incrémentale et non exhaustive : elle dépend des annonces que le pair ciblé
+          reçoit puis diffuse après l’activation de cette source.
+        </p>
+        <p class="source-project-links">
+          Projet et protocole :
+          <a href="https://github.com/g0ldyy/comet" target="_blank" rel="noopener noreferrer">Comet / CometNet ↗</a>
+        </p>
+        <input id="cometNetEditId" type="hidden">
+        <div class="config-grid">
+          <div class="field"><label>Nom du pair ciblé</label><input id="cometNetName" type="text" placeholder="Mon Comet local"></div>
+          <div class="field"><label>URL WebSocket CometNet</label><input id="cometNetUrl" type="password" autocomplete="off" placeholder="wss://comet.example.net"></div>
+          <div class="field"><label>Maximum traité par synchronisation</label><input id="cometNetMaxItems" type="number" min="1" max="50000" value="5000"></div>
+        </div>
+        <div class="integration-cat-hint" style="margin-top:12px">
+          L’identité cryptographique du pair est épinglée au premier test. Les annonces valides sont
+          conservées dans une boîte de réception locale, puis injectées dans les catalogues lors de la
+          prochaine synchronisation.
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button type="button" class="btn-sm" onclick="previewCometNetSource()">Tester et identifier</button>
+          <button type="button" class="btn-primary" id="cometNetSubmit" onclick="saveCometNetSource()">Ajouter</button>
+          <button type="button" class="btn-sm" id="cometNetCancel" onclick="resetCometNetForm()" hidden>Annuler</button>
+        </div>
+        <div id="cometNetPreview" class="text-muted" style="margin-top:10px"></div>
+        <div id="cometNetList" style="margin-top:14px"></div>
       </details>
 
       <details class="card source-group" data-source-group="stremio">
