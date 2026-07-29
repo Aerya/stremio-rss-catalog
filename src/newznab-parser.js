@@ -162,7 +162,7 @@ class NewznabParser {
     const caps = capabilities || await this.inspect(source);
     const requestedPageSize = Math.min(Math.max(Number(source.pageSize) || caps.serverMax, 1), 1000);
     const pageSize = Math.min(requestedPageSize, caps.serverMax);
-    const maxItems = Math.min(Math.max(Number(source.maxItemsPerCategory) || 1000, 1), 20000);
+    const maxItems = Math.min(Math.max(Number(source.maxItemsPerCategory) || 100000, 1), 1000000);
     const delayMs = Math.min(Math.max(Number(source.requestDelayMs) || 750, 250), 10000);
     const parsed = [];
     const seen = new Set();

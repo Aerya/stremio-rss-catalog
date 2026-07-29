@@ -518,7 +518,7 @@ class CometNetParser {
     const items = [];
     for (const source of this.getSources()) {
       if (source.paused) continue;
-      const pending = this.db.getPendingCometNetItems(source.id, source.maxItemsPerSync || 5000);
+      const pending = this.db.getPendingCometNetItems(source.id, source.maxItemsPerSync || 100000);
       for (const entry of pending) {
         this.lastPendingInboxKeys.push(entry.item_key);
         const item = this.torrentToItem(source, entry.payload);

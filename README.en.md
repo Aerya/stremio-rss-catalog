@@ -32,7 +32,7 @@
 
 ---
 
-> A self-hosted Stremio addon that builds catalogs from content found on your own **BitTorrent, Usenet, or other indexers**. The goal is to keep catalog sources aligned with the sources actually used by your streaming addons. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaStream/WaCustom, StreamFusion, and Stremio manifests can be combined.
+> A self-hosted Stremio addon that builds catalogs from content found on your own **BitTorrent, Usenet, or other indexers**. The goal is to keep catalog sources aligned with the sources actually used by your streaming addons. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaStream/WaCustom, StreamFusion, CometNet, and Stremio manifests can be combined.
 
 ---
 
@@ -41,6 +41,7 @@
 | | |
 |---|---|
 | **Managed catalogs** | The 9 historical catalogs are migrated into the manager with their existing content preserved; create any number of custom catalogs |
+| **Catalog composition** | Merge catalogs of the same type by union and remove them from the composition later |
 | **Mixed sources** | A catalog may combine RSS, Pastebin, WebDAV, Plex, Jellyfin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaStream/WaCustom, StreamFusion, and catalogs imported from Stremio manifests |
 | **Direct Plex and Jellyfin** | Library and collection discovery, paginated movie/series imports, and preserved IMDb/TMDB identifiers |
 | **WebDAV folders** | Authenticated recursive scan with configurable extensions, depth, and cap; filenames feed catalogs and [Davio](https://github.com/arvida42/davio) can handle playback in Stremio |
@@ -48,7 +49,7 @@
 | **Two separate pauses** | Freeze new catalog content independently from catalog visibility in the Stremio manifest |
 | **Nested Pastebins** | Direct pages, JSON pointers, and categorized master indexes with bounded recursion and deduplication |
 | **Stremio manifests** | Generic remote catalog discovery and content import |
-| **Native anime and YouTube** | Preserve `anime`, Kitsu/MAL/AniList/AniDB and `YouTube`/`yt_id:` types and identifiers without silently converting them to movies |
+| **Native anime** | Preserve `anime` and Kitsu/MAL/AniList/AniDB identifiers without silently converting them to movies |
 | **Catalog guides** | MDBList, ListSync, SuggestArr, and Agregarr provide selection and ordering; only media already indexed locally is exposed |
 | **Dry run** | Exact media count before creating a catalog |
 | **Manifest history** | Revisions and create, rename, freeze, visibility, and delete events |
@@ -73,8 +74,9 @@
 | **Deduplication** | By IMDB ID (media) + by RSS GUID + by torrent hash when available (releases) |
 | **Hashes** | Automatic infohash extraction from magnet/torrent links |
 | **Retry** | Unmatched releases stored and retriable |
-| **Cache** | Catalog responses cached in memory, auto-invalidated on sync |
+| **Pre-warmed cache** | The first five pages of every published catalog are rebuilt after startup and each invalidation |
 | **RPDB** | Rating posters (optional) |
+| **PostersPlus** | Direct support for AIOMetadata-compatible URL templates, with RPDB and original-art fallbacks |
 | **Discord notifs** 🆕 NEW | Enhanced notifications with poster gallery on each sync |
 | **Apprise notifs** 🆕 NEW | Multi-service notifications via Apprise server (optional) |
 | **Notification language** 🆕 NEW | Discord/Apprise language configurable independently from the WebUI (FR/EN/DE) |
@@ -88,9 +90,10 @@
 | **Indexer APIs** | Multiple renameable Newznab, Prowlarr, Jackett/Torznab, and NZBHydra2 sources with pagination, an incremental cursor, cap, and delay |
 | **WaStream/WaCustom** | Multiple renameable instances; paginated WASource content import with IMDb/TMDB IDs, resumable traversal, per-source frequency, pause, and cap |
 | **StreamFusion Reborn** | Multiple renameable instances; signed and encrypted private-cache import through the official Peer API, with pagination and an incremental cursor |
+| **CometNet** | Signed persistent receiver for future gossip announcements, with reconnect monitoring and source alerts |
 | **Configuration backup** | Versioned export/import; sensitive keys and URLs are excluded unless explicitly requested |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
-| **SQLite** | Persistent data, incremental content, optimized indexes |
+| **SQLite WAL** | Persistent data, concurrent reads, optimized indexes, foreign keys, and busy-write waiting |
 | **Tag filtering** | Configurable required tags from the WebUI (FRENCH, MULTi, 1080p…) |
 | **Docker** | Multi-arch image `linux/amd64` + `linux/arm64` |
 
@@ -163,8 +166,9 @@ media library.
 
 An indexer's first collection reads `t=caps`, then fetches `t=search` pages with
 `offset` until the configured cap **per category** is reached. The default is
-1,000 results per category, server-limited page sizes, and a 750 ms delay
-between pages.
+100,000 results per category, the safety limit can be raised to 1,000,000,
+page sizes remain server-limited, and the default delay is 750 ms between
+pages. This is a batch-memory guard, not a limit on the accumulated library.
 
 Later collections start at the newest page and stop at the persisted cursor or
 the end of the overlap window. The cursor is committed only after the batch was
@@ -181,10 +185,22 @@ indexes. Stremio manifest sources discover remote catalogs and make them
 selectable in the catalog manager.
 
 This also imports movie/series catalogs from compatible addons such as Plexio
-or Stremio Jellyfin, and anime/YouTube catalogs from Kitsu or YouTubio. A
+or Stremio Jellyfin, and anime catalogs from Kitsu. A
 stream-only manifest does not expose an addon's internal database: for example,
 a Comet manifest cannot enumerate every media item without a dedicated export
 API.
+
+### Exact CometNet scope
+
+Stremio RSS Catalog connects as a signed receiving peer and persists valid
+announcements before processing them. CometNet is a fanout-based gossip
+protocol: the receiver gets new announcements routed to it, not a guaranteed
+copy of the target peer's database. `sync_request` and `sync_response` message
+names exist in the protocol but are not implemented by Comet, so exhaustive
+historical backfill is currently unavailable.
+CometNet pools are contributor trust filters. Creating a pool with the target
+peer does not force its existing cache to be replayed and therefore does not
+provide historical backfill.
 
 A WebDAV source points to a root folder. The addon scans subfolders with
 `PROPFIND`, keeps configured video extensions, then applies the same title
@@ -303,11 +319,25 @@ failed_releases → unmatched releases (for retry)
 
 ### Cache
 
-Catalog responses are cached in memory between syncs and automatically invalidated after each successful sync. Searches are not cached.
+Catalog responses are cached in memory and automatically invalidated after
+updates. The first five pages of each published catalog are then pre-warmed in
+the background. Searches are not cached.
 
 ### Persistence
 
-Everything is stored in a SQLite database (`data/addon.db`). Content **accumulates** — a sync never replaces existing data.
+Everything is stored in a WAL-enabled SQLite database (`data/addon.db`).
+Content **accumulates** — a sync never replaces existing data. This is suitable
+for hundreds of thousands of indexed rows and concurrent catalog reads in one
+application process. A future multi-user, multi-replica service with concurrent
+writers should migrate to PostgreSQL and add account-level isolation.
+
+### Catalogs are not streams
+
+The database stores media and partial release facts, but not always a current,
+playable URL. A stream addon must resolve movies and episodes, rank releases,
+authenticate debrid services or BitTorrent clients, protect credentials, and
+return playable links. That is the role of AIOStreams/Comet; it is deliberately
+kept separate from this catalog addon.
 
 ---
 
@@ -382,7 +412,7 @@ Database migration runs automatically on first startup. All your existing config
 
 - The first sync may take several minutes depending on feed size — do it **before** installing the addon in Stremio
 - Catalogs are paginated in pages of 100 media — Stremio loads them as you scroll, with no limit
-- IMDb IDs are preferred; supported native anime and YouTube identifiers are also preserved
+- IMDb IDs are preferred; supported native anime identifiers are also preserved
 - Concert and live show detection requires an OMDb API key (free, 1000 req/day at omdbapi.com)
 - AniList is enabled by default and requires no key — it can be disabled from the config
 - Media indexed before new categories were added remains in its old category — use analysis followed by grouped repair

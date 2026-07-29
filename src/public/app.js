@@ -99,8 +99,7 @@ async function loadOverview() {
       { key: 'emissions',     label: t('stat_emissions'),     badge: 'emissions',     items: d.recentByCat?.emissions     || [] },
       { key: 'animés',        label: t('stat_animes'),        badge: 'animés',        items: d.recentByCat?.animes        || [] },
       { key: 'concerts',      label: t('stat_concerts'),      badge: 'concerts',      items: d.recentByCat?.concerts      || [] },
-      { key: 'spectacles',    label: t('stat_spectacles'),    badge: 'spectacles',    items: d.recentByCat?.spectacles    || [] },
-      { key: 'youtube',       label: 'YouTube',               badge: 'youtube',       items: d.recentByCat?.youtube       || [] }
+      { key: 'spectacles',    label: t('stat_spectacles'),    badge: 'spectacles',    items: d.recentByCat?.spectacles    || [] }
     ].filter(c => c.items.length > 0);
 
     if (cats.length === 0) {
@@ -146,7 +145,6 @@ async function loadStats() {
     document.getElementById('statAnimes').textContent     = (d.animes || 0).toLocaleString();
     document.getElementById('statConcerts').textContent   = (d.concerts || 0).toLocaleString();
     document.getElementById('statSpectacles').textContent = (d.spectacles || 0).toLocaleString();
-    document.getElementById('statYoutube').textContent     = (d.youtube || 0).toLocaleString();
     document.getElementById('statTotal').textContent      = d.total.toLocaleString();
   } catch (e) { console.error('loadStats', e); }
 }
@@ -341,14 +339,12 @@ async function loadLibraryCounts() {
       'emissions': d.emissions || 0,
       'animés': d.animes || 0,
       'concerts': d.concerts || 0,
-      'spectacles': d.spectacles || 0,
-      'youtube': d.youtube || 0
+      'spectacles': d.spectacles || 0
     };
     const ids = {
       '': 'tabCountAll', 'films': 'tabCountFilms', 'documentaires': 'tabCountDocs',
       'series': 'tabCountSeries', 'emissions': 'tabCountEmissions', 'animés': 'tabCountAnimes',
-      'concerts': 'tabCountConcerts', 'spectacles': 'tabCountSpectacles',
-      'youtube': 'tabCountYoutube'
+      'concerts': 'tabCountConcerts', 'spectacles': 'tabCountSpectacles'
     };
     for (const [cat, id] of Object.entries(ids)) {
       const el = document.getElementById(id);
@@ -612,8 +608,7 @@ function openDrawer(imdbId, media) {
     { v: 'emissions',     l: 'Émissions' },
     { v: 'animés',        l: 'Animés' },
     { v: 'concerts',      l: 'Concerts' },
-    { v: 'spectacles',    l: 'Spectacles' },
-    { v: 'youtube',       l: 'YouTube' }
+    { v: 'spectacles',    l: 'Spectacles' }
   ];
   const catOptions = cats.map(c =>
     `<option value="${c.v}"${media.catalog_type === c.v ? ' selected' : ''}>${c.l}</option>`
@@ -756,7 +751,6 @@ async function loadSources() {
             s.animes_count        ? `<span class="src-cat badge-animés">Animés ${s.animes_count}</span>` : '',
             s.concerts_count      ? `<span class="src-cat badge-concerts">Concerts ${s.concerts_count}</span>` : '',
             s.spectacles_count    ? `<span class="src-cat badge-spectacles">Spectacles ${s.spectacles_count}</span>` : '',
-            s.youtube_count       ? `<span class="src-cat badge-youtube">YouTube ${s.youtube_count}</span>` : '',
           ].filter(Boolean).join(' ');
 
           const errCell = hasError
@@ -838,7 +832,9 @@ function catalogPayload() {
       keywords_exclude: csvValues('catalogKeywordsExclude'),
       genres_include: selectedValues('catalogGenresInclude'),
       genres_exclude: selectedValues('catalogGenresExclude'),
-      guide_id: document.getElementById('catalogGuide').value || null
+      guide_id: document.getElementById('catalogGuide').value || null,
+      catalog_ids: [...document.querySelectorAll('#catalogCompositionChoices input:checked')]
+        .map(input => input.value)
     }
   };
 }
@@ -867,6 +863,7 @@ async function loadCatalogManager() {
     renderCometNetSources();
     renderMDBListGuides();
     renderCatalogGuideChoices();
+    renderCatalogCompositionChoices();
     renderCatalogSourceChoices();
     renderCatalogs();
     updateSourceGroupCounts();
@@ -876,6 +873,23 @@ async function loadCatalogManager() {
   }
 }
 window.loadCatalogManager = loadCatalogManager;
+
+function renderCatalogCompositionChoices(selectedIds = null) {
+  const container = document.getElementById('catalogCompositionChoices');
+  if (!container) return;
+  const editingId = document.getElementById('catalogEditId')?.value || null;
+  const type = document.getElementById('catalogMediaType')?.value || 'movie';
+  const selected = new Set(selectedIds || [...container.querySelectorAll('input:checked')].map(input => input.value));
+  const choices = (catalogManagerData.catalogs || [])
+    .filter(catalog => catalog.id !== editingId && catalog.type === type);
+  container.innerHTML = choices.length
+    ? choices.map(catalog => `<label class="catalog-source-choice">
+        <input type="checkbox" value="${escHtml(catalog.id)}" ${selected.has(catalog.id) ? 'checked' : ''}>
+        <span><strong>${escHtml(catalog.name)}</strong><br><small>${catalog.enabled ? 'Publié' : 'Masqué de Stremio'}</small></span>
+      </label>`).join('')
+    : `<span class="text-muted">${t('catalogs_compose_none')}</span>`;
+}
+window.renderCatalogCompositionChoices = renderCatalogCompositionChoices;
 
 async function loadSourceManager() {
   await Promise.all([loadCatalogManager(), loadSources(), loadSourceAlerts()]);
@@ -1012,8 +1026,9 @@ function sourceRuntimeHtml(source) {
     <span>Dernier succès : ${runtime.last_success_at ? fmtDate(runtime.last_success_at) : 'jamais'}</span>
     <span>Prochaine collecte : ${source.paused ? '—' : fmtDate(runtime.next_sync_at)}</span>
     <span>Durée : ${duration}</span>
-    <span>Éléments lus : ${Number(runtime.last_items_fetched || 0).toLocaleString()}</span>
-    <span>Plafond : ${quota}${quotaReached ? ' (atteint)' : ''}</span>
+    <span>Éléments lus pendant ce lot : ${Number(runtime.last_items_fetched || 0).toLocaleString()}</span>
+    <span>Limite de sécurité du lot : ${quota}${quotaReached ? ' (lot rempli)' : ''}</span>
+    ${runtime.backfill_in_progress ? '<span class="source-runtime-paused">Rattrapage historique en cours — prochain lot prioritaire</span>' : ''}
     <span>Fréquence : ${runtime.interval_minutes || '—'} min${runtime.uses_global_interval ? ' (globale)' : ''}</span>
     ${runtime.last_error_message ? `<span class="source-runtime-error" title="${escHtml(runtime.last_error_message)}">${escHtml(runtime.last_error_message)}</span>` : ''}
   </div>`;
@@ -1326,7 +1341,7 @@ function renderMDBListGuides() {
           ${Number(guide.stats?.total || 0).toLocaleString()} éléments
           · ${Number(guide.stats?.movies || 0).toLocaleString()} films
           · ${Number(guide.stats?.shows || 0).toLocaleString()} séries
-          · plafond ${Number(guide.max_items || 5000).toLocaleString()}
+          · limite de lot ${Number(guide.max_items || 1000000).toLocaleString()}
         </div>
         ${sourceRuntimeHtml(guide)}
       </div>
@@ -1357,7 +1372,7 @@ function mdblistPayload() {
       ? document.getElementById('guideAgregarrCollection').value
       : document.getElementById('guideListId').value.trim(),
     statuses: [...document.getElementById('guideStatuses').selectedOptions].map(option => option.value),
-    max_items: Number(document.getElementById('mdblistMaxItems').value) || 5000,
+    max_items: Number(document.getElementById('mdblistMaxItems').value) || 1000000,
     sync_interval_minutes: document.getElementById('mdblistInterval').value || null
   };
 }
@@ -1442,7 +1457,7 @@ async function editMDBListGuide(id) {
   [...document.getElementById('guideStatuses').options].forEach(option => {
     option.selected = (guide.statuses || ['awaiting_approval']).includes(option.value);
   });
-  document.getElementById('mdblistMaxItems').value = guide.max_items || 5000;
+  document.getElementById('mdblistMaxItems').value = guide.max_items || 1000000;
   document.getElementById('mdblistInterval').value = guide.sync_interval_minutes || '';
   document.getElementById('mdblistSubmit').textContent = 'Enregistrer';
   document.getElementById('mdblistCancel').hidden = false;
@@ -1467,7 +1482,7 @@ function resetMDBListForm() {
   [...document.getElementById('guideStatuses').options].forEach((option, index) => {
     option.selected = index === 0;
   });
-  document.getElementById('mdblistMaxItems').value = 5000;
+  document.getElementById('mdblistMaxItems').value = 1000000;
   document.getElementById('mdblistInterval').value = '';
   document.getElementById('mdblistPreview').textContent = '';
   document.getElementById('mdblistSubmit').textContent = 'Ajouter et synchroniser';
@@ -1541,8 +1556,7 @@ function renderCatalogs() {
     const typeLabel = {
       movie: t('stat_films'),
       series: t('stat_series'),
-      anime: 'Anime',
-      YouTube: 'YouTube'
+      anime: 'Anime'
     }[catalog.type] || catalog.type;
     const guide = catalogManagerData.guides.find(item => item.id === catalog.filters?.guide_id);
     return `<div class="manager-row">
@@ -1662,7 +1676,7 @@ function webdavPayload() {
     password: document.getElementById('webdavPassword').value,
     force: document.getElementById('webdavForce').value,
     max_depth: Number(document.getElementById('webdavMaxDepth').value),
-    max_items: Number(document.getElementById('webdavMaxItems').value) || 5000,
+    max_items: Number(document.getElementById('webdavMaxItems').value) || 100000,
     extensions: document.getElementById('webdavExtensions').value,
     sync_interval_minutes: document.getElementById('webdavInterval').value || null,
     use_proxy: document.getElementById('webdavUseProxy').checked,
@@ -1685,7 +1699,7 @@ function renderWebdavSources() {
         <div class="manager-row-meta">
           classement ${escHtml(source.force || 'auto')}
           · profondeur ${Number(source.max_depth)}
-          · plafond ${Number(source.max_items).toLocaleString()} fichiers
+          · limite de lot ${Number(source.max_items).toLocaleString()} fichiers
           · ${source.extensions.map(value => `.${escHtml(value)}`).join(', ')}
           ${source.use_proxy ? ' · proxy global' : ' · connexion directe'}
         </div>
@@ -1747,7 +1761,7 @@ async function editWebdavSource(id) {
   document.getElementById('webdavPassword').placeholder = source.has_password ? 'Laisser vide pour conserver' : '';
   document.getElementById('webdavForce').value = source.force || 'auto';
   document.getElementById('webdavMaxDepth').value = source.max_depth ?? 8;
-  document.getElementById('webdavMaxItems').value = source.max_items || 5000;
+  document.getElementById('webdavMaxItems').value = source.max_items || 100000;
   document.getElementById('webdavExtensions').value = (source.extensions || []).join(',');
   document.getElementById('webdavInterval').value = source.sync_interval_minutes || '';
   document.getElementById('webdavUseProxy').checked = Boolean(source.use_proxy);
@@ -1767,7 +1781,7 @@ function resetWebdavForm() {
   document.getElementById('webdavPassword').placeholder = '';
   document.getElementById('webdavForce').value = 'auto';
   document.getElementById('webdavMaxDepth').value = 8;
-  document.getElementById('webdavMaxItems').value = 5000;
+  document.getElementById('webdavMaxItems').value = 100000;
   document.getElementById('webdavExtensions').value = 'mkv,mp4,avi,mov,m4v,webm,ts,m2ts,iso,strm';
   document.getElementById('webdavInterval').value = '';
   document.getElementById('webdavUseProxy').checked = false;
@@ -1807,7 +1821,7 @@ function mediaServerPayload() {
     target_labels: detectedMediaServerTargets.filter(target =>
       document.querySelector(`#mediaServerTargets input[value="${CSS.escape(target.id)}"]`)?.checked
     ),
-    max_items: Number(document.getElementById('mediaServerMaxItems').value) || 20000,
+    max_items: Number(document.getElementById('mediaServerMaxItems').value) || 1000000,
     page_size: Number(document.getElementById('mediaServerPageSize').value) || 500,
     sync_interval_minutes: document.getElementById('mediaServerInterval').value || null,
     use_proxy: document.getElementById('mediaServerUseProxy').checked
@@ -1841,7 +1855,7 @@ function renderMediaServerSources() {
         <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
         <div class="manager-row-meta">
           ${(source.target_labels || []).map(target => escHtml(target.name)).join(' · ') || `${source.targets?.length || 0} cible(s)`}
-          · plafond ${Number(source.max_items).toLocaleString()}
+          · limite de lot ${Number(source.max_items).toLocaleString()}
           ${source.use_proxy ? ' · proxy global' : ' · connexion directe'}
         </div>
         ${sourceRuntimeHtml(source)}
@@ -1898,7 +1912,7 @@ async function editMediaServerSource(id) {
   document.getElementById('mediaServerUrl').value = secrets.url || '';
   document.getElementById('mediaServerApiKey').value = '';
   document.getElementById('mediaServerApiKey').placeholder = source.has_api_key ? 'Laisser vide pour conserver' : '';
-  document.getElementById('mediaServerMaxItems').value = source.max_items || 20000;
+  document.getElementById('mediaServerMaxItems').value = source.max_items || 1000000;
   document.getElementById('mediaServerPageSize').value = source.page_size || 500;
   document.getElementById('mediaServerInterval').value = source.sync_interval_minutes || '';
   document.getElementById('mediaServerUseProxy').checked = Boolean(source.use_proxy);
@@ -1915,7 +1929,7 @@ function resetMediaServerForm() {
   document.getElementById('mediaServerUrl').value = '';
   document.getElementById('mediaServerApiKey').value = '';
   document.getElementById('mediaServerApiKey').placeholder = '';
-  document.getElementById('mediaServerMaxItems').value = 20000;
+  document.getElementById('mediaServerMaxItems').value = 1000000;
   document.getElementById('mediaServerPageSize').value = 500;
   document.getElementById('mediaServerInterval').value = '';
   document.getElementById('mediaServerUseProxy').checked = false;
@@ -1949,7 +1963,7 @@ function streamFusionPayload() {
     url: document.getElementById('streamFusionUrl').value.trim(),
     key_id: document.getElementById('streamFusionKeyId').value,
     secret: document.getElementById('streamFusionSecret').value,
-    max_items_per_sync: Number(document.getElementById('streamFusionMaxItems').value) || 20000,
+    max_items_per_sync: Number(document.getElementById('streamFusionMaxItems').value) || 1000000,
     page_size: Number(document.getElementById('streamFusionPageSize').value) || 1000,
     request_delay_ms: Number(document.getElementById('streamFusionDelay').value) || 0,
     sync_interval_minutes: document.getElementById('streamFusionInterval').value || null,
@@ -1970,7 +1984,7 @@ function renderStreamFusionSources() {
       <div class="manager-row-main">
         <div class="manager-row-title">${escHtml(source.name || 'StreamFusion')} <span class="source-name-badge">StreamFusion</span> ${source.paused ? '⏸' : '●'}</div>
         <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
-        <div class="manager-row-meta">cache privé · plafond ${Number(source.max_items_per_sync).toLocaleString()} · pages de ${Number(source.page_size).toLocaleString()} ${source.use_proxy ? '· proxy global' : '· connexion directe'}</div>
+        <div class="manager-row-meta">cache privé · limite de lot ${Number(source.max_items_per_sync).toLocaleString()} · pages de ${Number(source.page_size).toLocaleString()} ${source.use_proxy ? '· proxy global' : '· connexion directe'}</div>
         ${sourceRuntimeHtml(source)}
       </div>
       <div class="manager-row-actions">
@@ -2024,7 +2038,7 @@ async function editStreamFusionSource(id) {
   document.getElementById('streamFusionKeyId').placeholder = source.has_key_id ? 'Laisser vide pour conserver' : '';
   document.getElementById('streamFusionSecret').value = '';
   document.getElementById('streamFusionSecret').placeholder = source.has_secret ? 'Laisser vide pour conserver' : '';
-  document.getElementById('streamFusionMaxItems').value = source.max_items_per_sync || 20000;
+  document.getElementById('streamFusionMaxItems').value = source.max_items_per_sync || 1000000;
   document.getElementById('streamFusionPageSize').value = source.page_size || 1000;
   document.getElementById('streamFusionDelay').value = source.request_delay_ms ?? 100;
   document.getElementById('streamFusionInterval').value = source.sync_interval_minutes || '';
@@ -2042,7 +2056,7 @@ function resetStreamFusionForm() {
   document.getElementById('streamFusionKeyId').placeholder = '';
   document.getElementById('streamFusionSecret').value = '';
   document.getElementById('streamFusionSecret').placeholder = '';
-  document.getElementById('streamFusionMaxItems').value = 20000;
+  document.getElementById('streamFusionMaxItems').value = 1000000;
   document.getElementById('streamFusionPageSize').value = 1000;
   document.getElementById('streamFusionDelay').value = 100;
   document.getElementById('streamFusionInterval').value = '';
@@ -2074,7 +2088,7 @@ function cometNetPayload() {
     source_id: document.getElementById('cometNetEditId').value || null,
     name: document.getElementById('cometNetName').value.trim(),
     url: document.getElementById('cometNetUrl').value.trim(),
-    max_items_per_sync: Number(document.getElementById('cometNetMaxItems').value) || 5000
+    max_items_per_sync: Number(document.getElementById('cometNetMaxItems').value) || 100000
   };
 }
 
@@ -2119,7 +2133,7 @@ function renderCometNetSources() {
         <div class="manager-row-meta">
           Dernier message : ${state.last_message_at ? fmtDate(state.last_message_at) : 'jamais'}
           · dernière annonce conservée : ${inbox.last_received_at ? fmtDate(inbox.last_received_at) : 'jamais'}
-          · plafond de traitement ${Number(source.max_items_per_sync || 5000).toLocaleString()}
+          · limite de lot ${Number(source.max_items_per_sync || 100000).toLocaleString()}
         </div>
         ${state.last_error ? `<div class="source-runtime-error">${escHtml(state.last_error)}</div>` : ''}
       </div>
@@ -2180,7 +2194,7 @@ async function editCometNetSource(id) {
   document.getElementById('cometNetEditId').value = id;
   document.getElementById('cometNetName').value = source.name || '';
   document.getElementById('cometNetUrl').value = secrets.url || '';
-  document.getElementById('cometNetMaxItems').value = source.max_items_per_sync || 5000;
+  document.getElementById('cometNetMaxItems').value = source.max_items_per_sync || 100000;
   document.getElementById('cometNetSubmit').textContent = 'Enregistrer';
   document.getElementById('cometNetCancel').hidden = false;
 }
@@ -2190,7 +2204,7 @@ function resetCometNetForm() {
   document.getElementById('cometNetEditId').value = '';
   document.getElementById('cometNetName').value = '';
   document.getElementById('cometNetUrl').value = '';
-  document.getElementById('cometNetMaxItems').value = 5000;
+  document.getElementById('cometNetMaxItems').value = 100000;
   document.getElementById('cometNetPreview').textContent = '';
   document.getElementById('cometNetSubmit').textContent = 'Ajouter';
   document.getElementById('cometNetCancel').hidden = true;
@@ -2225,7 +2239,7 @@ function waCustomPayload() {
     name: document.getElementById('wacustomName').value.trim(),
     url: document.getElementById('wacustomUrl').value.trim(),
     admin_password: document.getElementById('wacustomPassword').value,
-    max_items_per_sync: Number(document.getElementById('wacustomMaxItems').value) || 20000,
+    max_items_per_sync: Number(document.getElementById('wacustomMaxItems').value) || 1000000,
     page_size: Number(document.getElementById('wacustomPageSize').value) || 1000,
     request_delay_ms: Number(document.getElementById('wacustomDelay').value) || 0,
     sync_interval_minutes: document.getElementById('wacustomInterval').value || null
@@ -2245,7 +2259,7 @@ function renderWaCustomSources() {
         <div class="manager-row-title">${escHtml(source.name || 'WaCustom')} <span class="source-name-badge">WaCustom</span> ${source.paused ? '⏸' : '●'}</div>
         <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
         <div class="manager-row-meta">
-          plafond ${Number(source.max_items_per_sync).toLocaleString()} éléments
+          limite de lot ${Number(source.max_items_per_sync).toLocaleString()} éléments
           · page ${Number(source.page_size).toLocaleString()}
           · délai ${Number(source.request_delay_ms).toLocaleString()} ms
         </div>
@@ -2302,7 +2316,7 @@ async function editWaCustomSource(id) {
   document.getElementById('wacustomPassword').placeholder = source.has_admin_password
     ? 'Laisser vide pour conserver'
     : '';
-  document.getElementById('wacustomMaxItems').value = source.max_items_per_sync || 20000;
+  document.getElementById('wacustomMaxItems').value = source.max_items_per_sync || 1000000;
   document.getElementById('wacustomPageSize').value = source.page_size || 1000;
   document.getElementById('wacustomDelay').value = source.request_delay_ms ?? 250;
   document.getElementById('wacustomInterval').value = source.sync_interval_minutes || '';
@@ -2317,7 +2331,7 @@ function resetWaCustomForm() {
   document.getElementById('wacustomUrl').value = '';
   document.getElementById('wacustomPassword').value = '';
   document.getElementById('wacustomPassword').placeholder = '';
-  document.getElementById('wacustomMaxItems').value = 20000;
+  document.getElementById('wacustomMaxItems').value = 1000000;
   document.getElementById('wacustomPageSize').value = 1000;
   document.getElementById('wacustomDelay').value = 250;
   document.getElementById('wacustomInterval').value = '';
@@ -2351,7 +2365,7 @@ function newznabPayload() {
     api_key: document.getElementById('newznabApiKey').value.trim(),
     movie_categories: document.getElementById('newznabMovieCategories').value.trim(),
     series_categories: document.getElementById('newznabSeriesCategories').value.trim(),
-    max_items_per_category: Number(document.getElementById('newznabMaxItems').value) || 1000,
+    max_items_per_category: Number(document.getElementById('newznabMaxItems').value) || 100000,
     request_delay_ms: Number(document.getElementById('newznabRequestDelay').value) || 750,
     lookback_hours: Number(document.getElementById('newznabLookbackHours').value) || 24,
     sync_interval_minutes: document.getElementById('newznabInterval').value || null
@@ -2397,7 +2411,7 @@ function renderNewznabSources() {
         <div class="manager-row-meta">
           ${t('sources_newznab_categories_short')} :
           ${(source.catalogs || []).map(catalog => `${escHtml(catalog.name)} ${escHtml(catalog.category_ids)}`).join(' · ')}
-          · plafond ${source.max_items_per_category.toLocaleString()} éléments/catégorie/synchronisation
+          · limite de lot ${source.max_items_per_category.toLocaleString()} éléments/catégorie/synchronisation
           · pages de ${source.page_size} (limite serveur)
           · délai ${source.request_delay_ms} ms
           · recouvrement ${source.lookback_hours} h
@@ -2458,7 +2472,7 @@ async function editNewznabSource(id) {
   document.getElementById('newznabApiKey').placeholder = 'Laisser vide pour conserver la clé';
   document.getElementById('newznabMovieCategories').value = source.categories?.movie || '';
   document.getElementById('newznabSeriesCategories').value = source.categories?.series || '';
-  document.getElementById('newznabMaxItems').value = source.max_items_per_category || 1000;
+  document.getElementById('newznabMaxItems').value = source.max_items_per_category || 100000;
   document.getElementById('newznabRequestDelay').value = source.request_delay_ms || 750;
   document.getElementById('newznabLookbackHours').value = source.lookback_hours || 24;
   document.getElementById('newznabInterval').value = source.sync_interval_minutes || '';
@@ -2477,7 +2491,7 @@ function resetNewznabForm() {
   document.getElementById('newznabApiKey').placeholder = '';
   document.getElementById('newznabMovieCategories').value = '2000';
   document.getElementById('newznabSeriesCategories').value = '5000';
-  document.getElementById('newznabMaxItems').value = 1000;
+  document.getElementById('newznabMaxItems').value = 100000;
   document.getElementById('newznabRequestDelay').value = 750;
   document.getElementById('newznabLookbackHours').value = 24;
   document.getElementById('newznabInterval').value = '';
@@ -2527,7 +2541,7 @@ function renderStremioSources() {
       <div class="manager-row-main">
         <div class="manager-row-title">${escHtml(source.name)} ${source.paused ? '⏸' : '●'}</div>
         <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.display_url))}</div>
-        <div class="manager-row-meta">${(source.catalogs || []).length} catalogue(s) · plafond ${Number(source.max_items_per_catalog || 5000).toLocaleString()} par catalogue</div>
+        <div class="manager-row-meta">${(source.catalogs || []).length} catalogue(s) · limite de sécurité ${Number(source.max_items_per_catalog || 1000000).toLocaleString()} par catalogue</div>
         <div style="margin-top:6px">${(source.catalogs || []).map(catalog =>
           `<span class="src-cat badge-${catalog.type === 'series' ? 'series' : 'films'}">${escHtml(catalog.name)}</span>`
         ).join(' ')}</div>
@@ -2535,7 +2549,7 @@ function renderStremioSources() {
       </div>
       <div class="manager-row-actions">
         ${(source.catalogs || []).filter(catalog => catalog.enabled !== false && catalog.supported !== false).map(catalog =>
-          `<button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(catalog.source_key).replace(/'/g, '%27')}','${encodeURIComponent(`${source.name} — ${catalog.name}`).replace(/'/g, '%27')}','${catalog.type === 'YouTube' ? 'YouTube' : catalog.type === 'movie' ? 'movie' : 'series'}')">${t('sources_catalog_action')} ${escHtml(catalog.name)}</button>`
+          `<button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(catalog.source_key).replace(/'/g, '%27')}','${encodeURIComponent(`${source.name} — ${catalog.name}`).replace(/'/g, '%27')}','${catalog.type === 'movie' ? 'movie' : catalog.type === 'anime' ? 'anime' : 'series'}')">${t('sources_catalog_action')} ${escHtml(catalog.name)}</button>`
         ).join('')}
         <button class="btn-sm" onclick="editStremioSource('${source.id}')">Modifier</button>
         ${sourceSecretActions('stremio', source.id)}
@@ -2588,7 +2602,7 @@ async function saveStremioSource() {
     body: JSON.stringify({
       name: document.getElementById('stremioSourceName').value,
       url: document.getElementById('stremioSourceUrl').value.trim(),
-      max_items_per_catalog: Number(document.getElementById('stremioMaxItems').value) || 5000,
+      max_items_per_catalog: Number(document.getElementById('stremioMaxItems').value) || 1000000,
       sync_interval_minutes: document.getElementById('stremioInterval').value || null,
       catalogs
     })
@@ -2608,7 +2622,7 @@ async function editStremioSource(id) {
   document.getElementById('stremioEditId').value = id;
   document.getElementById('stremioSourceName').value = source.name || '';
   document.getElementById('stremioSourceUrl').value = secrets.url || '';
-  document.getElementById('stremioMaxItems').value = source.max_items_per_catalog || 5000;
+  document.getElementById('stremioMaxItems').value = source.max_items_per_catalog || 1000000;
   document.getElementById('stremioInterval').value = source.sync_interval_minutes || '';
   renderEditableStremioCatalogs(source.catalogs || []);
   document.getElementById('stremioSubmit').textContent = 'Enregistrer';
@@ -2620,7 +2634,7 @@ function resetStremioForm() {
   document.getElementById('stremioEditId').value = '';
   document.getElementById('stremioSourceName').value = '';
   document.getElementById('stremioSourceUrl').value = '';
-  document.getElementById('stremioMaxItems').value = 5000;
+  document.getElementById('stremioMaxItems').value = 1000000;
   document.getElementById('stremioInterval').value = '';
   document.getElementById('stremioSourcePreview').textContent = '';
   renderEditableStremioCatalogs([]);
@@ -2719,6 +2733,7 @@ function editCatalog(id) {
   document.getElementById('catalogFormTitle').textContent = t('catalogs_edit');
   document.getElementById('catalogName').value = catalog.name;
   document.getElementById('catalogMediaType').value = catalog.type;
+  renderCatalogCompositionChoices(catalog.filters?.catalog_ids || []);
   document.getElementById('catalogYearMode').value = catalog.filters?.year_mode || 'include';
   document.getElementById('catalogYears').value = (catalog.filters?.years || []).join(', ');
   document.getElementById('catalogYearMin').value = catalog.filters?.year_min || '';
@@ -2770,6 +2785,7 @@ function resetCatalogForm() {
   ['catalogName','catalogYears','catalogYearMin','catalogYearMax','catalogKeywordsInclude','catalogKeywordsExclude']
     .forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('catalogMediaType').value = 'movie';
+  renderCatalogCompositionChoices([]);
   document.getElementById('catalogGuide').value = '';
   document.getElementById('catalogYearMode').value = 'include';
   for (const id of ['catalogGenresInclude', 'catalogGenresExclude']) {
@@ -3687,7 +3703,7 @@ async function loadConfig() {
     const cfg = await r.json();
 
     ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
-     'mal_client_id', 'rpdb_api_key', 'omdb_api_key',
+     'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
      'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
      'proxy_password', 'refresh_interval', 'discord_webhook_url',
      'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
@@ -3695,7 +3711,7 @@ async function loadConfig() {
       if (el) el.value = cfg[k] || '';
     });
 
-    ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
+    ['rpdb_enabled', 'postersplus_enabled', 'proxy_enabled', 'auto_refresh_enabled',
      'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
      'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled',
      'kitsu_enabled'].forEach(k => {
@@ -3714,7 +3730,7 @@ async function saveConfig(e) {
 
   const cfg = {};
   ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
-   'mal_client_id', 'rpdb_api_key', 'omdb_api_key',
+   'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
    'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
    'proxy_password', 'refresh_interval', 'discord_webhook_url',
    'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
@@ -3722,7 +3738,7 @@ async function saveConfig(e) {
     if (el) cfg[k] = el.value;
   });
 
-  ['rpdb_enabled', 'proxy_enabled', 'auto_refresh_enabled',
+  ['rpdb_enabled', 'postersplus_enabled', 'proxy_enabled', 'auto_refresh_enabled',
    'discord_notifications_enabled', 'discord_enhanced_notifications_enabled',
    'discord_rpdb_posters_enabled', 'apprise_enabled', 'anilist_enabled',
    'kitsu_enabled'].forEach(k => {
@@ -3750,6 +3766,26 @@ async function saveConfig(e) {
   }
   setTimeout(() => { msg.textContent = ''; }, 4000);
 }
+
+async function testPostersPlus() {
+  const output = document.getElementById('postersplusTestResult');
+  const template = document.getElementById('postersplus_url_template').value.trim();
+  output.textContent = 'Génération de l’affiche de test…';
+  const response = await fetch('/api/postersplus/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    output.textContent = result.error || 'Test PostersPlus impossible';
+    return;
+  }
+  output.innerHTML = `<span class="source-runtime-ok">✓ ${escHtml(result.media.name)}</span>
+    <div style="margin-top:8px"><img src="${escHtml(result.poster_url)}" alt="Affiche PostersPlus"
+      style="width:140px;border-radius:8px;border:1px solid var(--border)"></div>`;
+}
+window.testPostersPlus = testPostersPlus;
 window.saveConfig = saveConfig;
 
 // ═══════════════════════════ HELPERS ═══════════════════════════════════

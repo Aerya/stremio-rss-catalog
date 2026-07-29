@@ -17,7 +17,7 @@ class StremioManifestParser {
   }
 
   normalizeMaxItems(value) {
-    return Math.min(Math.max(Number(value) || 5000, 1), 100000);
+    return Math.min(Math.max(Number(value) || 1000000, 1), 1000000);
   }
 
   maskUrl(value) {
@@ -48,7 +48,7 @@ class StremioManifestParser {
         id: String(catalog.id),
         type: String(catalog.type),
         name: String(catalog.name || catalog.id),
-        supported: ['movie', 'series', 'anime', 'youtube'].includes(String(catalog.type).toLowerCase())
+        supported: ['movie', 'series', 'anime'].includes(String(catalog.type).toLowerCase())
       }));
     return {
       name: String(manifest.name || 'Addon Stremio'),
@@ -67,8 +67,7 @@ class StremioManifestParser {
       'animés': 'Animés importés',
       concerts: 'Concerts importés',
       spectacles: 'Spectacles importés',
-      emissions: 'Émissions importées',
-      youtube: 'YouTube importé'
+      emissions: 'Émissions importées'
     };
     const catalogs = inspection.catalogs.map(catalog => {
       const category = this.guessCatalogType(catalog);
@@ -105,7 +104,6 @@ class StremioManifestParser {
 
   guessCatalogType(catalog) {
     const text = `${catalog.id} ${catalog.name}`.toLowerCase();
-    if (String(catalog.type).toLowerCase() === 'youtube' || /youtube|playlist|channel/.test(text)) return 'youtube';
     if (/document|docu/.test(text)) return 'documentaires';
     if (/anime|anim[eé]|cartoon/.test(text)) return 'animés';
     if (/concert|music/.test(text)) return 'concerts';
@@ -127,9 +125,7 @@ class StremioManifestParser {
     const identity = crypto.createHash('sha256')
       .update(`${source.id}|${catalog.type}|${catalog.id}|${rawId}`)
       .digest('hex').slice(0, 32);
-    const type = ['movie', 'series'].includes(meta.type)
-      ? meta.type
-      : (String(catalog.type).toLowerCase() === 'youtube' ? 'YouTube' : catalog.type);
+    const type = ['movie', 'series'].includes(meta.type) ? meta.type : catalog.type;
     const externalIds = [...new Set([
       rawId,
       meta.kitsu_id ? `kitsu:${meta.kitsu_id}` : null,
@@ -218,7 +214,7 @@ class StremioManifestParser {
         if (
           catalog.enabled === false
           || catalog.supported === false
-          || !['movie', 'series', 'anime', 'youtube'].includes(String(catalog.type).toLowerCase())
+          || !['movie', 'series', 'anime'].includes(String(catalog.type).toLowerCase())
         ) continue;
         try {
           const catalogItems = await this.fetchCatalog(source, catalog);

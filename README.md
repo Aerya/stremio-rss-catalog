@@ -32,7 +32,7 @@
 
 ---
 
-> Addon Stremio auto-hébergé qui crée des catalogues à partir des contenus trouvés sur vos propres indexeurs **BitTorrent, Usenet ou autres**. L’objectif est que les sources de vos catalogues correspondent aux sources réellement utilisées par vos addons de stream. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaStream/WaCustom, StreamFusion et manifestes Stremio peuvent être combinés.
+> Addon Stremio auto-hébergé qui crée des catalogues à partir des contenus trouvés sur vos propres indexeurs **BitTorrent, Usenet ou autres**. L’objectif est que les sources de vos catalogues correspondent aux sources réellement utilisées par vos addons de stream. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaStream/WaCustom, StreamFusion, CometNet et manifestes Stremio peuvent être combinés.
 
 ---
 
@@ -41,6 +41,7 @@
 | | |
 |---|---|
 | **Catalogues gérés** | Les 9 catalogues historiques sont repris dans le gestionnaire et conservent leurs contenus ; créez ensuite autant de catalogues personnalisés que nécessaire |
+| **Composition de catalogues** | Plusieurs catalogues du même type peuvent être réunis par union, puis séparés ultérieurement en modifiant leur composition |
 | **Sources mixtes** | Un catalogue peut combiner RSS, Pastebin, WebDAV, Plex, Jellyfin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaStream/WaCustom, StreamFusion et catalogues importés depuis des manifestes Stremio |
 | **Plex et Jellyfin directs** | Détection des bibliothèques et collections, import paginé des films/séries et conservation des identifiants IMDb/TMDB |
 | **Dossiers WebDAV** | Parcours récursif authentifié, filtrage des extensions, profondeur et plafond configurables ; les noms de fichiers alimentent les catalogues et [Davio](https://github.com/arvida42/davio) peut assurer leur lecture dans Stremio |
@@ -48,7 +49,7 @@
 | **Deux pauses distinctes** | Gel des nouveaux contenus indépendamment de la visibilité du catalogue dans le manifeste Stremio |
 | **Pastebins imbriqués** | Pages directes, pointeurs JSON et index maîtres catégorisés avec récursion bornée, déduplication et protection des hôtes découverts |
 | **Manifestes Stremio** | Découverte générique des catalogues d'un autre addon et import de leurs contenus |
-| **Anime et YouTube natifs** | Conservation des types et identifiants `anime`, Kitsu/MAL/AniList/AniDB et `YouTube`/`yt_id:` sans conversion silencieuse en film |
+| **Anime natif** | Conservation du type `anime` et des identifiants Kitsu/MAL/AniList/AniDB sans conversion silencieuse en film |
 | **Guides de catalogues** | MDBList, ListSync, SuggestArr et Agregarr fournissent une sélection et un ordre ; seuls les médias déjà indexés localement sont exposés |
 | **Test à blanc** | Compte exact des médias qui alimenteraient un catalogue avant sa création |
 | **Historique du manifeste** | Révisions et événements de création, renommage, gel, visibilité et suppression des catalogues |
@@ -73,8 +74,9 @@
 | **Déduplication** | Par IMDB ID (médias) + par GUID RSS + par hash torrent quand disponible (releases) |
 | **Hashes** | Extraction automatique de l'infohash magnet/torrent |
 | **Retry** | Releases non matchées conservées et relançables |
-| **Cache** | Réponses catalog mises en cache, invalidation automatique post-sync |
+| **Cache préchauffé** | Les cinq premières pages de chaque catalogue sont préparées au démarrage et après chaque invalidation post-sync |
 | **RPDB** | Affiches avec notes intégrées (optionnel) |
+| **PostersPlus** | Template d’affiche compatible AIOMetadata, rempli directement avec les identifiants IMDb/TMDB ; repli RPDB puis affiche d’origine |
 | **Notifs Discord** 🆕 NEW | Notifications enrichies avec galerie d'affiches à chaque sync |
 | **Notifs Apprise** 🆕 NEW | Notifications multi-services via serveur Apprise (optionnel) |
 | **Langue des notifs** 🆕 NEW | Langue Discord/Apprise configurable indépendamment de la WebUI (FR/EN/DE) |
@@ -84,13 +86,14 @@
 | **Vue d'ensemble** | Derniers ajouts en tiroirs dépliables par catégorie (titre + année + lien IMDB) |
 | **Migration et réparation** | Analyse en lecture seule, sauvegarde SQLite, corrections groupées, historique et migrations uniques versionnées |
 | **Gestion des sources** | Onglets, recherche, groupes repliables, modification complète et fréquence propre à chaque source |
-| **Suivi par source** | Dernier succès, prochaine collecte, durée, éléments lus, erreurs consécutives et consommation du plafond |
-| **API d’indexeurs** | Sources multiples et renommables Newznab, Prowlarr, Jackett/Torznab et NZBHydra2, avec pagination, curseur incrémental, plafond et délai configurables |
-| **WaStream/WaCustom** | Plusieurs instances renommables ; import paginé des contenus WASource avec IMDb/TMDB, reprise du parcours, fréquence, pause et plafond propres |
+| **Suivi par source** | Dernier succès, prochaine collecte, durée, éléments du lot, rattrapage, erreurs consécutives et limite de sécurité |
+| **API d’indexeurs** | Sources multiples et renommables Newznab, Prowlarr, Jackett/Torznab et NZBHydra2, avec pagination, curseur incrémental, limite de lot et délai configurables |
+| **WaStream/WaCustom** | Plusieurs instances renommables ; import paginé des contenus WASource avec IMDb/TMDB, reprise prioritaire du parcours, fréquence, pause et limite de lot propres |
 | **StreamFusion Reborn** | Plusieurs instances renommables ; import signé et chiffré du cache privé via l’API Peer officielle, pagination et curseur incrémental sans accès direct aux bases |
+| **CometNet** | Pair récepteur signé et persistant pour les annonces gossip futures, avec reconnexion, journal et alertes d’indisponibilité |
 | **Sauvegarde de configuration** | Export/import versionné ; clés et URLs sensibles exclues sauf demande explicite |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + test de connexion intégré |
-| **SQLite** | Données persistantes, contenu incrémental, index optimisés |
+| **SQLite WAL** | Données persistantes, lectures concurrentes, index optimisés, contraintes étrangères et attente en cas d’écriture occupée |
 | **Filtrage par tags** | Tags requis configurables depuis la WebUI (FRENCH, MULTi, 1080p…) |
 | **Docker** | Image multi-arch `linux/amd64` + `linux/arm64` |
 
@@ -169,8 +172,9 @@ Lors de la première collecte d’un indexeur, l’addon :
 3. s’arrête au plafond configuré **par catégorie** ;
 4. attend le délai configuré entre les pages pour ménager l’indexeur.
 
-Par défaut, le plafond est de 1 000 résultats par catégorie, avec des pages
-limitées par le serveur et 750 ms entre deux pages.
+La limite de sécurité peut atteindre 1 000 000 d’éléments par catégorie. Elle
+borne un lot en mémoire, pas la taille totale indexable. Les pages restent
+limitées par le serveur et espacées de 750 ms par défaut.
 
 Les collectes suivantes repartent du début, puis s’arrêtent dès le curseur
 mémorisé ou la fin de la fenêtre de recouvrement. Le curseur n’est validé
@@ -194,10 +198,26 @@ Les sources Pastebin acceptent :
 Les manifestes Stremio sont ajoutés avec leur URL `manifest.json`. L'addon découvre les catalogues déclarés et les expose comme sources sélectionnables dans le gestionnaire de catalogues.
 
 Ce mécanisme importe aussi les catalogues Films/Séries d’addons compatibles tels
-que Plexio ou Stremio Jellyfin, ainsi que les catalogues anime/YouTube de Kitsu
-ou YouTubio. Il ne donne pas accès à la base interne d’un addon `stream` qui
+que Plexio ou Stremio Jellyfin, ainsi que les catalogues anime de Kitsu.
+Il ne donne pas accès à la base interne d’un addon `stream` qui
 n’expose aucun catalogue : un manifeste `stream` seul, comme celui de Comet, ne
 permet pas d’énumérer tous ses médias.
+
+### CometNet : portée exacte
+
+La source CometNet connecte Stremio RSS Catalog comme pair récepteur au WebSocket
+d’un Comet ciblé. Chaque annonce valide est signée, enregistrée dans une boîte
+locale persistante, filtrée par tags, puis traitée lors de la synchronisation.
+
+CometNet fonctionne toutefois par **gossip avec fanout** : le pair reçoit les
+annonces nouvelles que le réseau lui route. Le protocole déclare des types
+`sync_request` et `sync_response`, mais Comet ne les implémente pas actuellement.
+Il n’existe donc ni export complet de la base du pair ciblé, ni garantie
+d’historique exhaustif. Une rafale après connexion peut contenir beaucoup
+d’annonces en circulation sans constituer une copie certifiée de son cache.
+Les pools CometNet sont des groupes de confiance qui filtrent les contributeurs :
+créer une pool avec le pair ciblé ne force ni la rediffusion de son cache
+existant ni un rattrapage historique.
 
 Une source [WaCustom](https://github.com/dydy13014/wacustom) utilise l’URL de
 l’instance et son mot de passe administrateur. L’addon lit l’API WASource
@@ -320,11 +340,44 @@ failed_releases → releases sans match (pour retry)
 
 ### Cache
 
-Les réponses catalog sont mises en cache entre les syncs et invalidées automatiquement à chaque sync réussie. Les recherches ne sont pas mises en cache.
+Les réponses catalog sont mises en cache entre les synchronisations et
+invalidées automatiquement après chaque modification. Les cinq premières pages
+de chaque catalogue publié sont immédiatement recalculées en arrière-plan afin
+que Stremio, Nuvio ou un intermédiaire tel qu’AIOMetadata obtienne rapidement
+une réponse à jour. Les recherches libres ne sont pas mises en cache.
 
 ### Persistance
 
-Tout est stocké dans une base SQLite (`data/addon.db`). Les contenus s'**accumulent** — une sync ne remplace jamais les données existantes.
+Tout est stocké dans une base SQLite (`data/addon.db`) en mode WAL. Les contenus
+s'**accumulent** — une synchronisation ne remplace jamais les données existantes.
+Plusieurs lectures de catalogues peuvent se dérouler pendant une écriture et
+plusieurs centaines de milliers de médias restent un usage réaliste pour une
+instance mono-processus correctement indexée.
+
+SQLite n’est en revanche pas le bon stockage pour plusieurs réplicas applicatifs
+écrivant simultanément ou pour une future plateforme multi-utilisateurs avec
+isolation forte des comptes. Ce chantier nécessiterait PostgreSQL, des migrations
+et un modèle d’autorisations ; il n’est pas requis pour l’instance personnelle
+actuelle.
+
+### Pourquoi ce projet ne fournit pas de flux vidéo
+
+La base connaît des **médias** et certaines **releases** (titre, source, qualité,
+parfois infohash), mais pas systématiquement un lien de lecture encore valide.
+Un addon `stream` doit en plus résoudre chaque média/épisode, classer les
+releases, interroger les débrideurs ou clients BitTorrent, protéger leurs
+identifiants, gérer les timeouts et retourner des URLs directement lisibles.
+
+Transformer Stremio RSS Catalog en addon de streams reviendrait donc à intégrer
+une grande partie du rôle de Comet/AIOStreams, pas à simplement activer les
+hashes déjà stockés. L’architecture recommandée reste :
+
+```text
+Stremio RSS Catalog → catalogues
+AIOMetadata          → métadonnées et illustrations
+AIOStreams           → agrégation des addons de streams
+Stremio / Nuvio      → clients
+```
 
 ---
 
@@ -401,7 +454,7 @@ La migration de la base de données s'effectue automatiquement si nécessaire. T
 
 - La 1ère synchronisation peut prendre plusieurs minutes selon la taille du flux RSS — à faire **avant** d'installer l'addon dans Stremio
 - Les catalogues sont paginés par pages de 100 médias — Stremio les charge au fil du scroll, sans limite
-- Seuls les contenus avec un ID IMDB valide sont indexés — Stremio n'accepte que les IDs IMDB
+- Les identifiants IMDb sont privilégiés ; les identifiants anime natifs pris en charge restent possibles
 - La détection concerts et spectacles nécessite une clé OMDb (gratuite, 1000 req/jour sur omdbapi.com)
 - AniList est activé par défaut et ne nécessite aucune clé — il peut être désactivé dans la config
 - Les médias déjà indexés avant l'ajout des nouvelles catégories restent dans leur ancienne catégorie — utilisez l’analyse puis la réparation groupée
@@ -427,7 +480,7 @@ Les outils de maintenance (reclassification manuelle, correction des faux positi
 - Successeur de [UseFlow-FR](https://github.com/Aerya/UseFlow-FR) — base de code historique, base de données compatible
 - Bâti sur le [Stremio Addon SDK](https://github.com/Stremio/stremio-addon-sdk)
 - Métadonnées : [TMDB](https://www.themoviedb.org/), [TVDB](https://thetvdb.com/), [OMDb](https://www.omdbapi.com/), [MyAnimeList](https://myanimelist.net/), [AniList](https://anilist.co/), [Kitsu](https://kitsu.io/) et [AIOMetadata](https://github.com/cedya77/aiometadata)
-- Intégrations : [Prowlarr](https://prowlarr.com/), [NZBHydra2](https://github.com/theotherp/nzbhydra2), [Apprise](https://github.com/caronc/apprise), [RPDB](https://ratingposterdb.com/)
+- Intégrations : [Prowlarr](https://prowlarr.com/), [NZBHydra2](https://github.com/theotherp/nzbhydra2), [Comet](https://github.com/g0ldyy/comet), [PostersPlus](https://github.com/UmbraProjects/PostersPlus), [Apprise](https://github.com/caronc/apprise) et [RPDB](https://ratingposterdb.com/)
 
 ---
 

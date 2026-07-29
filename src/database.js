@@ -24,7 +24,11 @@ class DatabaseManager {
 
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
+    this.db.pragma('synchronous = NORMAL');
+    this.db.pragma('foreign_keys = ON');
+    this.db.pragma('busy_timeout = 5000');
     this.initTables();
+    this.upgradeLegacySourceLimits();
   }
 
   initTables() {
@@ -420,6 +424,8 @@ class DatabaseManager {
       discord_rpdb_posters_enabled: 'false',
       rpdb_enabled: 'false',
       rpdb_api_key: '',
+      postersplus_enabled: 'false',
+      postersplus_url_template: '',
       required_tags: 'FRENCH,MULTi,TRUEFRENCH,VOF,VFF,VFI,VFQ',
       prowlarr_url: '',
       prowlarr_apikey: '',
@@ -446,6 +452,37 @@ class DatabaseManager {
     for (const [key, value] of Object.entries(defaults)) {
       stmt.run(key, value);
     }
+  }
+
+  upgradeLegacySourceLimits() {
+    if (this.getConfig('source_limit_defaults_v2') === 'true') return;
+    const migrations = [
+      ['stremio_manifest_sources', 'maxItemsPerCatalog', 5000, 1000000],
+      ['newznab_sources', 'maxItemsPerCategory', 1000, 100000],
+      ['webdav_sources', 'maxItems', 5000, 100000],
+      ['wacustom_sources', 'maxItemsPerSync', 20000, 1000000],
+      ['media_server_sources', 'maxItems', 20000, 1000000],
+      ['streamfusion_sources', 'maxItemsPerSync', 20000, 1000000],
+      ['cometnet_sources', 'maxItemsPerSync', 5000, 100000],
+      ['mdblist_guides', 'maxItems', 5000, 1000000]
+    ];
+    for (const [configKey, field, legacyDefault, nextDefault] of migrations) {
+      let sources;
+      try {
+        sources = JSON.parse(this.getConfig(configKey) || '[]');
+      } catch {
+        continue;
+      }
+      if (!Array.isArray(sources)) continue;
+      let changed = false;
+      sources = sources.map(source => {
+        if (Number(source?.[field]) !== legacyDefault) return source;
+        changed = true;
+        return { ...source, [field]: nextDefault };
+      });
+      if (changed) this.setConfig(configKey, JSON.stringify(sources));
+    }
+    this.setConfig('source_limit_defaults_v2', 'true');
   }
 
   seedManagedCatalogs() {
@@ -595,6 +632,23 @@ class DatabaseManager {
     return this.db.prepare('DELETE FROM custom_catalogs WHERE id = ?').run(id).changes > 0;
   }
 
+  removeCustomCatalogReferences(id) {
+    let changed = 0;
+    for (const catalog of this.listCustomCatalogs()) {
+      const current = Array.isArray(catalog.filters?.catalog_ids)
+        ? catalog.filters.catalog_ids.map(String)
+        : [];
+      const next = current.filter(catalogId => catalogId !== String(id));
+      if (next.length === current.length) continue;
+      this.saveCustomCatalog({
+        ...catalog,
+        filters: { ...catalog.filters, catalog_ids: next }
+      });
+      changed++;
+    }
+    return changed;
+  }
+
   replaceGuideItems(guideId, items) {
     const remove = this.db.prepare('DELETE FROM guide_items WHERE guide_id = ?');
     const insert = this.db.prepare(`
@@ -644,7 +698,10 @@ class DatabaseManager {
     `).all(guideId, Math.min(Math.max(Number(limit) || 20, 1), 1000));
   }
 
-  _customCatalogConditions(catalog, search = null) {
+  _customCatalogConditions(catalog, search = null, visitedCatalogIds = new Set()) {
+    const catalogId = catalog.id ? String(catalog.id) : null;
+    const visited = new Set(visitedCatalogIds);
+    if (catalogId) visited.add(catalogId);
     const animeCatalog = String(catalog.type).toLowerCase() === 'anime';
     const conditions = [animeCatalog
       ? `(m.catalog_type = 'animés' OR EXISTS (
@@ -664,15 +721,39 @@ class DatabaseManager {
       params.push(frozenAt);
     }
 
+    const selectorConditions = [];
+    const selectorParams = [];
     if (catalog.source_urls?.length) {
-      conditions.push(`EXISTS (
+      selectorConditions.push(`EXISTS (
         SELECT 1 FROM releases r
         WHERE r.media_imdb_id = m.imdb_id
           AND r.source_url IN (${catalog.source_urls.map(() => '?').join(',')})
           ${frozenAt ? 'AND r.added_at <= ?' : ''}
       )`);
-      params.push(...catalog.source_urls);
-      if (frozenAt) params.push(frozenAt);
+      selectorParams.push(...catalog.source_urls);
+      if (frozenAt) selectorParams.push(frozenAt);
+    }
+
+    const requestedCatalogIds = Array.isArray(filters.catalog_ids)
+      ? [...new Set(filters.catalog_ids.map(String).filter(Boolean))]
+      : [];
+    let validIncludedCatalogs = 0;
+    for (const includedId of requestedCatalogIds) {
+      if (visited.has(includedId)) continue;
+      const included = this.getCustomCatalog(includedId);
+      if (!included || included.type !== catalog.type) continue;
+      const nested = this._customCatalogConditions(included, null, visited);
+      selectorConditions.push(`(${nested.conditions.join(' AND ')})`);
+      selectorParams.push(...nested.params);
+      validIncludedCatalogs++;
+    }
+    if (selectorConditions.length) {
+      conditions.push(`(${selectorConditions.join(' OR ')})`);
+      params.push(...selectorParams);
+    } else if (requestedCatalogIds.length && validIncludedCatalogs === 0) {
+      // Une composition dont toutes les références ont disparu ne doit jamais
+      // se transformer silencieusement en « tous les médias ».
+      conditions.push('0 = 1');
     }
 
     if (filters.guide_id) {
@@ -1104,7 +1185,7 @@ class DatabaseManager {
 
   getMediaList({ catalog = null, search = '', page = 1, limit = 24, sort = 'date_desc', year = null, quality = null } = {}) {
     const offset = (Number(page) - 1) * Number(limit);
-    const conditions = [];
+    const conditions = ["m.catalog_type <> 'youtube'"];
     const params = [];
 
     if (catalog) { conditions.push('m.catalog_type = ?'); params.push(catalog); }
@@ -1169,7 +1250,7 @@ class DatabaseManager {
   getMediaYears() {
     return this.db.prepare(`
       SELECT DISTINCT year FROM media
-      WHERE year IS NOT NULL AND year != ''
+      WHERE catalog_type <> 'youtube' AND year IS NOT NULL AND year != ''
       ORDER BY year DESC
     `).all().map(r => r.year);
   }
@@ -1598,8 +1679,7 @@ class DatabaseManager {
         SUM(CASE WHEN m.catalog_type = 'emissions'     THEN 1 ELSE 0 END) AS emissions_count,
         SUM(CASE WHEN m.catalog_type = 'animés'        THEN 1 ELSE 0 END) AS animes_count,
         SUM(CASE WHEN m.catalog_type = 'concerts'      THEN 1 ELSE 0 END) AS concerts_count,
-        SUM(CASE WHEN m.catalog_type = 'spectacles'    THEN 1 ELSE 0 END) AS spectacles_count,
-        SUM(CASE WHEN m.catalog_type = 'youtube'       THEN 1 ELSE 0 END) AS youtube_count
+        SUM(CASE WHEN m.catalog_type = 'spectacles'    THEN 1 ELSE 0 END) AS spectacles_count
       FROM releases r
       LEFT JOIN media m ON r.media_imdb_id = m.imdb_id
       WHERE r.source_url IS NOT NULL AND r.source_url != ''

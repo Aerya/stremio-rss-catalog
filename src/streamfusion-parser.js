@@ -152,7 +152,7 @@ class StreamFusionParser {
     const sourceKey = this.sourceKey(source.id);
     const startedAt = this.db.beginSourceSync(sourceKey, 'streamfusion');
     const syncStartedAt = Math.floor(startedAt / 1000);
-    const maxItems = Math.min(Math.max(Number(source.maxItemsPerSync) || 20000, 1), 100000);
+    const maxItems = Math.min(Math.max(Number(source.maxItemsPerSync) || 1000000, 1), 1000000);
     const pageSize = Math.min(Math.max(Number(source.pageSize) || 1000, 1), 2000);
     const delayMs = Math.min(Math.max(Number(source.requestDelayMs) || 100, 0), 10000);
     const committed = this.db.getSourceSyncState(sourceKey)?.cursor?.committed || {};
@@ -207,7 +207,10 @@ class StreamFusionParser {
         Number(source.syncIntervalMinutes) || Number(defaultIntervalMinutes) || 180,
         5
       ), 43200);
-      if (!forceAll && !this.db.isSourceDue(this.sourceKey(source.id), interval)) continue;
+      const state = this.db.getSourceSyncState(this.sourceKey(source.id));
+      const backfillInProgress = state?.cursor?.committed?.backfill_complete === false
+        || Boolean(state?.cursor?.committed?.cursor);
+      if (!forceAll && !backfillInProgress && !this.db.isSourceDue(this.sourceKey(source.id), interval)) continue;
       try {
         items.push(...await this.fetchSource(source));
       } catch (error) {

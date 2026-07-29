@@ -18,6 +18,8 @@ class StremioAddon {
     // Cache invalidé à chaque sync. Clé : "id:skip:search". Pas de TTL — le contenu
     // ne change qu'à chaque sync. Les recherches ne sont pas mises en cache (trop variées).
     this._cache = new Map();
+    this._warmTimer = null;
+    this._warming = false;
 
     this.manifest = {
       id: 'community.useflowfr.catalog',
@@ -27,7 +29,7 @@ class StremioAddon {
       logo: 'https://raw.githubusercontent.com/Aerya/stremio-rss-catalog/main/src/public/logo.png',
       resources: ['catalog'],
       types: ['movie', 'series'],
-      idPrefixes: ['tt', 'kitsu', 'mal', 'anilist', 'anidb', 'yt_id:'],
+      idPrefixes: ['tt', 'kitsu', 'mal', 'anilist', 'anidb'],
       catalogs: [
         {
           type: 'movie',
@@ -86,6 +88,7 @@ class StremioAddon {
       ]
     };
 
+    this.scheduleWarmCache(1000);
   }
 
   // Appelé par webui.js après chaque sync réussie
@@ -93,10 +96,48 @@ class StremioAddon {
     const size = this._cache.size;
     this._cache.clear();
     if (size > 0) console.log(`[Cache] Invalidé — ${size} entrées supprimées`);
+    this.scheduleWarmCache();
+  }
+
+  scheduleWarmCache(delayMs = 300) {
+    if (this._warmTimer) clearTimeout(this._warmTimer);
+    this._warmTimer = setTimeout(() => {
+      this._warmTimer = null;
+      this.warmCache().catch(error => console.error('[Cache] Préchauffage échoué :', error.message));
+    }, delayMs);
+    this._warmTimer.unref?.();
+  }
+
+  async warmCache() {
+    if (this._warming) return;
+    this._warming = true;
+    const startedAt = Date.now();
+    let warmed = 0;
+    try {
+      const catalogs = this.db.listCustomCatalogs(false)
+        .filter(catalog => ['movie', 'series', 'anime'].includes(catalog.type));
+      // Les cinq premières pages couvrent l'ouverture et plusieurs défilements
+      // sans multiplier excessivement la mémoire sur les grosses instances.
+      for (const catalog of catalogs) {
+        for (let page = 0; page < 5; page++) {
+          const result = await this.handleCatalog({
+            type: catalog.type,
+            id: catalog.id,
+            extra: { skip: page * PAGE_SIZE }
+          });
+          warmed++;
+          if (!result.hasMore) break;
+        }
+      }
+      console.log(`[Cache] Préchauffé — ${warmed} page(s) en ${Date.now() - startedAt} ms`);
+    } finally {
+      this._warming = false;
+    }
   }
 
   getManifest() {
-    const managedCatalogs = this.db.listCustomCatalogs(false);
+    const managedCatalogs = this.db.listCustomCatalogs(false)
+      .filter(catalog => ['movie', 'series', 'anime'].includes(catalog.type));
     const customCatalogs = managedCatalogs.map(catalog => ({
       type: catalog.type,
       id: catalog.id,
@@ -170,10 +211,17 @@ class StremioAddon {
   itemToMetaPreview(item) {
     let poster = item.poster || 'https://via.placeholder.com/300x450?text=No+Poster';
 
+    const postersPlusEnabled = this.db.getConfig('postersplus_enabled') === 'true';
+    const postersPlusTemplate = this.db.getConfig('postersplus_url_template');
     const rpdbEnabled = this.db.getConfig('rpdb_enabled') === 'true';
     let rpdbKey = this.db.getConfig('rpdb_api_key');
 
-    if (rpdbEnabled && rpdbKey && /^tt\d+$/i.test(item.imdb_id || '')) {
+    const postersPlusUrl = postersPlusEnabled
+      ? this.buildPostersPlusUrl(item, postersPlusTemplate)
+      : null;
+    if (postersPlusUrl) {
+      poster = postersPlusUrl;
+    } else if (rpdbEnabled && rpdbKey && /^tt\d+$/i.test(item.imdb_id || '')) {
       rpdbKey = rpdbKey.trim();
       poster = `https://api.ratingposterdb.com/${rpdbKey}/imdb/poster-default/${item.imdb_id}.jpg?fallback=true`;
     }
@@ -212,6 +260,30 @@ class StremioAddon {
     if (item.background) meta.background = item.background;
 
     return meta;
+  }
+
+  buildPostersPlusUrl(item, template = null) {
+    const value = String(template || '').trim();
+    if (!value || !/^tt\d+$/i.test(item?.imdb_id || '')) return null;
+    const type = item.type === 'series' ? 'tv' : 'movie';
+    const replacements = {
+      // Certains imports directs (StreamFusion, CometNet...) n'ont qu'un ID
+      // IMDb. PostersPlus peut alors utiliser son fallback IMDb.
+      '{tmdb_id}': item.tmdb_id ? String(item.tmdb_id) : '',
+      '{imdb_id}': String(item.imdb_id),
+      '{type}': type
+    };
+    let result = value;
+    for (const [placeholder, replacement] of Object.entries(replacements)) {
+      result = result.split(placeholder).join(encodeURIComponent(replacement));
+    }
+    if (/\{(?:tmdb_id|imdb_id|type)\}/.test(result)) return null;
+    try {
+      const url = new URL(result);
+      return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+    } catch {
+      return null;
+    }
   }
 
 }

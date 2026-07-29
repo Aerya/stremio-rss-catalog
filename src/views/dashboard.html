@@ -112,10 +112,6 @@
           <div class="stat-label" data-i18n="stat_spectacles">Spectacles</div>
           <div class="stat-value" id="statSpectacles">—</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">YouTube</div>
-          <div class="stat-value" id="statYoutube">—</div>
-        </div>
         <div class="stat-card accent">
           <div class="stat-label" data-i18n="stat_indexed">Total indexés</div>
           <div class="stat-value" id="statTotal">—</div>
@@ -232,10 +228,6 @@
           <span data-i18n="stat_spectacles">Spectacles</span>
           <span class="tab-count" id="tabCountSpectacles"></span>
         </button>
-        <button class="tab-btn" data-catalog="youtube">
-          <span>YouTube</span>
-          <span class="tab-count" id="tabCountYoutube"></span>
-        </button>
       </div>
 
       <div id="libraryGrid" class="media-grid"></div>
@@ -304,8 +296,10 @@
             <option value="concerts">Concerts</option>
             <option value="spectacles">Spectacles</option>
           </select>
-          <input id="pastebinMaxDepth" type="number" min="0" max="10" value="5" title="Profondeur maximale">
-          <input id="pastebinMaxPages" type="number" min="1" max="5000" value="1000" title="Maximum de pages">
+          <input id="pastebinMaxDepth" type="number" min="0" max="10" value="5"
+            placeholder="Profondeur" title="Nombre maximal de niveaux de renvois Pastebin suivis">
+          <input id="pastebinMaxPages" type="number" min="1" max="5000" value="1000"
+            placeholder="Pages max." title="Nombre maximal d’URLs Pastebin lues pendant une collecte">
           <input id="pastebinInterval" type="number" min="5" max="43200" placeholder="Fréquence (min)" title="Vide : fréquence globale">
           <button type="button" class="btn-sm" onclick="previewPastebin()" data-i18n="sources_preview">Prévisualiser</button>
           <button type="button" class="btn-primary" id="pastebinSubmit" onclick="savePastebin()" data-i18n="sources_add">Ajouter</button>
@@ -319,6 +313,10 @@
           À activer lorsque le Pastebin contient uniquement des médias dans la langue souhaitée,
           mais que ses titres ne portent pas eux-mêmes les marqueurs FRENCH, MULTi, VFF, etc.
           Désactivé, chaque titre doit correspondre à au moins un tag requis.
+          <br><strong>Profondeur maximale</strong> : nombre de niveaux de renvois suivis depuis
+          l’adresse saisie. 0 lit uniquement cette adresse ; 1 suit ses liens directs ; 5 convient
+          aux index maîtres qui renvoient vers des catégories puis vers les listes de contenus.
+          Le maximum de pages limite séparément le nombre total d’adresses lues.
         </div>
         <div id="pastebinPreview" class="text-muted" style="margin-top:10px"></div>
         <div id="pastebinList" style="margin-top:14px"></div>
@@ -367,7 +365,7 @@
           </div>
           <div class="field">
             <label>Maximum de fichiers par collecte</label>
-            <input id="webdavMaxItems" type="number" min="1" max="20000" value="5000">
+            <input id="webdavMaxItems" type="number" min="1" max="1000000" value="100000">
           </div>
           <div class="field">
             <label>Extensions vidéo</label>
@@ -425,7 +423,7 @@
           </div>
           <div class="field">
             <label>Maximum par collecte</label>
-            <input id="mediaServerMaxItems" type="number" min="1" max="100000" value="20000">
+            <input id="mediaServerMaxItems" type="number" min="1" max="1000000" value="1000000">
           </div>
           <div class="field">
             <label>Page</label>
@@ -495,7 +493,7 @@
           </div>
           <div class="field">
             <label data-i18n="sources_newznab_max_items">Maximum par catégorie et synchronisation</label>
-            <input id="newznabMaxItems" type="number" min="1" max="20000" value="1000">
+            <input id="newznabMaxItems" type="number" min="1" max="1000000" value="100000">
           </div>
           <div class="field">
             <label data-i18n="sources_newznab_delay">Délai entre les pages (ms)</label>
@@ -511,7 +509,7 @@
           </div>
         </div>
         <div class="integration-cat-hint" style="margin-top:12px" data-i18n="sources_indexer_collection_help">
-          Première collecte jusqu’au plafond, puis reprise incrémentale depuis le curseur mémorisé.
+          Première collecte par lots, puis reprise incrémentale depuis le curseur mémorisé.
           La fenêtre de recouvrement absorbe les retards ou réordonnancements de l’indexeur.
         </div>
         <div style="display:flex;gap:8px;margin-top:14px">
@@ -551,7 +549,7 @@
           </div>
           <div class="field">
             <label>Maximum par collecte</label>
-            <input id="wacustomMaxItems" type="number" min="1" max="50000" value="20000">
+            <input id="wacustomMaxItems" type="number" min="1" max="1000000" value="1000000">
           </div>
           <div class="field">
             <label>Taille d’une page</label>
@@ -567,7 +565,7 @@
           </div>
         </div>
         <div class="integration-cat-hint" style="margin-top:12px">
-          Le premier parcours est repris sur plusieurs synchronisations lorsque le plafond est atteint.
+          Le premier parcours est repris automatiquement par lots jusqu’à sa fin.
           Ensuite, l’API est relue depuis les contenus les plus récents.
         </div>
         <div style="display:flex;gap:8px;margin-top:14px">
@@ -597,7 +595,7 @@
           <div class="field"><label>URL de l’instance</label><input id="streamFusionUrl" type="password" autocomplete="off" placeholder="https://streamfusion.example.net"></div>
           <div class="field"><label>Peer Key ID</label><input id="streamFusionKeyId" type="password" autocomplete="new-password"></div>
           <div class="field"><label>Secret de la Peer Key</label><input id="streamFusionSecret" type="password" autocomplete="new-password"></div>
-          <div class="field"><label>Maximum par collecte</label><input id="streamFusionMaxItems" type="number" min="1" max="100000" value="20000"></div>
+          <div class="field"><label>Limite de sécurité par lot</label><input id="streamFusionMaxItems" type="number" min="1" max="1000000" value="1000000"></div>
           <div class="field"><label>Taille d’une page</label><input id="streamFusionPageSize" type="number" min="1" max="2000" value="1000"></div>
           <div class="field"><label>Délai entre les pages (ms)</label><input id="streamFusionDelay" type="number" min="0" max="10000" value="100"></div>
           <div class="field"><label>Fréquence de collecte (min)</label><input id="streamFusionInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale"></div>
@@ -632,14 +630,16 @@
         <div class="config-grid">
           <div class="field"><label>Nom du pair ciblé</label><input id="cometNetName" type="text" placeholder="Mon Comet local"></div>
           <div class="field"><label>URL WebSocket CometNet</label><input id="cometNetUrl" type="password" autocomplete="off" placeholder="wss://comet.example.net"></div>
-          <div class="field"><label>Maximum traité par synchronisation</label><input id="cometNetMaxItems" type="number" min="1" max="50000" value="5000"></div>
+          <div class="field"><label>Limite de sécurité par lot</label><input id="cometNetMaxItems" type="number" min="1" max="1000000" value="100000"></div>
         </div>
         <div class="integration-cat-hint" style="margin-top:12px">
           L’identité cryptographique du pair est épinglée au premier test. Les annonces valides sont
           conservées dans une boîte de réception locale, puis injectées dans les catalogues lors de la
           prochaine synchronisation. CometNet fonctionnant par gossip, cette source reçoit les
           annonces nouvelles qui lui sont routées ; le protocole actuel ne fournit pas d’export
-          exhaustif de l’historique du pair ciblé.
+          exhaustif de l’historique du pair ciblé. Une pool CometNet sert à filtrer les contributeurs
+          de confiance ; elle ne déclenche pas la copie du cache existant et n’améliore donc pas le
+          rattrapage historique.
         </div>
         <div style="display:flex;gap:8px;margin-top:14px">
           <button type="button" class="btn-sm" onclick="previewCometNetSource()">Tester et identifier</button>
@@ -659,8 +659,7 @@
           Documentation :
           <a href="https://github.com/Stremio/stremio-addon-sdk" target="_blank" rel="noopener noreferrer">protocole des addons Stremio ↗</a>.
           Exemples :
-          <a href="https://github.com/xXCrash2BomberXx/YouTubio" target="_blank" rel="noopener noreferrer">YouTubio ↗</a>
-          · <a href="https://github.com/vanchaxy/plexio" target="_blank" rel="noopener noreferrer">Plexio ↗</a>
+          <a href="https://github.com/vanchaxy/plexio" target="_blank" rel="noopener noreferrer">Plexio ↗</a>
           · <a href="https://github.com/akarazniewicz/stremio-jellyfin" target="_blank" rel="noopener noreferrer">Stremio Jellyfin ↗</a>
           · <a href="https://github.com/TheBeastLT/stremio-kitsu-anime" target="_blank" rel="noopener noreferrer">Kitsu Anime ↗</a>
           · métadonnées : <a href="https://github.com/cedya77/aiometadata" target="_blank" rel="noopener noreferrer">AIOMetadata ↗</a>.
@@ -670,7 +669,7 @@
           <input id="stremioSourceName" type="text" placeholder="Nom de la source" data-i18n-placeholder="sources_name_placeholder" class="rss-name-input">
           <input id="stremioSourceUrl" type="password" autocomplete="off"
             placeholder="https://example.net/manifest.json?..." class="flex-1">
-          <input id="stremioMaxItems" type="number" min="1" max="100000" value="5000" title="Maximum par catalogue">
+          <input id="stremioMaxItems" type="number" min="1" max="1000000" value="1000000" title="Limite de sécurité par catalogue">
           <input id="stremioInterval" type="number" min="5" max="43200" placeholder="Fréquence (min)" title="Vide : fréquence globale">
           <button type="button" class="btn-sm" onclick="previewStremioSource()" data-i18n="sources_preview">Prévisualiser</button>
           <button type="button" class="btn-primary" id="stremioSubmit" onclick="saveStremioSource()" data-i18n="sources_add">Ajouter</button>
@@ -681,8 +680,8 @@
         <div id="stremioSourceList" style="margin-top:14px"></div>
       </details>
 
-      <details class="card source-group" data-source-group="diagnostics">
-        <summary>Diagnostics détaillés</summary>
+      <details class="card source-group" data-source-group="all" open>
+        <summary>Alertes d’indisponibilité et journal</summary>
         <div class="source-alert-settings">
           <h3>Alertes d’indisponibilité</h3>
           <p class="text-muted">
@@ -707,6 +706,10 @@
           <h3 style="margin-top:20px">Journal des alertes</h3>
           <div id="sourceAlertHistory"><p class="text-muted">Chargement...</p></div>
         </div>
+      </details>
+
+      <details class="card source-group" data-source-group="diagnostics">
+        <summary>Diagnostics détaillés des collectes</summary>
         <div id="sourcesContainer"><p class="text-muted" data-i18n="sync_loading">Chargement...</p></div>
       </details>
 
@@ -801,7 +804,7 @@
           </div>
           <div class="field">
             <label>Maximum d’éléments</label>
-            <input id="mdblistMaxItems" type="number" min="1" max="50000" value="5000">
+            <input id="mdblistMaxItems" type="number" min="1" max="1000000" value="1000000">
           </div>
           <div class="field">
             <label>Fréquence de mise à jour (min)</label>
@@ -827,12 +830,19 @@
           </div>
           <div class="field">
             <label data-i18n="catalogs_type">Type Stremio</label>
-            <select id="catalogMediaType">
+            <select id="catalogMediaType" onchange="renderCatalogCompositionChoices([])">
               <option value="movie">Films</option>
               <option value="series">Séries</option>
               <option value="anime">Anime (type Stremio natif)</option>
-              <option value="YouTube">YouTube</option>
             </select>
+          </div>
+          <div class="field">
+            <label data-i18n="catalogs_compose">Catalogues à fusionner</label>
+            <div id="catalogCompositionChoices" class="catalog-source-choices"></div>
+            <small data-i18n="catalogs_compose_hint">
+              Union réversible : modifiez ce catalogue plus tard pour ajouter ou retirer des catalogues.
+              Seuls les catalogues du même type peuvent être mélangés.
+            </small>
           </div>
           <div class="field">
             <label>Guide de sélection et d’ordre</label>
@@ -1113,6 +1123,33 @@
             <input type="text" id="rpdb_api_key" name="rpdb_api_key"
               data-i18n-placeholder="config_rpdb_placeholder" placeholder="Votre clé API RPDB">
           </div>
+        </div>
+
+        <div class="config-section">
+          <h3>
+            PostersPlus
+            <a href="https://github.com/UmbraProjects/PostersPlus" target="_blank" class="label-link">GitHub ↗</a>
+          </h3>
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="postersplus_enabled" name="postersplus_enabled">
+              <span class="slider"></span>
+            </label>
+            <label for="postersplus_enabled" data-i18n="config_postersplus_enable">Utiliser PostersPlus en priorité pour les affiches</label>
+          </div>
+          <div class="field">
+            <label for="postersplus_url_template" data-i18n="config_postersplus_template">Template URL PostersPlus</label>
+            <textarea id="postersplus_url_template" name="postersplus_url_template" rows="4"
+              autocomplete="off"
+              placeholder="https://posters.example/poster?tmdb_id={tmdb_id}&amp;imdb_id={imdb_id}&amp;type={type}"></textarea>
+            <small>
+              Collez directement le template généré pour AIOMetadata. Les variables
+              <code>{tmdb_id}</code>, <code>{imdb_id}</code> et <code>{type}</code>
+              sont remplacées automatiquement. Si PostersPlus ne s’applique pas, RPDB puis l’affiche d’origine servent de repli.
+            </small>
+          </div>
+          <button type="button" class="btn-sm" onclick="testPostersPlus()" data-i18n="config_postersplus_test">Tester avec un média indexé</button>
+          <div id="postersplusTestResult" class="text-muted" style="margin-top:8px"></div>
         </div>
 
         <div class="config-section">

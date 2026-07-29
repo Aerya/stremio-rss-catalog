@@ -32,7 +32,7 @@
 
 ---
 
-> Ein selbst gehostetes Stremio-Addon, das Kataloge aus Inhalten Ihrer eigenen **BitTorrent-, Usenet- oder sonstigen Indexer** erstellt. Die Katalogquellen sollen den Quellen entsprechen, die Ihre Streaming-Addons tatsächlich verwenden. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaStream/WaCustom, StreamFusion und Stremio-Manifeste lassen sich kombinieren.
+> Ein selbst gehostetes Stremio-Addon, das Kataloge aus Inhalten Ihrer eigenen **BitTorrent-, Usenet- oder sonstigen Indexer** erstellt. Die Katalogquellen sollen den Quellen entsprechen, die Ihre Streaming-Addons tatsächlich verwenden. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaStream/WaCustom, StreamFusion, CometNet und Stremio-Manifeste lassen sich kombinieren.
 
 ---
 
@@ -41,6 +41,7 @@
 | | |
 |---|---|
 | **Verwaltete Kataloge** | Die 9 bisherigen Kataloge werden mit ihren vorhandenen Inhalten in die Verwaltung übernommen; beliebig viele eigene Kataloge können ergänzt werden |
+| **Katalog-Zusammenstellung** | Kataloge desselben Typs lassen sich per Vereinigung mischen und später wieder aus der Zusammenstellung entfernen |
 | **Gemischte Quellen** | Ein Katalog kann RSS, Pastebin, WebDAV, Plex, Jellyfin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaStream/WaCustom, StreamFusion und aus Stremio-Manifesten importierte Quellen kombinieren |
 | **Plex und Jellyfin direkt** | Erkennung von Bibliotheken und Sammlungen, paginierter Film-/Serienimport und Erhalt der IMDb-/TMDB-IDs |
 | **WebDAV-Ordner** | Authentifizierter rekursiver Scan mit konfigurierbaren Erweiterungen, Tiefe und Obergrenze; Dateinamen speisen Kataloge und [Davio](https://github.com/arvida42/davio) kann die Wiedergabe in Stremio übernehmen |
@@ -48,7 +49,7 @@
 | **Zwei getrennte Pausen** | Neue Kataloginhalte unabhängig von der Sichtbarkeit im Stremio-Manifest einfrieren |
 | **Verschachtelte Pastebins** | Direkte Seiten, JSON-Verweise und kategorisierte Hauptindizes mit begrenzter Rekursion und Deduplizierung |
 | **Stremio-Manifeste** | Generische Erkennung externer Kataloge und Import ihrer Inhalte |
-| **Native Anime- und YouTube-Typen** | `anime`, Kitsu/MAL/AniList/AniDB und `YouTube`/`yt_id:` bleiben erhalten und werden nicht stillschweigend in Filme umgewandelt |
+| **Nativer Anime-Typ** | `anime` und Kitsu/MAL/AniList/AniDB-IDs bleiben erhalten und werden nicht stillschweigend in Filme umgewandelt |
 | **Katalog-Leitlisten** | MDBList, ListSync, SuggestArr und Agregarr liefern Auswahl und Reihenfolge; sichtbar werden nur bereits lokal indexierte Medien |
 | **Testlauf** | Exakte Medienanzahl vor dem Erstellen eines Katalogs |
 | **Manifestverlauf** | Revisionen und Ereignisse für Erstellung, Umbenennung, Einfrieren, Sichtbarkeit und Löschung |
@@ -73,8 +74,9 @@
 | **Deduplizierung** | Per IMDB-ID (Medien) + per RSS-GUID + per Torrent-Hash wenn verfügbar (Releases) |
 | **Hashes** | Automatische Infohash-Extraktion aus Magnet-/Torrent-Links |
 | **Retry** | Nicht gematchte Releases gespeichert und wiederholbar |
-| **Cache** | Katalogantworten im Speicher gecacht, automatische Invalidierung nach Sync |
+| **Vorgewärmter Cache** | Die ersten fünf Seiten jedes veröffentlichten Katalogs werden nach Start und Invalidierung vorbereitet |
 | **RPDB** | Bewertungs-Poster (optional) |
+| **PostersPlus** | Direkte Unterstützung für AIOMetadata-kompatible URL-Templates mit RPDB- und Originalbild-Fallback |
 | **Discord-Benachrichtigungen** 🆕 NEW | Erweiterte Benachrichtigungen mit Poster-Galerie bei jeder Sync |
 | **Apprise-Benachrichtigungen** 🆕 NEW | Multi-Service-Benachrichtigungen via Apprise-Server (optional) |
 | **Benachrichtigungssprache** 🆕 NEW | Discord/Apprise-Sprache unabhängig von der WebUI konfigurierbar (FR/EN/DE) |
@@ -88,9 +90,10 @@
 | **Indexer-APIs** | Mehrere umbenennbare Newznab-, Prowlarr-, Jackett/Torznab- und NZBHydra2-Quellen mit Pagination, inkrementellem Cursor, Obergrenze und Verzögerung |
 | **WaStream/WaCustom** | Mehrere umbenennbare Instanzen; paginierter WASource-Import mit IMDb/TMDB, fortsetzbarer Erfassung, eigener Frequenz, Pause und Obergrenze |
 | **StreamFusion Reborn** | Mehrere umbenennbare Instanzen; signierter und verschlüsselter Import des privaten Caches über die offizielle Peer-API mit Pagination und inkrementellem Cursor |
+| **CometNet** | Signierter persistenter Empfänger für künftige Gossip-Ankündigungen mit Wiederverbindung und Quellenalarmen |
 | **Konfigurationssicherung** | Versionierter Export/Import; sensible Schlüssel und URLs nur auf ausdrücklichen Wunsch |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + integrierter Verbindungstest |
-| **SQLite** | Persistente Daten, inkrementelle Inhalte, optimierte Indizes |
+| **SQLite WAL** | Persistente Daten, parallele Lesezugriffe, optimierte Indizes, Fremdschlüssel und Schreibwartezeit |
 | **Tag-Filterung** | Konfigurierbare erforderliche Tags über die WebUI (FRENCH, MULTi, 1080p…) |
 | **Docker** | Multi-Arch-Image `linux/amd64` + `linux/arm64` |
 
@@ -163,8 +166,10 @@ Getrennte Indexer können umbenannt und in der Mediathek als Herkunft erkannt we
 
 Bei der ersten Sammlung wird `t=caps` gelesen. Danach werden `t=search`-Seiten
 mit `offset` bis zur konfigurierten Obergrenze **pro Kategorie** geladen.
-Standardmäßig sind das 1.000 Ergebnisse pro Kategorie, vom Server begrenzte
-Seitengrößen und 750 ms Pause zwischen Seiten.
+Standardmäßig sind das 100.000 Ergebnisse pro Kategorie; die Sicherheitsgrenze
+kann auf 1.000.000 erhöht werden. Seitengrößen bleiben serverbegrenzt und
+zwischen Seiten liegen standardmäßig 750 ms. Dies begrenzt den Speicher eines
+Stapels, nicht die Größe der angesammelten Mediathek.
 
 Spätere Sammlungen beginnen bei den neuesten Ergebnissen und enden am
 gespeicherten Cursor oder am Ende des Überlappungsfensters. Der Cursor wird erst
@@ -181,10 +186,22 @@ Hauptindizes. Stremio-Manifeste erkennen externe Kataloge und machen sie in der
 Katalogverwaltung auswählbar.
 
 Damit lassen sich auch Film-/Serienkataloge kompatibler Addons wie Plexio oder
-Stremio Jellyfin sowie Anime-/YouTube-Kataloge von Kitsu oder YouTubio
+Stremio Jellyfin sowie Anime-Kataloge von Kitsu
 importieren. Ein reines Stream-Manifest legt die interne Datenbank eines Addons
 nicht offen; ein Comet-Manifest kann ohne Export-API nicht alle Medien
 aufzählen.
+
+### Genaue CometNet-Reichweite
+
+Stremio RSS Catalog verbindet sich als signierter Empfangs-Peer und speichert
+gültige Ankündigungen persistent. CometNet arbeitet als Gossip-Protokoll mit
+Fanout: empfangen werden neue, an diesen Peer weitergeleitete Ankündigungen,
+nicht garantiert die vollständige Datenbank des Ziel-Peers. Die Nachrichtentypen
+`sync_request` und `sync_response` sind deklariert, aber in Comet derzeit nicht
+implementiert; ein vollständiger historischer Import ist daher nicht möglich.
+CometNet-Pools sind Vertrauensfilter für Mitwirkende. Ein Pool mit dem Ziel-Peer
+erzwingt weder die erneute Übertragung seines vorhandenen Caches noch einen
+historischen Nachlauf.
 
 Eine WebDAV-Quelle zeigt auf einen Stammordner. Das Addon durchsucht Unterordner
 mit `PROPFIND`, behält konfigurierte Videoerweiterungen und verwendet danach
@@ -304,11 +321,25 @@ failed_releases → nicht gematchte Releases (für Retry)
 
 ### Cache
 
-Katalogantworten werden zwischen Syncs gecacht und nach jeder erfolgreichen Sync automatisch invalidiert. Suchanfragen werden nicht gecacht.
+Katalogantworten werden gecacht und nach Änderungen automatisch invalidiert.
+Anschließend werden die ersten fünf Seiten jedes veröffentlichten Katalogs im
+Hintergrund vorgewärmt. Suchanfragen werden nicht gecacht.
 
 ### Persistenz
 
-Alles wird in einer SQLite-Datenbank (`data/addon.db`) gespeichert. Inhalte **akkumulieren sich** — eine Sync ersetzt niemals vorhandene Daten.
+Alles wird in einer SQLite-Datenbank im WAL-Modus (`data/addon.db`) gespeichert.
+Inhalte **akkumulieren sich** — eine Sync ersetzt niemals vorhandene Daten.
+Hunderttausende indexierte Zeilen und parallele Katalog-Lesezugriffe sind für
+einen Anwendungsprozess realistisch. Ein künftiger Multi-User-Dienst mit
+mehreren schreibenden Replikaten sollte PostgreSQL und eine Kontentrennung
+verwenden.
+
+### Kataloge sind keine Streams
+
+Die Datenbank enthält Medien und teilweise Release-Daten, aber nicht immer eine
+aktuelle abspielbare URL. Ein Stream-Addon muss Episoden auflösen, Releases
+bewerten, Debrid-Dienste oder BitTorrent-Clients authentifizieren und geschützte
+Wiedergabelinks liefern. Diese Aufgabe bleibt bewusst bei AIOStreams/Comet.
 
 ---
 
@@ -384,7 +415,7 @@ Die Datenbankmigration wird beim ersten Start automatisch durchgeführt. Ihre ge
 
 - Die erste Synchronisierung kann je nach Feed-Größe mehrere Minuten dauern — **vor** der Installation des Addons in Stremio durchführen
 - Kataloge werden in Seiten von 100 Medien paginiert — Stremio lädt sie beim Scrollen, ohne Limit
-- IMDb-IDs werden bevorzugt; unterstützte native Anime- und YouTube-IDs bleiben ebenfalls erhalten
+- IMDb-IDs werden bevorzugt; unterstützte native Anime-IDs bleiben ebenfalls erhalten
 - Konzert- und Aufführungserkennung erfordert einen OMDb API-Schlüssel (kostenlos, 1000 Anfragen/Tag auf omdbapi.com)
 - AniList ist standardmäßig aktiviert und erfordert keinen Schlüssel — es kann in der Konfiguration deaktiviert werden
 - Vor Hinzufügung neuer Kategorien indexierte Medien bleiben in ihrer alten Kategorie — verwenden Sie Analyse und anschließende gruppierte Reparatur

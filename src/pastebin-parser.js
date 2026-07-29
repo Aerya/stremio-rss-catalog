@@ -139,7 +139,10 @@ class PastebinParser {
   }
 
   async discover(startUrl, options = {}) {
-    const maxDepth = Math.min(Math.max(Number(options.maxDepth) || 5, 0), 10);
+    const requestedDepth = options.maxDepth === undefined || options.maxDepth === null || options.maxDepth === ''
+      ? 5
+      : Number(options.maxDepth);
+    const maxDepth = Math.min(Math.max(Number.isFinite(requestedDepth) ? requestedDepth : 5, 0), 10);
     const maxPages = Math.min(Math.max(Number(options.maxPages) || 1000, 1), 5000);
     const visited = new Set();
     const pages = [];

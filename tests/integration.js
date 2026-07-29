@@ -503,6 +503,9 @@ async function main() {
       [['123', 'films', 'movie'], ['456', 'series', 'series']]
     );
     assert.ok(discovery.items.every(item => item.source_url === `${baseUrl}/pointer`));
+    const directOnlyDiscovery = await parser.discover(`${baseUrl}/pointer`, { maxDepth: 0 });
+    assert.equal(directOnlyDiscovery.visited, 1);
+    assert.equal(directOnlyDiscovery.items.length, 0);
 
     const matcher = new TMDBMatcher(db);
     matcher.baseUrl = `${baseUrl}/3`;
@@ -929,7 +932,7 @@ async function main() {
     const exoticInspection = await stremioParser.inspect(`${baseUrl}/exotic/manifest.json`);
     assert.deepEqual(
       exoticInspection.catalogs.map(catalog => [catalog.type, catalog.supported]),
-      [['anime', true], ['YouTube', true]]
+      [['anime', true], ['YouTube', false]]
     );
     const exoticSource = {
       id: 'exotic-test',
@@ -939,17 +942,12 @@ async function main() {
       maxItemsPerCatalog: 100
     };
     const animeItems = await stremioParser.fetchCatalog(exoticSource, exoticInspection.catalogs[0]);
-    const youtubeItems = await stremioParser.fetchCatalog(exoticSource, exoticInspection.catalogs[1]);
     assert.equal(animeItems[0].direct_meta.imdb_id, 'kitsu:42');
     assert.equal(animeItems[0].catalog_type, 'animés');
     assert.equal(animeItems[0].type, 'series');
-    assert.equal(youtubeItems[0].direct_meta.imdb_id, 'yt_id:abcdefghijk');
-    assert.equal(youtubeItems[0].catalog_type, 'youtube');
-    assert.equal(youtubeItems[0].type, 'YouTube');
-    const exoticMatch = await matcher.matchBatch([...animeItems, ...youtubeItems]);
-    assert.equal(exoticMatch.matched, 2);
+    const exoticMatch = await matcher.matchBatch(animeItems);
+    assert.equal(exoticMatch.matched, 1);
     assert.equal(db.getMediaByExternalId('kitsu:42').name, 'Anime sans IMDb');
-    assert.equal(db.getMediaByExternalId('yt_id:abcdefghijk').name, 'Vidéo de test');
 
     db.setConfig('newznab_sources', JSON.stringify([
       newznabSource,
@@ -982,7 +980,8 @@ async function main() {
       legacyRssSources.map(source => source.id)
     );
     assert.equal(stremioParser.normalizeMaxItems(100000), 100000);
-    assert.equal(stremioParser.normalizeMaxItems(200000), 100000);
+    assert.equal(stremioParser.normalizeMaxItems(200000), 200000);
+    assert.equal(stremioParser.normalizeMaxItems(2000000), 1000000);
     db.setConfig('required_tags', 'GERMAN,SWEDISH,C++');
     assert.equal(rssParser.filterByRequiredTags('Film.2026.GERMAN.1080p'), true);
     assert.equal(rssParser.filterByRequiredTags('Film.2026.FRENCH.1080p'), false);
@@ -1020,17 +1019,22 @@ async function main() {
       filters: { year_mode: 'include', years: ['2026'] }
     });
     assert.deepEqual(db.getCustomCatalogMedia(apiCatalog).map(item => item.imdb_id), ['tt0000901']);
-    const youtubeCatalog = db.saveCustomCatalog({
-      id: 'custom_youtube',
-      name: 'Mes vidéos',
-      type: 'YouTube',
-      source_urls: ['stremio-manifest:exotic-test:YouTube:youtube_list'],
-      filters: {}
+    let composedCatalog = db.saveCustomCatalog({
+      id: 'custom_composed',
+      name: 'Films 2026 et API',
+      type: 'movie',
+      source_urls: [],
+      filters: { catalog_ids: [catalog.id, apiCatalog.id] }
     });
     assert.deepEqual(
-      db.getCustomCatalogMedia(youtubeCatalog).map(item => item.imdb_id),
-      ['yt_id:abcdefghijk']
+      new Set(db.getCustomCatalogMedia(composedCatalog).map(item => item.imdb_id)),
+      new Set(['tt0000123', 'tt0000901'])
     );
+    composedCatalog = db.saveCustomCatalog({
+      ...composedCatalog,
+      filters: { catalog_ids: [apiCatalog.id] }
+    });
+    assert.deepEqual(db.getCustomCatalogMedia(composedCatalog).map(item => item.imdb_id), ['tt0000901']);
     const animeCatalog = db.saveCustomCatalog({
       id: 'custom_anime_native',
       name: 'Anime natif',
@@ -1064,14 +1068,27 @@ async function main() {
     const addon = new StremioAddon(db);
     db.setConfig('manifest_revision', '1');
     const manifest = addon.getManifest();
-    assert.equal(manifest.catalogs.length, 15);
     assert.ok(manifest.catalogs.some(item => item.id === 'useflowfr_films'));
     assert.ok(manifest.catalogs.some(item => item.id === 'custom_films_2026'));
-    assert.ok(manifest.catalogs.some(item => item.id === 'custom_youtube' && item.type === 'YouTube'));
-    assert.ok(manifest.types.includes('YouTube'));
+    assert.ok(manifest.catalogs.some(item => item.id === 'custom_composed'));
+    assert.ok(!manifest.types.includes('YouTube'));
     assert.ok(manifest.types.includes('anime'));
     assert.ok(manifest.idPrefixes.includes('kitsu'));
-    assert.ok(manifest.idPrefixes.includes('yt_id:'));
+    assert.ok(!manifest.idPrefixes.includes('yt_id:'));
+    assert.equal(
+      addon.buildPostersPlusUrl(
+        { imdb_id: 'tt0000123', tmdb_id: '123', type: 'movie' },
+        'https://posters.example/poster?tmdb_id={tmdb_id}&imdb_id={imdb_id}&type={type}'
+      ),
+      'https://posters.example/poster?tmdb_id=123&imdb_id=tt0000123&type=movie'
+    );
+    assert.equal(
+      addon.buildPostersPlusUrl(
+        { imdb_id: 'tt0000456', tmdb_id: null, type: 'series' },
+        'https://posters.example/poster?tmdb_id={tmdb_id}&imdb_id={imdb_id}&type={type}&fallback_to_imdb=true'
+      ),
+      'https://posters.example/poster?tmdb_id=&imdb_id=tt0000456&type=tv&fallback_to_imdb=true'
+    );
     const historical = await addon.handleCatalog({ type: 'movie', id: 'useflowfr_films', extra: {} });
     assert.deepEqual(
       new Set(historical.metas.map(item => item.id)),
@@ -1102,7 +1119,7 @@ async function main() {
     });
     assert.equal(db.listManifestHistory(1)[0].event, 'catalog_deleted');
     const maintenanceAnalysis = db.getMaintenanceAnalysis();
-    assert.equal(maintenanceAnalysis.media_count, 10);
+    assert.equal(maintenanceAnalysis.media_count, 9);
     const backupPath = await db.createMaintenanceBackup('integration-test');
     assert.ok(fs.existsSync(backupPath));
     const maintenanceId = db.startMaintenanceHistory('integration_test', maintenanceAnalysis);
@@ -1139,7 +1156,7 @@ async function main() {
     console.log('✓ Suppression durable sans suppression des médias');
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
     console.log('✓ Identifiants RSS historiques uniques, plafond manifeste et tags libres');
-    console.log('✓ Identifiants Kitsu/YouTubio natifs et catalogue YouTube sans conversion en film');
+    console.log('✓ Identifiants anime natifs, composition réversible et exclusion de YouTube');
     console.log('✓ Guide MDBList limité aux médias locaux et ordre de liste conservé');
     console.log('✓ Guides ListSync, SuggestArr et Agregarr normalisés sans importer les médias absents');
     console.log('✓ API Newznab/Torznab paginée avec types Prowlarr et Jackett');

@@ -9,7 +9,7 @@ const { sendDiscordNotification, sendDiscordSourceAlert } = require('./services/
 const { sendAppriseNotification } = require('./services/appriseService');
 const { getStrings }              = require('./services/notifStrings');
 const crypto = require('crypto');
-const SUPPORTED_CATALOG_TYPES = ['movie', 'series', 'anime', 'YouTube'];
+const SUPPORTED_CATALOG_TYPES = ['movie', 'series', 'anime'];
 
 const MAINTENANCE_MIGRATIONS = [
   {
@@ -239,6 +239,12 @@ class WebUI {
       try {
         const config = req.body;
         const prevTvdbKey = this.db.getConfig('tvdb_api_key');
+        const posterConfigBefore = [
+          this.db.getConfig('rpdb_enabled'),
+          this.db.getConfig('rpdb_api_key'),
+          this.db.getConfig('postersplus_enabled'),
+          this.db.getConfig('postersplus_url_template')
+        ].join('\n');
         for (const [key, value] of Object.entries(config)) {
           this.db.setConfig(key, value);
         }
@@ -247,6 +253,13 @@ class WebUI {
           this.db.setConfig('tvdb_token_expiry', '0');
           console.log('[TVDB] Clé API modifiée — token invalidé');
         }
+        const posterConfigAfter = [
+          this.db.getConfig('rpdb_enabled'),
+          this.db.getConfig('rpdb_api_key'),
+          this.db.getConfig('postersplus_enabled'),
+          this.db.getConfig('postersplus_url_template')
+        ].join('\n');
+        if (posterConfigAfter !== posterConfigBefore) this.stremioAddon.clearCache();
         this.startAutoRefresh();
         res.json({ success: true });
       } catch (error) {
@@ -259,7 +272,7 @@ class WebUI {
       const secretConfigKeys = new Set([
         'tmdb_api_key', 'tvdb_api_key', 'omdb_api_key', 'mal_client_id',
         'stremio_metadata_manifest_url',
-        'rpdb_api_key', 'proxy_username', 'proxy_password',
+        'rpdb_api_key', 'postersplus_url_template', 'proxy_username', 'proxy_password',
         'proxy_host', 'proxy_port', 'discord_webhook_url',
         'apprise_server_url', 'apprise_urls',
         'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey'
@@ -267,7 +280,7 @@ class WebUI {
       const excludedConfigKeys = new Set([
         'tvdb_token', 'tvdb_token_expiry', 'manifest_revision',
         'last_sync_films', 'last_catalog_refresh', 'managed_catalogs_seeded',
-        'schema_v2_migrated', 'classification_migration_version',
+        'schema_v2_migrated', 'classification_migration_version', 'source_limit_defaults_v2',
         'rss_films_name', 'rss_films_url', 'rss_films_force',
         'rss_films_paused', 'rss_films_sync_interval', 'rss_additional_urls',
         'pastebin_sources', 'stremio_manifest_sources', 'newznab_sources', 'webdav_sources',
@@ -354,7 +367,7 @@ class WebUI {
       const secretConfigKeys = new Set([
         'tmdb_api_key', 'tvdb_api_key', 'omdb_api_key', 'mal_client_id',
         'stremio_metadata_manifest_url',
-        'rpdb_api_key', 'proxy_username', 'proxy_password',
+        'rpdb_api_key', 'postersplus_url_template', 'proxy_username', 'proxy_password',
         'proxy_host', 'proxy_port', 'discord_webhook_url',
         'apprise_server_url', 'apprise_urls',
         'prowlarr_url', 'prowlarr_apikey', 'nzbhydra2_url', 'nzbhydra2_apikey'
@@ -661,11 +674,11 @@ class WebUI {
         name: source.name,
         display_url: source.url,
         paused: Boolean(source.paused),
-        max_items_per_catalog: Number(source.maxItemsPerCatalog) || 5000,
+        max_items_per_catalog: Number(source.maxItemsPerCatalog) || 1000000,
         sync_interval_minutes: source.syncIntervalMinutes || null,
         runtime: {
           ...this.getSourceRuntime(`stremio:${source.id}`, source.syncIntervalMinutes),
-          configured_quota_limit: Number(source.maxItemsPerCatalog) || 5000,
+          configured_quota_limit: Number(source.maxItemsPerCatalog) || 1000000,
           quota_unit: 'catalogue'
         },
         catalogs: (source.catalogs || []).map(catalog => ({
@@ -689,7 +702,7 @@ class WebUI {
     this.app.post('/api/stremio-sources', this.authMiddleware.bind(this), async (req, res) => {
       try {
         const {
-          url, name = '', max_items_per_catalog = 5000, sync_interval_minutes,
+          url, name = '', max_items_per_catalog = 1000000, sync_interval_minutes,
           catalogs: requestedCatalogs
         } = req.body;
         if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
@@ -816,7 +829,7 @@ class WebUI {
         paused: Boolean(source.paused),
         has_api_key: Boolean(source.apiKey),
         categories: source.categories || {},
-        max_items_per_category: Number(source.maxItemsPerCategory) || 1000,
+        max_items_per_category: Number(source.maxItemsPerCategory) || 100000,
         page_size: Number(source.pageSize) || Number(source.serverMax) || 100,
         request_delay_ms: Number(source.requestDelayMs) || 750,
         lookback_hours: Number(source.lookbackHours) || 24,
@@ -879,7 +892,7 @@ class WebUI {
           apiKey: String(apiKey).trim(),
           paused: Boolean(paused),
           categories: { movie, series },
-          maxItemsPerCategory: Math.min(Math.max(Number(max_items_per_category) || 1000, 1), 20000),
+          maxItemsPerCategory: Math.min(Math.max(Number(max_items_per_category) || 100000, 1), 1000000),
           pageSize: inspection.serverMax,
           requestDelayMs: Math.min(Math.max(Number(request_delay_ms) || 750, 250), 10000),
           lookbackHours: Math.min(Math.max(Number(lookback_hours) || 24, 1), 720),
@@ -924,7 +937,7 @@ class WebUI {
         next.categories = { movie, series };
       }
       if (req.body.max_items_per_category !== undefined) {
-        next.maxItemsPerCategory = Math.min(Math.max(Number(req.body.max_items_per_category) || 1000, 1), 20000);
+        next.maxItemsPerCategory = Math.min(Math.max(Number(req.body.max_items_per_category) || 100000, 1), 1000000);
       }
       if (req.body.request_delay_ms !== undefined) {
         next.requestDelayMs = Math.min(Math.max(Number(req.body.request_delay_ms) || 750, 250), 10000);
@@ -982,7 +995,7 @@ class WebUI {
       paused: Boolean(source.paused),
       force: source.force || 'auto',
       max_depth: Number(source.maxDepth) || 8,
-      max_items: Number(source.maxItems) || 5000,
+      max_items: Number(source.maxItems) || 100000,
       extensions: source.extensions || webdavParser.constructor.DEFAULT_EXTENSIONS,
       sync_interval_minutes: source.syncIntervalMinutes || null,
       use_proxy: Boolean(source.useProxy),
@@ -1045,7 +1058,7 @@ class WebUI {
           paused: Boolean(req.body.paused),
           force,
           maxDepth: Math.min(Math.max(Number(req.body.max_depth) || 8, 0), 20),
-          maxItems: Math.min(Math.max(Number(req.body.max_items) || 5000, 1), 20000),
+          maxItems: Math.min(Math.max(Number(req.body.max_items) || 100000, 1), 1000000),
           extensions: normalizeExtensions(req.body.extensions),
           syncIntervalMinutes: this.normalizeSourceInterval(req.body.sync_interval_minutes),
           useProxy: Boolean(req.body.use_proxy)
@@ -1082,7 +1095,7 @@ class WebUI {
         next.force = req.body.force;
       }
       if (req.body.max_depth !== undefined) next.maxDepth = Math.min(Math.max(Number(req.body.max_depth) || 0, 0), 20);
-      if (req.body.max_items !== undefined) next.maxItems = Math.min(Math.max(Number(req.body.max_items) || 5000, 1), 20000);
+      if (req.body.max_items !== undefined) next.maxItems = Math.min(Math.max(Number(req.body.max_items) || 100000, 1), 1000000);
       if (req.body.extensions !== undefined) next.extensions = normalizeExtensions(req.body.extensions);
       if (req.body.sync_interval_minutes !== undefined) {
         next.syncIntervalMinutes = this.normalizeSourceInterval(req.body.sync_interval_minutes);
@@ -1120,7 +1133,7 @@ class WebUI {
       url: source.url,
       paused: Boolean(source.paused),
       has_admin_password: Boolean(source.adminPassword),
-      max_items_per_sync: Number(source.maxItemsPerSync) || 20000,
+      max_items_per_sync: Number(source.maxItemsPerSync) || 1000000,
       page_size: Number(source.pageSize) || 1000,
       request_delay_ms: Number(source.requestDelayMs) || 250,
       sync_interval_minutes: source.syncIntervalMinutes || null,
@@ -1171,7 +1184,7 @@ class WebUI {
           url: waCustomParser.baseUrl(url),
           adminPassword: String(adminPassword),
           paused: Boolean(req.body.paused),
-          maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 20000, 1), 50000),
+          maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 1000000, 1), 1000000),
           pageSize: Math.min(Math.max(Number(req.body.page_size) || 1000, 10), 5000),
           requestDelayMs: Math.min(Math.max(Number(req.body.request_delay_ms) || 250, 0), 10000),
           syncIntervalMinutes: this.normalizeSourceInterval(req.body.sync_interval_minutes)
@@ -1198,7 +1211,7 @@ class WebUI {
           ...(req.body.admin_password ? { adminPassword: String(req.body.admin_password) } : {}),
           ...(req.body.paused !== undefined ? { paused: Boolean(req.body.paused) } : {}),
           ...(req.body.max_items_per_sync !== undefined ? {
-            maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 20000, 1), 50000)
+            maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 1000000, 1), 1000000)
           } : {}),
           ...(req.body.page_size !== undefined ? {
             pageSize: Math.min(Math.max(Number(req.body.page_size) || 1000, 10), 5000)
@@ -1244,7 +1257,7 @@ class WebUI {
       has_api_key: Boolean(source.apiKey),
       targets: source.targets || [],
       target_labels: source.targetLabels || [],
-      max_items: Number(source.maxItems) || 20000,
+      max_items: Number(source.maxItems) || 1000000,
       page_size: Number(source.pageSize) || 500,
       sync_interval_minutes: source.syncIntervalMinutes || null,
       use_proxy: Boolean(source.useProxy),
@@ -1261,7 +1274,7 @@ class WebUI {
       ...(body.target_labels !== undefined ? { targetLabels: Array.isArray(body.target_labels) ? body.target_labels : [] } : {}),
       ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
       ...(body.use_proxy !== undefined ? { useProxy: Boolean(body.use_proxy) } : {}),
-      ...(body.max_items !== undefined ? { maxItems: Math.min(Math.max(Number(body.max_items) || 20000, 1), 100000) } : {}),
+      ...(body.max_items !== undefined ? { maxItems: Math.min(Math.max(Number(body.max_items) || 1000000, 1), 1000000) } : {}),
       ...(body.page_size !== undefined ? { pageSize: Math.min(Math.max(Number(body.page_size) || 500, 10), 1000) } : {}),
       ...(body.sync_interval_minutes !== undefined ? {
         syncIntervalMinutes: this.normalizeSourceInterval(body.sync_interval_minutes)
@@ -1343,7 +1356,7 @@ class WebUI {
       paused: Boolean(source.paused),
       has_key_id: Boolean(source.keyId),
       has_secret: Boolean(source.secret),
-      max_items_per_sync: Number(source.maxItemsPerSync) || 20000,
+      max_items_per_sync: Number(source.maxItemsPerSync) || 1000000,
       page_size: Number(source.pageSize) || 1000,
       request_delay_ms: Number(source.requestDelayMs) || 100,
       sync_interval_minutes: source.syncIntervalMinutes || null,
@@ -1360,7 +1373,7 @@ class WebUI {
       ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
       ...(body.use_proxy !== undefined ? { useProxy: Boolean(body.use_proxy) } : {}),
       ...(body.max_items_per_sync !== undefined ? {
-        maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 20000, 1), 100000)
+        maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 1000000, 1), 1000000)
       } : {}),
       ...(body.page_size !== undefined ? {
         pageSize: Math.min(Math.max(Number(body.page_size) || 1000, 1), 2000)
@@ -1439,7 +1452,7 @@ class WebUI {
         name: source.name,
         url: source.url,
         paused: Boolean(source.paused),
-        max_items_per_sync: Number(source.maxItemsPerSync) || 5000,
+        max_items_per_sync: Number(source.maxItemsPerSync) || 100000,
         source_key: cometNetParser.sourceKey(source.id),
         peer_node_id: source.peerNodeId || null,
         peer_alias: source.peerAlias || null,
@@ -1460,7 +1473,7 @@ class WebUI {
       ...(body.url !== undefined ? { url: cometNetParser.normalizeUrl(body.url) } : {}),
       ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
       ...(body.max_items_per_sync !== undefined ? {
-        maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 5000, 1), 50000)
+        maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 100000, 1), 1000000)
       } : {})
     });
 
@@ -1626,7 +1639,7 @@ class WebUI {
       list_type: source.listType || null,
       list_id: source.listId || null,
       statuses: source.statuses || [],
-      max_items: Number(source.maxItems) || 5000,
+      max_items: Number(source.maxItems) || 1000000,
       sync_interval_minutes: source.syncIntervalMinutes || null,
       stats: this.db.getGuideItemStats(source.id),
       sample: this.db.listGuideItems(source.id, 5),
@@ -1649,7 +1662,7 @@ class WebUI {
       ...(Array.isArray(body.statuses) ? { statuses: body.statuses.map(String) } : {}),
       ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
       ...(body.max_items !== undefined ? {
-        maxItems: Math.min(Math.max(Number(body.max_items) || 5000, 1), 50000)
+        maxItems: Math.min(Math.max(Number(body.max_items) || 1000000, 1), 1000000)
       } : {}),
       ...(body.sync_interval_minutes !== undefined ? {
         syncIntervalMinutes: this.normalizeSourceInterval(body.sync_interval_minutes)
@@ -1684,7 +1697,7 @@ class WebUI {
           kind: ['mdblist', 'listsync', 'suggestarr', 'agregarr'].includes(req.body.kind) ? req.body.kind : 'mdblist',
           name: String(req.body.name || '').trim() || 'Guide MDBList',
           paused: Boolean(req.body.paused),
-          maxItems: Math.min(Math.max(Number(req.body.max_items) || 5000, 1), 50000),
+          maxItems: Math.min(Math.max(Number(req.body.max_items) || 1000000, 1), 1000000),
           syncIntervalMinutes: this.normalizeSourceInterval(req.body.sync_interval_minutes)
         };
         if (!source.url) return res.status(400).json({ error: 'Adresse requise' });
@@ -1769,9 +1782,17 @@ class WebUI {
       if (!SUPPORTED_CATALOG_TYPES.includes(type)) return res.status(400).json({ error: 'Type invalide' });
       const slug = String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'catalogue';
+      const id = `custom_${slug}_${crypto.randomUUID().slice(0, 8)}`;
+      let normalizedFilters;
+      try {
+        normalizedFilters = this.validateCatalogComposition({ id, type, filters });
+      } catch (error) {
+        return res.status(400).json({ error: error.message });
+      }
       const catalog = this.db.saveCustomCatalog({
-        id: `custom_${slug}_${crypto.randomUUID().slice(0, 8)}`,
-        name: String(name).trim(), type, source_urls, filters, enabled, updates_enabled
+        id,
+        name: String(name).trim(), type, source_urls,
+        filters: normalizedFilters, enabled, updates_enabled
       });
       this.bumpManifestRevision('catalog_created', catalog);
       this.stremioAddon.clearCache();
@@ -1784,6 +1805,11 @@ class WebUI {
       const next = { ...current, ...req.body, id: current.id };
       if (!String(next.name || '').trim() || !SUPPORTED_CATALOG_TYPES.includes(next.type)) {
         return res.status(400).json({ error: 'Nom ou type invalide' });
+      }
+      try {
+        next.filters = this.validateCatalogComposition(next);
+      } catch (error) {
+        return res.status(400).json({ error: error.message });
       }
       const catalog = this.db.saveCustomCatalog(next);
       let event = 'catalog_updated';
@@ -1808,6 +1834,7 @@ class WebUI {
     this.app.delete('/api/catalogs/:id', this.authMiddleware.bind(this), (req, res) => {
       const current = this.db.getCustomCatalog(req.params.id);
       if (!current || !this.db.deleteCustomCatalog(req.params.id)) return res.status(404).json({ error: 'Catalogue introuvable' });
+      this.db.removeCustomCatalogReferences(req.params.id);
       this.bumpManifestRevision('catalog_deleted', current);
       this.stremioAddon.clearCache();
       res.json({ success: true });
@@ -1815,11 +1842,17 @@ class WebUI {
 
     this.app.post('/api/catalogs/preview', this.authMiddleware.bind(this), (req, res) => {
       const virtual = {
+        id: null,
         type: req.body.type,
         source_urls: req.body.source_urls || [],
         filters: req.body.filters || {}
       };
       if (!SUPPORTED_CATALOG_TYPES.includes(virtual.type)) return res.status(400).json({ error: 'Type invalide' });
+      try {
+        virtual.filters = this.validateCatalogComposition(virtual);
+      } catch (error) {
+        return res.status(400).json({ error: error.message });
+      }
       const items = this.db.getCustomCatalogMedia(virtual, 0, 21);
       res.json({
         count: this.db.countCustomCatalogMedia(virtual),
@@ -1844,9 +1877,8 @@ class WebUI {
       const animes        = this.db.getMediaCount('animés');
       const concerts      = this.db.getMediaCount('concerts');
       const spectacles    = this.db.getMediaCount('spectacles');
-      const youtube       = this.db.getMediaCount('youtube');
-      const total = films + documentaires + series + emissions + animes + concerts + spectacles + youtube;
-      res.json({ films, documentaires, series, emissions, animes, concerts, spectacles, youtube, total });
+      const total = films + documentaires + series + emissions + animes + concerts + spectacles;
+      res.json({ films, documentaires, series, emissions, animes, concerts, spectacles, total });
     });
 
     // ─── Overview ───────────────────────────────────────────────────────────
@@ -1861,8 +1893,7 @@ class WebUI {
         emissions:     this.db.getRecentCatalogAdditions('emissions', 10),
         animes:        this.db.getRecentCatalogAdditions('animés', 10),
         concerts:      this.db.getRecentCatalogAdditions('concerts', 10),
-        spectacles:    this.db.getRecentCatalogAdditions('spectacles', 10),
-        youtube:       this.db.getRecentCatalogAdditions('youtube', 10)
+        spectacles:    this.db.getRecentCatalogAdditions('spectacles', 10)
       };
       const rpdbEnabled = this.db.getConfig('rpdb_enabled') === 'true';
       const rpdbKey     = this.db.getConfig('rpdb_api_key') || '';
@@ -2456,6 +2487,46 @@ class WebUI {
       res.json({ ok });
     });
 
+    this.app.post('/api/postersplus/test', this.authMiddleware.bind(this), async (req, res) => {
+      const template = String(
+        req.body.template || this.db.getConfig('postersplus_url_template') || ''
+      ).trim();
+      if (!['{tmdb_id}', '{imdb_id}', '{type}'].every(token => template.includes(token))) {
+        return res.status(400).json({
+          error: 'Le template doit contenir {tmdb_id}, {imdb_id} et {type}'
+        });
+      }
+      const candidates = [
+        ...this.db.getMedia('films', 0, 20),
+        ...this.db.getMedia('series', 0, 20)
+      ];
+      const media = candidates.find(item => item.tmdb_id && /^tt\d+$/i.test(item.imdb_id || ''));
+      if (!media) return res.status(400).json({ error: 'Aucun média IMDb/TMDB compatible en base' });
+      const posterUrl = this.stremioAddon.buildPostersPlusUrl(media, template);
+      if (!posterUrl) return res.status(400).json({ error: 'Template PostersPlus invalide' });
+      try {
+        const response = await axios.get(posterUrl, {
+          timeout: 60000,
+          responseType: 'arraybuffer',
+          maxContentLength: 15 * 1024 * 1024,
+          validateStatus: status => status >= 200 && status < 500
+        });
+        const contentType = String(response.headers['content-type'] || '');
+        if (response.status !== 200 || !contentType.startsWith('image/')) {
+          return res.status(400).json({
+            error: `PostersPlus a répondu HTTP ${response.status}${contentType ? ` (${contentType})` : ''}`
+          });
+        }
+        res.json({
+          ok: true,
+          media: { imdb_id: media.imdb_id, tmdb_id: media.tmdb_id, name: media.name, type: media.type },
+          poster_url: posterUrl
+        });
+      } catch (error) {
+        res.status(400).json({ error: `PostersPlus indisponible : ${error.message}` });
+      }
+    });
+
     // ─── Proxy Test ─────────────────────────────────────────────────────────
     this.app.post('/api/proxy/test', this.authMiddleware.bind(this), async (req, res) => {
       const { protocol = 'http', host, port, username, password } = req.body;
@@ -2505,6 +2576,35 @@ class WebUI {
     return Math.min(Math.max(Number(value) || 5, 5), 43200);
   }
 
+  validateCatalogComposition(catalog) {
+    const filters = { ...(catalog.filters || {}) };
+    const requestedIds = Array.isArray(filters.catalog_ids)
+      ? [...new Set(filters.catalog_ids.map(String).filter(Boolean))]
+      : [];
+    const allCatalogs = new Map(this.db.listCustomCatalogs().map(item => [item.id, item]));
+    if (catalog.id) allCatalogs.set(catalog.id, { ...catalog, filters: { ...filters, catalog_ids: requestedIds } });
+    for (const id of requestedIds) {
+      const included = allCatalogs.get(id);
+      if (!included) throw new Error(`Catalogue à fusionner introuvable : ${id}`);
+      if (id === catalog.id) throw new Error('Un catalogue ne peut pas se contenir lui-même');
+      if (included.type !== catalog.type) {
+        throw new Error(`Types incompatibles : ${included.name || id}`);
+      }
+    }
+    if (catalog.id) {
+      const visit = (id, path = new Set()) => {
+        if (path.has(id)) throw new Error('La composition créerait une boucle entre catalogues');
+        const current = allCatalogs.get(id);
+        if (!current) return;
+        const nextPath = new Set(path).add(id);
+        for (const childId of current.filters?.catalog_ids || []) visit(String(childId), nextPath);
+      };
+      visit(catalog.id);
+    }
+    filters.catalog_ids = requestedIds;
+    return filters;
+  }
+
   getSourceRuntime(sourceKey, ownInterval = null) {
     const own = this.normalizeSourceInterval(ownInterval);
     const intervalMinutes = own || Number(this.db.getConfig('refresh_interval')) || 180;
@@ -2526,7 +2626,9 @@ class WebUI {
       consecutive_errors: state?.consecutive_errors || 0,
       quota_limit: state?.quota_limit ?? null,
       quota_used: state?.quota_used ?? null,
-      quota_status: state?.quota_status || null
+      quota_status: state?.quota_status || null,
+      backfill_in_progress: state?.cursor?.committed?.backfill_complete === false
+        || Boolean(state?.cursor?.committed?.cursor)
     };
   }
 

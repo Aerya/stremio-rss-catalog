@@ -122,7 +122,7 @@ class WaCustomParser {
   async fetchSource(source) {
     const sourceKey = this.sourceKey(source.id);
     const startedAt = this.db.beginSourceSync(sourceKey, 'wacustom');
-    const maxItems = Math.min(Math.max(Number(source.maxItemsPerSync) || 20000, 1), 50000);
+    const maxItems = Math.min(Math.max(Number(source.maxItemsPerSync) || 1000000, 1), 1000000);
     const pageSize = Math.min(Math.max(Number(source.pageSize) || 1000, 10), 5000);
     const delayMs = Math.min(Math.max(Number(source.requestDelayMs) || 250, 0), 10000);
     const previousState = this.db.getSourceSyncState(sourceKey);
@@ -192,7 +192,9 @@ class WaCustomParser {
         5
       ), 43200);
       const sourceKey = this.sourceKey(source.id);
-      if (!forceAll && !this.db.isSourceDue(sourceKey, intervalMinutes)) continue;
+      const state = this.db.getSourceSyncState(sourceKey);
+      const backfillInProgress = state?.cursor?.committed?.backfill_complete === false;
+      if (!forceAll && !backfillInProgress && !this.db.isSourceDue(sourceKey, intervalMinutes)) continue;
       try {
         items.push(...await this.fetchSource(source));
       } catch (error) {
