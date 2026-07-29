@@ -329,6 +329,14 @@ a:hover { text-decoration: underline; }
   margin-left: auto;
 }
 .label-link:hover { opacity: 1; }
+.inline-help-link {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+.inline-help-link:hover { text-decoration: underline; }
 .field > small {
   display: block; margin-top: 4px;
   font-size: 12px; color: var(--text-muted);
@@ -405,6 +413,14 @@ input:checked + .slider::before { transform: translateX(22px); }
 .config-section:last-of-type { border-bottom: none; }
 .config-section h3 { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
 .config-section h4 { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.field-highlight {
+  border-radius: 10px;
+  animation: field-highlight 1.8s ease-out;
+}
+@keyframes field-highlight {
+  0%, 35% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent); }
+  100% { box-shadow: 0 0 0 4px transparent; }
+}
 
 .rss-row { display: flex; gap: 8px; align-items: center; }
 .rss-row > input,

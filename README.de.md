@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  <strong>Verwandeln Sie Ihre RSS-Feeds, Prowlarr und NZBHydra2 in Stremio-Kataloge — Filme · Dokumentarfilme · Serien · TV-Sendungen · Anime · Konzerte · Aufführungen</strong>
+  <strong>Erstellen Sie Stremio-Kataloge aus Inhalten, die in Ihren eigenen Quellen tatsächlich verfügbar sind</strong>
 </p>
 
 > 🇫🇷 [Français](./README.md) · 🇬🇧 [English](./README.en.md)
@@ -13,16 +13,11 @@
   <img src="https://img.shields.io/github/actions/workflow/status/Aerya/stremio-rss-catalog/ghcr.yml?branch=main&label=build&style=flat-square" alt="Build">
   <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker">
   <img src="https://img.shields.io/badge/multi--arch-amd64%20%7C%20arm64-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Multi-arch">
-  <img src="https://img.shields.io/github/last-commit/Aerya/stremio-rss-catalog?style=flat-square" alt="Last commit">
   <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE-orange?style=flat-square" alt="i18n">
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Stremio-addon-purple?style=flat-square" alt="Stremio">
-  <img src="https://img.shields.io/badge/RSS-kompatibel-F6A623?style=flat-square&logo=rss&logoColor=white" alt="RSS">
-  <img src="https://img.shields.io/badge/Prowlarr-kompatibel-blue?style=flat-square" alt="Prowlarr">
-  <img src="https://img.shields.io/badge/Jackett-Torznab-blue?style=flat-square" alt="Jackett">
-  <img src="https://img.shields.io/badge/NZBHydra2-kompatibel-blue?style=flat-square" alt="NZBHydra2">
   <img src="https://img.shields.io/badge/TMDB%20%2B%20TVDB%20%2B%20OMDb-matched-green?style=flat-square" alt="TMDB+TVDB+OMDb">
   <img src="https://img.shields.io/badge/MyAnimeList-integriert-2E51A2?style=flat-square" alt="MAL">
   <img src="https://img.shields.io/badge/AniList-integriert-02A9FF?style=flat-square" alt="AniList">
@@ -32,11 +27,13 @@
 
 ---
 
-> Ein selbst gehostetes Stremio-Addon, das tatsächlich in Ihren eigenen
-> **BitTorrent-, Usenet-, WebDAV- oder sonstigen Quellen** gefundene Inhalte in
-> Stremio-Kataloge umwandelt. RSS, Pastebin, Newznab, Prowlarr, Jackett,
-> NZBHydra2, WaStream/WaCustom, StreamFusion, CometNet und Stremio-Manifeste
-> lassen sich kombinieren.
+> Ein selbst gehostetes Addon, das Medien aus **RSS-Feeds**, **Pastebins**,
+> **WebDAV-Ordnern**, **Plex-/Jellyfin-Bibliotheken und -Sammlungen**, **direkten
+> Newznab-/Torznab-APIs oder APIs von Prowlarr, Jackett und NZBHydra2**,
+> **WaStream/WaCustom- und StreamFusion-Stremio-Stream-Addons**,
+> **CometNet-Ankündigungen** sowie **Katalogen aus Manifesten anderer
+> Stremio-Addons** erkennt, dedupliziert und klassifiziert. Diese BitTorrent-,
+> Usenet- und Medienquellen lassen sich kombinieren.
 
 ---
 
@@ -52,54 +49,22 @@ nur aus und ordnen sie**. Ein in Ihren Quellen fehlender Titel bleibt auch im
 fertigen Katalog unsichtbar. So entstehen Trends, Auswahlen und Sammlungen nur
 aus Inhalten, die in Ihrem eigenen System tatsächlich indexiert wurden.
 
-„Verfügbar“ bedeutet hier **in einer konfigurierten Quelle gefunden**. Das Addon
-prüft nicht bei jedem Katalogaufruf Seeder, Debrid-Cache oder die aktuelle
-Gültigkeit eines Links und stellt selbst keine Wiedergabe-Streams bereit.
+„Verfügbar“ bedeutet **in einer konfigurierten Quelle gefunden**: Seeder,
+Debrid-Cache und Wiedergabelinks werden nicht in Echtzeit geprüft; das Addon
+stellt selbst keine Streams bereit.
 
-## Beispielinstallation und Statistiken
-
-> Die folgenden Namen und Zahlen sind vollständig fiktiv. Sie zeigen, was die
-> WebUI nach mehreren Synchronisierungen anzeigen könnte, und sind weder ein
-> Benchmark noch eine Leistungsgarantie.
-
-Eine Installation kann beispielsweise **18 RSS-Feeds**, **3
-Newznab-/Torznab-APIs**, **2 Pastebins**, **1 WebDAV-Ordner** und **1
-Stremio-Manifest** verbinden. Nach Deduplizierung und Abgleich könnte das
-Dashboard Folgendes anzeigen:
-
-| Kennzahl | Beispiel |
-|---|---:|
-| Aus Quellen gelesene Releases | 286.450 |
-| Erkannte eindeutige Medien | 74.820 |
-| Erfolgreicher automatischer Abgleich | 97,8 % |
-| Bekannte oder deduplizierte Releases | 201.140 |
-| Noch zu prüfende Releases | 1.630 |
-| Im Manifest veröffentlichte Kataloge | 12 |
-| Letzte vollständige Synchronisierung | 8 Min. 42 Sek. |
-
-Beispiele verarbeiteter Daten:
-
-| Empfangene Daten | Erkennung | Abgleich und Ziel |
-|---|---|---|
-| `Beispiel.Film.2026.GERMAN.1080p.WEB-DL` | Film · 2026 · 1080p · GERMAN | IMDb/TMDB → **Filme 2026** |
-| `Beispiel.Serie.S02E04.MULTi.2160p` | Serie · Staffel 2 · Folge 4 · 2160p | IMDb/TMDB → **Verfügbare Serien** |
-| `Beispiel.Kuenstler.Live.In.Berlin.2025` | Konzert · 2025 | TMDB + OMDb → **Konzerte** |
-| `Beispiel.Anime.S01E08.VOSTFR.1080p` | Anime · Staffel 1 · Folge 8 | MAL/AniList/Kitsu/TMDB → **Anime** |
-
-Eine Leitliste macht niemals Medien verfügbar, die in den Quellen fehlen. Eine
-MDBList mit 1.000 Filmen kann daher einen Katalog **Monatsauswahl** mit 386
-Filmen ergeben, wenn nur diese 386 Titel in der lokalen Mediathek vorhanden
-sind. Ein weiterer Katalog kann beispielsweise **Filme 2025**, **Filme 2026**
-und **Komödien** verbinden und später wieder getrennt werden, ohne die
-ursprünglichen Kataloge zu löschen.
+> **Update ohne Breaking Changes:** Aktualisieren Sie das Docker-Image und
+> erstellen Sie den Container mit demselben `/data`-Volume neu. Konfiguration,
+> Datenbank, Medien, Releases, Addon-ID und Stremio-URLs bleiben erhalten. Vor
+> jeder Schemamigration wird SQLite automatisch gesichert.
 
 ## Funktionen
 
 | | |
 |---|---|
-| **Verwaltete Kataloge** | Die 9 bisherigen Kataloge werden mit ihren vorhandenen Inhalten in die Verwaltung übernommen; beliebig viele eigene Kataloge können ergänzt werden |
+| **Katalogtypen** | Filme, Doku-Filme, Doku-Serien, Serien, TV-Sendungen, Anime-Filme, Anime-Serien, Konzerte und Aufführungen sowie beliebig viele eigene Kataloge |
 | **Katalog-Zusammenstellung** | Kataloge desselben Typs lassen sich per Vereinigung mischen und später wieder aus der Zusammenstellung entfernen |
-| **Gemischte Quellen** | Ein Katalog kann RSS, Pastebin, WebDAV, Plex, Jellyfin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaStream/WaCustom, StreamFusion und aus Stremio-Manifesten importierte Quellen kombinieren |
+| **Gemischte Quellen** | Ein Katalog kann RSS, Pastebin, WebDAV, Plex, Jellyfin, Newznab, Prowlarr, Jackett/Torznab, NZBHydra2, WaStream/WaCustom, StreamFusion, CometNet und aus Stremio-Manifesten importierte Quellen kombinieren |
 | **Plex und Jellyfin direkt** | Erkennung von Bibliotheken und Sammlungen, paginierter Film-/Serienimport und Erhalt der IMDb-/TMDB-IDs |
 | **WebDAV-Ordner** | Authentifizierter rekursiver Scan mit konfigurierbaren Erweiterungen, Tiefe und Obergrenze; Dateinamen speisen Kataloge und [Davio](https://github.com/arvida42/davio) kann die Wiedergabe in Stremio übernehmen |
 | **Eigene Filter** | Ein- oder ausgeschlossene Jahre, Jahresbereiche, Genres, Schlüsselwörter und Quellenauswahl |
@@ -114,13 +79,13 @@ ursprünglichen Kataloge zu löschen.
 | **Feed-URL-Erkennung** | Kategorie wird im Auto-Modus automatisch aus Schlüsselwörtern in der RSS-Feed-URL abgeleitet (`concert`, `anime`, `docu`, `serie`…) |
 | **Anime** | Via TMDB-Genre 16 + japanische Herkunft, OVA/OAV im Titel oder per Feed erzwungen |
 | **MAL** | MyAnimeList API v2 — EN-Titel-Normalisierer für besseren TMDB-Abgleich bei Anime (optional, kostenloser Schlüssel) |
-| **AniList** 🆕 NEW | AniList GraphQL-API — ergänzender Titel-Normalisierer (Romaji + Originaltitel) + Anime-Deduplizierung, vollständig kostenlos und anonym, keine Registrierung erforderlich |
+| **AniList** | AniList GraphQL-API — ergänzender Titel-Normalisierer (Romaji + Originaltitel) + Anime-Deduplizierung, vollständig kostenlos und anonym, keine Registrierung erforderlich |
 | **Kitsu** | Nativer Anime-Fallback ohne Schlüssel: Erkannte Inhalte bleiben mit ihrer `kitsu:`-ID indexierbar, auch wenn TMDB keinen Treffer hat |
 | **Stremio-Metadaten-Addons** | Mehrere umbenennbare, priorisierte, testbare und pausierbare Fallbacks über `manifest.json`-Dateien mit Suchkatalogen, zum Beispiel [AIOMetadata](https://github.com/cedya77/aiometadata) |
-| **Konzerte** 🆕 NEW | Via TMDB-Genre 10402 (Music) + OMDb-Bestätigung, ohne narrative Genres (Drama, Action…) |
-| **Aufführungen** 🆕 NEW | Via Titel-Schlüsselwörter (Stand-up, One Man Show, Theater, Zirkus…) + OMDb-Bestätigung |
+| **Konzerte** | Via TMDB-Genre 10402 (Music) + OMDb-Bestätigung, ohne narrative Genres (Drama, Action…) |
+| **Aufführungen** | Via Titel-Schlüsselwörter (Stand-up, One Man Show, Theater, Zirkus…) + OMDb-Bestätigung |
 | **OMDb** | OMDb-API nach jedem TMDB-Match abgefragt, um Konzert- und Aufführungsklassifizierung zu bestätigen |
-| **TMDB-Abgleich** | Bis zu 5 Versuche pro Release (FR/EN, mit/ohne Jahr, vereinfachter Titel) |
+| **Automatischer Abgleich** | PTT-/Parsett-Parsing mit internem Fallback, TMDB-Mehrkandidatenvergleich, Titelvarianten und automatische Film-/Serienkorrektur |
 | **TVDB-Fallback** | Fallback für auf TMDB nicht gefundene Serien + Dokumentarfilm-Bestätigung (optional) |
 | **Doku-Serien** | Via TMDB-Genre 99 oder TVDB erkannt, in Dokumentarfilme (Serien) eingeordnet |
 | **TV-Sendungen** | Dedizierter Katalog — automatisch via TMDB Reality/Talk/News/Soap oder per Feed erzwungen |
@@ -131,17 +96,19 @@ ursprünglichen Kataloge zu löschen.
 | **Deduplizierung** | Per IMDB-ID (Medien) + per RSS-GUID + per Torrent-Hash wenn verfügbar (Releases) |
 | **Hashes** | Automatische Infohash-Extraktion aus Magnet-/Torrent-Links |
 | **Retry** | Nicht gematchte Releases gespeichert und wiederholbar |
+| **Aktualität** | `last_seen_at`, optionaler Ablauf, Ausblenden nach mehreren vollständigen Scans ohne Release und Wiederherstellung bei erneutem Auftreten |
 | **Vorgewärmter Cache** | Die ersten fünf Seiten jedes veröffentlichten Katalogs werden nach Start und Invalidierung vorbereitet |
+| **Poster-Cache** | Optionaler lokaler Bild-Proxy/-Cache mit TTL, Maximalgröße, Aktualisierung und Verdrängung |
 | **RPDB** | Bewertungs-Poster (optional) |
 | **PostersPlus** | Direkte Unterstützung für AIOMetadata-kompatible URL-Templates mit RPDB- und Originalbild-Fallback |
-| **Discord-Benachrichtigungen** 🆕 NEW | Erweiterte Benachrichtigungen mit Poster-Galerie bei jeder Sync |
-| **Apprise-Benachrichtigungen** 🆕 NEW | Multi-Service-Benachrichtigungen via Apprise-Server (optional) |
-| **Benachrichtigungssprache** 🆕 NEW | Discord/Apprise-Sprache unabhängig von der WebUI konfigurierbar (FR/EN/DE) |
+| **Discord-Benachrichtigungen** | Erweiterte Benachrichtigungen mit Poster-Galerie bei jeder Sync |
+| **Apprise-Benachrichtigungen** | Multi-Service-Benachrichtigungen via Apprise-Server (optional) |
+| **Benachrichtigungssprache** | Discord/Apprise-Sprache unabhängig von der WebUI konfigurierbar (FR/EN/DE) |
 | **Erklärte Auto-Sync** | Fällige Quellen nach eigenem Zeitplan sammeln → normalisieren und abgleichen → nicht eingefrorene Kataloge → Stremio-Cache leeren |
 | **Moderne WebUI** | Sidebar, Hell-/Dunkel-Theme, mehrsprachig FR/EN/DE |
-| **Mediathek** 🆕 NEW | Neugestaltung: Poster-/Listenansicht, Sortierung, Jahresfilter (Schnellauswahl + freie Eingabe/Bereich), Releases inline, RPDB-Poster, persistente Paginierung |
+| **Mediathek** | Neugestaltung: Poster-/Listenansicht, Sortierung, Jahresfilter (Schnellauswahl + freie Eingabe/Bereich), Releases inline, RPDB-Poster, persistente Paginierung |
 | **Übersicht** | Neueste Hinzufügungen in ausklappbaren Kategorie-Akkordeons (Titel + Jahr + IMDB-Link) |
-| **Migration und Reparatur** | Schreibgeschützte Analyse, SQLite-Sicherung, gruppierte Korrekturen, Verlauf und einmalige versionierte Migrationen |
+| **Migration und Reparatur** | Schreibgeschützte Analyse, gruppierte Korrekturen, Verlauf, versionierte Migrationen und automatische SQLite-Sicherung vor Schemaänderungen |
 | **Quellenverwaltung** | Tabs, Suche, einklappbare Gruppen, vollständige Bearbeitung und eigener Zeitplan pro Quelle |
 | **Status pro Quelle** | Letzter Erfolg, nächste Sammlung, Dauer, gelesene Elemente, aufeinanderfolgende Fehler und Nutzung der Obergrenze |
 | **Indexer-APIs** | Mehrere umbenennbare Newznab-, Prowlarr-, Jackett/Torznab- und NZBHydra2-Quellen mit Pagination, inkrementellem Cursor, Obergrenze und Verzögerung |
@@ -318,121 +285,42 @@ Vorschau-Endpunkte. Die HTML-Oberfläche wird nicht gescrapt.
 
 ## Funktionsweise
 
-### Vorgelagerte Filterung
-
-Vor jeder Verarbeitung wird jede Release anhand der in der WebUI konfigurierten **erforderlichen Tags** gefiltert. Eine Release ohne diese Tags wird sofort ignoriert.
-
-### Release-Parsing
-
-Jeder Release-Titel wird analysiert, um Folgendes zu extrahieren:
-- Den **bereinigten Namen** (technische Tags entfernt: Auflösung, Codec, Sprache, Team…)
-- Das **Erscheinungsjahr**
-- Den **Typ**: Film oder Serie — mit Priorität: Anime > Konzert > Aufführung > Dokumentarfilm > TV-Sendung > Serie > Film
-- Den **Infohash**: aus Magnet-/Torrent-Links im RSS-Feed extrahiert
-
-### Kategorieerkennung
-
-Die endgültige Kategorie ergibt sich aus drei Quellen in Prioritätsreihenfolge:
-
-1. **Explizite Feed-Erzwingung** — der Benutzer legt die Kategorie eines Feeds manuell fest
-2. **Feed-URL-Erkennung** — im Auto-Modus werden Schlüsselwörter in der RSS-Feed-URL zur Kategoriebestimmung genutzt
-3. **Release-Titel-Schlüsselwörter** — `OVA`, `STAND UP`, `CONCERT`, `LIVE AT`, `DOCU`…
-4. **TMDB-Genres + OMDb-Bestätigung** — nach dem TMDB-Match können die Genres eine Reklassifizierung auslösen
-
-### Matching-Pipeline
-
-```
-RSS-Release
-  → Tag-Filter
-  → Parsing (Typ + Kategorie aus Titel + Feed-URL)
-  → Anime erkannt?
-      ja  → MAL (falls konfiguriert) + AniList (falls aktiviert) → normalisierte Titel → TMDB → OMDb → DB
-      nein → TMDB (5 Versuche FR/EN) → OMDb → Genre-Reklassifizierung → DB
-                  ↓ Fehlschlag (Serie)
-              TVDB-Fallback → DB
-  → Vollständiger Fehlschlag → failed_releases (manueller oder automatischer Retry)
+```text
+Quelle → erforderliche Tags → PTT-/Parsett-Parsing → Typ- und Kategorieerkennung
+       → TMDB/TVDB/OMDb- oder MAL/AniList/Kitsu-Abgleich
+       → Deduplizierung → SQLite-Mediathek → Kataloge → Stremio-Cache
 ```
 
-**Anime-Identifizierung (MAL + AniList + Kitsu):**
+**Erforderliche Tags** filtern alle Quellen vor Parsing und Abgleich. Der
+Parser extrahiert Titel, Jahr, Staffel/Folge, Qualität, Sprache, Gruppe und
+Infohash. Quellenregeln, URLs, Titel und Metadaten bestimmen die Kategorie;
+widersprüchliche Genres begrenzen Fehlklassifizierungen. Fehlschläge bleiben
+wiederholbar und Treffer können manuell korrigiert werden.
 
-MAL, AniList und Kitsu liefern kanonische Titel vor der TMDB-Suche. Wenn TMDB keinen Treffer liefert, werden konfigurierte Stremio-Metadaten-Addons nach Priorität abgefragt und anschließend die native Kitsu-, MAL- oder AniList-ID erhalten. Für die vollständige Detailseite muss das passende Metadaten-Addon ebenfalls in Stremio installiert sein.
+MAL, AniList und Kitsu normalisieren Anime. TMDB, TVDB und OMDb identifizieren
+und klassifizieren Filme, Serien, Dokumentationen, Sendungen, Konzerte und
+Aufführungen. Konfigurierte Stremio-Metadaten-Addons dienen als Fallbacks.
 
-**TMDB — 5 Versuche der Reihe nach (Nicht-Anime):**
-1. Genauer Titel + Jahr, Französisch
-2. Genauer Titel ohne Jahr, Französisch
-3. Genauer Titel ohne Jahr, Englisch
-4. Vereinfachter Titel (erste 3 Wörter) + Jahr, Englisch
-5. Vereinfachter Titel ohne Jahr, Englisch
+### Daten und Cache
 
-**Automatische Reklassifizierung nach TMDB-Match:**
-- Genre 99 (Documentary) ohne widersprüchliche Genres (Action/SF/Fantasy/Horror) → **Dokumentarfilme**
-- Genre 16 (Animation) + japanische Herkunft → **Anime** *(nur Auto-Modus-Quellen)*
-- Reality/Talk/News/Soap-Genres ohne widersprüchliche Genres → **TV-Sendungen** *(nur Auto-Modus-Quellen)*
-- Genre 10402 (Music) ohne narrative Genres (Drama/Komödie/Romance/Action) + OMDb bestätigt "Music" → **Konzerte**
-- Stand-up/Theater/Zirkus-Schlüsselwörter + OMDb bestätigt nicht-narrative Komödie → **Aufführungen**
-
-**Spezifitätshierarchie** — automatische Reklassifizierung kann eine spezifischere Kategorie nie herabstufen:
-- Filme (1) < Serien (2) < TV-Sendungen/Dokumentarfilme/Konzerte/Aufführungen (3) < Anime (4)
-
-### Datenbankarchitektur
-
-```
+```text
 media           → 1 Zeile pro Film/Serie (Schlüssel: imdb_id)
 releases        → N Releases pro Medium (Qualität, Hash, Quelle, Datum)
 failed_releases → nicht gematchte Releases (für Retry)
 ```
 
-### Cache
-
-Katalogantworten werden gecacht und nach Änderungen automatisch invalidiert.
-Anschließend werden die ersten fünf Seiten jedes veröffentlichten Katalogs im
-Hintergrund vorgewärmt. JSON-Antworten werden komprimiert und zusätzlich
-30 Sekunden lang revalidierbar per HTTP gecacht. Mit
-`CATALOG_HTTP_CACHE_SECONDS=0` wird dies deaktiviert; maximal sind `300`
-Sekunden möglich. Suchanfragen werden nicht gecacht.
+SQLite verwendet WAL, damit Kataloge während Schreibvorgängen lesbar bleiben.
+Katalogantworten werden komprimiert, gecacht und nach Änderungen vorgewärmt.
+`CATALOG_HTTP_CACHE_SECONDS` steuert den HTTP-Cache (`30` standardmäßig, `0`
+zum Deaktivieren). Der optionale lokale Poster-Proxy/-Cache hat eigene TTL- und
+Größenlimits.
 
 ### Poster und AIOMetadata
 
-Jeder Katalogeintrag enthält bereits eine Poster-URL. Stremio RSS Catalog
-verwendet die Reihenfolge **PostersPlus → RPDB → Metadaten-Poster →
-Platzhalter**. Dadurch werden Kataloge auch ohne weiteres Metadaten-Addon direkt
-und einheitlich in Stremio angezeigt.
-
-Werden die Kataloge anschließend durch
-[AIOMetadata](https://github.com/cedya77/aiometadata) geleitet, kann AIOMetadata
-das Poster abhängig von seinen eigenen Bildanbietern beibehalten oder ersetzen.
-Legen Sie deshalb fest, welches Addon maßgeblich sein soll:
-
-- Stremio RSS Catalog für bereits illustrierte Kataloge;
-- AIOMetadata für eine zentrale Bildauswahl und einen zentralen Bild-Cache;
-- oder dieselbe Vorlage in beiden, wobei AIOMetadata weiterhin seine
-  konfigurierte Anbieterpriorität anwendet.
-
-Die Poster-Verarbeitung hier spart diesen Schritt bei direkter Nutzung, schaltet
-die Bildanbieter von AIOMetadata jedoch nicht automatisch ab.
-
-### Persistenz
-
-Alles wird in einer SQLite-Datenbank im WAL-Modus (`data/addon.db`) gespeichert.
-Inhalte **akkumulieren sich** — eine Sync ersetzt niemals vorhandene Daten.
-Hunderttausende indexierte Zeilen und parallele Katalog-Lesezugriffe sind für
-einen Anwendungsprozess realistisch.
-
-### Upgrade-Kompatibilität
-
-Upgrades sind für vorhandene Installationen ausgelegt:
-
-- dasselbe `/data`-Volume und dieselbe Datei `addon.db`;
-- dieselbe Addon-ID `community.useflowfr.catalog`;
-- dieselben Routen `manifest.json` und `catalog/...`;
-- dieselben IDs der neun bisherigen Kataloge;
-- vorhandene Einstellungen, Medien und Releases bleiben erhalten;
-- neue Tabellen, Spalten, Indizes und Standardwerte werden durch idempotente
-  Startmigrationen ergänzt.
-
-Das Addon muss daher in Stremio nicht entfernt und neu installiert werden. Eine
-Sicherung des `/data`-Volumes vor dem Upgrade bleibt wie bei jeder
-Datenbankmigration empfehlenswert.
+Priorität: **PostersPlus → RPDB → Metadaten-Poster → Platzhalter**. Wenn
+[AIOMetadata](https://github.com/cedya77/aiometadata) ebenfalls verwendet wird,
+legen Sie fest, welches Addon maßgeblich ist: AIOMetadata kann das bereits vom
+Katalog gelieferte Poster behalten oder ersetzen.
 
 ### Umfang
 
@@ -444,21 +332,10 @@ AIOStreams oder Comet überlassen.
 
 ## Migration und Reparatur
 
-Der erweiterte Bereich **Konfiguration → Migration und Reparatur** ersetzt die
-bisherigen Schaltflächen:
-
-1. **Mediathek analysieren** führt eine schreibgeschützte Diagnose aus und zeigt
-   vorgeschlagene Korrekturen je Kategorie.
-2. **Sichern und anwenden** erstellt zuerst eine SQLite-Kopie unter
-   `/data/backups` und wendet danach lokale Korrekturen an.
-3. Die TMDB-Prüfung von Animationen ist optional, da sie einen externen Aufruf
-   pro Kandidat benötigt und mehrere Minuten dauern kann.
-4. Jeder Vorgang wird mit Status, Ergebnis und Sicherungsnamen protokolliert.
-
-Die Neuklassifizierung nach Quellenregeln bleibt eine getrennte manuelle Aktion,
-da sie große Teile der Mediathek verschieben kann. Es wird kein destruktiver
-Korrektur-Cron eingerichtet. Künftige Migrationen sind nummeriert, werden bei
-Bedarf gesichert und nur einmal ausgeführt.
+**Konfiguration → Migration und Reparatur** analysiert ohne Schreibzugriff,
+sichert SQLite unter `/data/backups`, wendet ausgewählte Korrekturen an und
+speichert deren Verlauf. Reklassifizierungen bleiben manuell; Schemamigrationen
+sind versioniert, werden vorher gesichert und einmal ausgeführt.
 
 ---
 

@@ -42,6 +42,11 @@ class StremioManifestParser {
     if (!manifest || typeof manifest !== 'object' || !Array.isArray(manifest.catalogs)) {
       throw new Error('Le document ne contient pas de manifeste Stremio valide');
     }
+    const resources = Array.isArray(manifest.resources)
+      ? manifest.resources.map(resource => String(
+        typeof resource === 'string' ? resource : resource?.name || ''
+      ).toLowerCase()).filter(Boolean)
+      : [];
     const catalogs = manifest.catalogs
       .filter(catalog => catalog?.id && catalog?.type)
       .map(catalog => ({
@@ -50,10 +55,20 @@ class StremioManifestParser {
         name: String(catalog.name || catalog.id),
         supported: ['movie', 'series', 'anime'].includes(String(catalog.type).toLowerCase())
       }));
+    if (catalogs.length === 0) {
+      if (resources.includes('stream') && !resources.includes('catalog')) {
+        throw new Error(
+          'Ce manifeste expose uniquement des flux et aucun catalogue importable. '
+          + 'Un addon stream peut répondre pour un média déjà connu, mais ne permet pas d’énumérer ses contenus.'
+        );
+      }
+      throw new Error('Ce manifeste ne déclare aucun catalogue importable');
+    }
     return {
       name: String(manifest.name || 'Addon Stremio'),
       id: String(manifest.id || ''),
       version: String(manifest.version || ''),
+      resources,
       catalogs
     };
   }

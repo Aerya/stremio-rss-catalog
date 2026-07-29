@@ -28,6 +28,23 @@ function navigate(sectionId) {
   if (sectionId === 'overview') { loadStats(); loadOverview(); }
 }
 
+function navigateToRequiredTags(event) {
+  if (event) event.preventDefault();
+  navigate('config');
+  requestAnimationFrame(() => {
+    const input = document.getElementById('required_tags');
+    if (!input) return;
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    input.focus({ preventScroll: true });
+    const field = input.closest('.field');
+    if (field) {
+      field.classList.remove('field-highlight');
+      requestAnimationFrame(() => field.classList.add('field-highlight'));
+      setTimeout(() => field.classList.remove('field-highlight'), 1800);
+    }
+  });
+}
+
 document.querySelectorAll('.nav-item[data-section]').forEach(btn => {
   btn.addEventListener('click', () => navigate(btn.dataset.section));
 });

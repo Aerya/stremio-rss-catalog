@@ -266,6 +266,13 @@ async function main() {
         catalogs: [{ type: 'movie', id: 'remote_movies', name: 'Sélection distante' }]
       }));
     }
+    if (req.url.startsWith('/stream-only/manifest.json')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        id: 'test.stream-only', version: '1.0.0', name: 'Addon de flux',
+        resources: ['stream'], types: ['movie', 'series'], catalogs: []
+      }));
+    }
     if (req.url.startsWith('/addon/catalog/movie/remote_movies.json')) {
       catalogRequestKeptSecret = req.url.includes('token=secret-test');
       res.setHeader('Content-Type', 'application/json');
@@ -1216,6 +1223,10 @@ async function main() {
     const remoteUrl = `${baseUrl}/addon/manifest.json?token=secret-test`;
     const inspected = await stremioParser.inspect(remoteUrl);
     assert.deepEqual(inspected.catalogs.map(catalog => catalog.id), ['remote_movies']);
+    await assert.rejects(
+      () => stremioParser.inspect(`${baseUrl}/stream-only/manifest.json`),
+      /uniquement des flux et aucun catalogue importable/
+    );
     assert.ok(!stremioParser.maskUrl(remoteUrl).includes('secret-test'));
     assert.ok(!stremioParser.maskUrl(remoteUrl).includes('127.0.0.1'));
     const anonymous = stremioParser.anonymizeInspection(inspected);
@@ -1482,6 +1493,7 @@ async function main() {
     console.log('✓ Reprise des catalogues historiques et de leurs contenus');
     console.log('✓ Suppression durable sans suppression des médias');
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
+    console.log('✓ Refus explicite des manifestes Stremio stream-only');
     console.log('✓ Identifiants RSS historiques uniques, plafond manifeste et tags libres');
     console.log('✓ Identifiants anime natifs, composition réversible et exclusion de YouTube');
     console.log('✓ Guide MDBList limité aux médias locaux et ordre de liste conservé');

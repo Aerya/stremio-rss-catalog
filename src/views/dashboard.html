@@ -314,6 +314,9 @@
           <input id="pastebinAssumeRequiredTags" type="checkbox" checked>
           <span data-i18n="sources_pastebin_assume_tags">Considérer le contenu de ce Pastebin comme déjà conforme aux tags requis</span>
         </label>
+        <a href="#required_tags" class="inline-help-link"
+          onclick="navigateToRequiredTags(event)"
+          data-i18n="sources_required_tags_link">Voir les tags requis</a>
         <div class="integration-cat-hint" style="margin-top:8px" data-i18n="sources_pastebin_assume_tags_help">
           À activer lorsque le Pastebin contient uniquement des médias dans la langue souhaitée,
           mais que ses titres ne portent pas eux-mêmes les marqueurs FRENCH, MULTi, VFF, etc.
@@ -1011,10 +1014,10 @@
         <div class="config-section">
           <h3 data-i18n="config_processing_title">Traitement des contenus</h3>
           <div class="field">
-            <label>Tags requis (parsing)</label>
+            <label for="required_tags" data-i18n="config_required_tags_label">Tags requis (filtrage avant parsing)</label>
             <input type="text" id="required_tags" name="required_tags"
               placeholder="FRENCH,MULTi,TRUEFRENCH,VOF,VFF,VFI,VFQ">
-            <small data-i18n="config_required_tags_help">Liste libre séparée par des virgules (ex. VO, GERMAN, SWEDISH). Laissez vide pour accepter tous les titres.</small>
+            <small data-i18n="config_required_tags_help">Filtre les contenus collectés depuis toutes les sources avant leur parsing et leur matching. Un titre doit contenir au moins un des tags séparés par des virgules (ex. FRENCH, MULTi, VO, GERMAN). Laissez vide pour tout accepter. Une source déclarée conforme, comme un Pastebin, contourne ce filtre titre par titre.</small>
           </div>
         </div>
 
