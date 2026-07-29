@@ -49,7 +49,7 @@
 | **Nested Pastebins** | Direct pages, JSON pointers, and categorized master indexes with bounded recursion and deduplication |
 | **Stremio manifests** | Generic remote catalog discovery and content import |
 | **Native anime and YouTube** | Preserve `anime`, Kitsu/MAL/AniList/AniDB and `YouTube`/`yt_id:` types and identifiers without silently converting them to movies |
-| **Catalog guides** | MDBList, ListSync, and SuggestArr provide selection and ordering; only media already indexed locally is exposed |
+| **Catalog guides** | MDBList, ListSync, SuggestArr, and Agregarr provide selection and ordering; only media already indexed locally is exposed |
 | **Dry run** | Exact media count before creating a catalog |
 | **Manifest history** | Revisions and create, rename, freeze, visibility, and delete events |
 | **Auto detection** | Category identified from release name, feed URL keywords, or TMDB/OMDb genres |

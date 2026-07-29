@@ -49,7 +49,7 @@
 | **Verschachtelte Pastebins** | Direkte Seiten, JSON-Verweise und kategorisierte Hauptindizes mit begrenzter Rekursion und Deduplizierung |
 | **Stremio-Manifeste** | Generische Erkennung externer Kataloge und Import ihrer Inhalte |
 | **Native Anime- und YouTube-Typen** | `anime`, Kitsu/MAL/AniList/AniDB und `YouTube`/`yt_id:` bleiben erhalten und werden nicht stillschweigend in Filme umgewandelt |
-| **Katalog-Leitlisten** | MDBList, ListSync und SuggestArr liefern Auswahl und Reihenfolge; sichtbar werden nur bereits lokal indexierte Medien |
+| **Katalog-Leitlisten** | MDBList, ListSync, SuggestArr und Agregarr liefern Auswahl und Reihenfolge; sichtbar werden nur bereits lokal indexierte Medien |
 | **Testlauf** | Exakte Medienanzahl vor dem Erstellen eines Katalogs |
 | **Manifestverlauf** | Revisionen und Ereignisse für Erstellung, Umbenennung, Einfrieren, Sichtbarkeit und Löschung |
 | **Auto-Erkennung** | Kategorie aus Release-Name, Feed-URL-Schlüsselwörtern oder TMDB/OMDb-Genres ermittelt |

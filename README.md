@@ -49,7 +49,7 @@
 | **Pastebins imbriqués** | Pages directes, pointeurs JSON et index maîtres catégorisés avec récursion bornée, déduplication et protection des hôtes découverts |
 | **Manifestes Stremio** | Découverte générique des catalogues d'un autre addon et import de leurs contenus |
 | **Anime et YouTube natifs** | Conservation des types et identifiants `anime`, Kitsu/MAL/AniList/AniDB et `YouTube`/`yt_id:` sans conversion silencieuse en film |
-| **Guides de catalogues** | MDBList, ListSync et SuggestArr fournissent une sélection et un ordre ; seuls les médias déjà indexés localement sont exposés |
+| **Guides de catalogues** | MDBList, ListSync, SuggestArr et Agregarr fournissent une sélection et un ordre ; seuls les médias déjà indexés localement sont exposés |
 | **Test à blanc** | Compte exact des médias qui alimenteraient un catalogue avant sa création |
 | **Historique du manifeste** | Révisions et événements de création, renommage, gel, visibilité et suppression des catalogues |
 | **Détection automatique** | Catégorie identifiée depuis le nom de release, l'URL du flux ou les genres TMDB/OMDb |
