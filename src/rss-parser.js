@@ -16,7 +16,11 @@ class RSSParser {
     this.config = config;
     this.db = db;
     this.axiosConfig = this.getAxiosConfig();
-    this.pastebinParser = new PastebinParser(db, () => this.getAxiosConfig());
+    this.pastebinParser = new PastebinParser(
+      db,
+      () => this.getAxiosConfig(),
+      title => this.filterByRequiredTags(title)
+    );
     this.stremioManifestParser = new StremioManifestParser(db, () => this.getAxiosConfig());
     this.newznabParser = new NewznabParser(
       db,
@@ -28,10 +32,18 @@ class RSSParser {
       () => this.getAxiosConfig(),
       (items, force, sourceUrl) => this._parseItems(items, force, sourceUrl)
     );
-    this.waCustomParser = new WaCustomParser(db, () => this.getAxiosConfig());
+    this.waCustomParser = new WaCustomParser(
+      db,
+      () => this.getAxiosConfig(),
+      title => this.filterByRequiredTags(title)
+    );
     this.mdblistGuideParser = new MDBListGuideParser(db, () => this.getAxiosConfig());
     this.mediaServerParser = new MediaServerParser(db, () => this.getAxiosConfig());
-    this.streamFusionParser = new StreamFusionParser(db, () => this.getAxiosConfig());
+    this.streamFusionParser = new StreamFusionParser(
+      db,
+      () => this.getAxiosConfig(),
+      title => this.filterByRequiredTags(title)
+    );
     this.cometNetParser = new CometNetParser(
       db,
       title => this.extractQuality(title),

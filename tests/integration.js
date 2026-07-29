@@ -680,6 +680,18 @@ async function main() {
     );
     const waCustomMatch = await matcher.matchBatch([...waCustomFirst, ...waCustomSecond]);
     assert.equal(waCustomMatch.matched, 2);
+    const filteredWaCustom = new WaCustomParser(db, null, title => title.includes('FRENCH'));
+    assert.equal(filteredWaCustom.rowToItem(waCustomSource, {
+      id: 3, imdb_id: 'tt0000922', title: 'Film VO', year: 2026,
+      releases: [{ release_name: 'Film.VO.2026.ENGLISH.1080p' }]
+    }), null);
+    assert.equal(filteredWaCustom.rowToItem(waCustomSource, {
+      id: 4, imdb_id: 'tt0000923', title: 'Film mixte', year: 2026,
+      releases: [
+        { release_name: 'Film.Mixte.2026.ENGLISH.1080p' },
+        { release_name: 'Film.Mixte.2026.FRENCH.1080p' }
+      ]
+    }).release_name, 'Film.Mixte.2026.FRENCH.1080p');
 
     const streamFusionParser = new StreamFusionParser(db, () => ({ timeout: 2000 }));
     const streamFusionSource = {
@@ -709,7 +721,59 @@ async function main() {
       db.getSourceSyncState('streamfusion:streamfusion-test').cursor.committed.backfill_complete,
       true
     );
+    const filteredStreamFusion = new StreamFusionParser(db, null, title => title.includes('FRENCH'));
+    assert.equal(filteredStreamFusion.rowToItem(streamFusionSource, {
+      info_hash: 'cccccccccccccccccccccccccccccccccccccccc',
+      raw_title: 'Film.StreamFusion.2026.ENGLISH.1080p',
+      imdb_id: 'tt0000942', type: 'movie'
+    }), null);
     console.log('✓ Import StreamFusion chiffré, signé, paginé et incrémental via l’API Peer');
+
+    const filteredPastebin = new PastebinParser(db, null, title => title.includes('FRENCH'));
+    db.setConfig('pastebin_sources', JSON.stringify([{
+      id: 'pastebin-tags-test', name: 'Pastebin tags test', url: `${baseUrl}/pointer`,
+      assumeRequiredTags: false, maxPages: 10
+    }]));
+    assert.equal((await filteredPastebin.parseAll({ forceAll: true })).length, 0);
+    db.setConfig('pastebin_sources', JSON.stringify([{
+      id: 'pastebin-tags-test', name: 'Pastebin tags test', url: `${baseUrl}/pointer`,
+      assumeRequiredTags: true, maxPages: 10
+    }]));
+    assert.equal((await filteredPastebin.parseAll({ forceAll: true })).length, 2);
+    db.setConfig('pastebin_sources', '[]');
+    console.log('✓ Filtrage global WaCustom/StreamFusion et conformité déclarée Pastebin');
+
+    const alertWebUi = Object.create(WebUI.prototype);
+    alertWebUi.db = db;
+    alertWebUi.getSourceAlertSources = () => [{
+      source_key: 'test:alert-source', name: 'Source alerte test', kind: 'test', paused: false
+    }];
+    db.setConfig('discord_notifications_enabled', 'false');
+    db.setConfig('apprise_enabled', 'false');
+    db.setConfig('source_alerts_enabled', 'true');
+    db.setConfig('source_alert_default_threshold', '3');
+    db.setConfig('source_alert_thresholds', JSON.stringify({ 'test:alert-source': 2 }));
+    db.failSourceSync('test:alert-source', {
+      sourceKind: 'test', errorMessage: 'Indisponible pour le test'
+    });
+    await alertWebUi.processSourceHealthAlerts();
+    assert.equal(db.listSourceAlerts().filter(alert => alert.source_key === 'test:alert-source').length, 0);
+    db.failSourceSync('test:alert-source', {
+      sourceKind: 'test', errorMessage: 'Toujours indisponible'
+    });
+    await alertWebUi.processSourceHealthAlerts();
+    assert.equal(
+      db.listSourceAlerts().find(alert => alert.source_key === 'test:alert-source').event_type,
+      'failure'
+    );
+    db.finishSourceSync('test:alert-source', { sourceKind: 'test', itemsFetched: 1 });
+    await alertWebUi.processSourceHealthAlerts();
+    assert.deepEqual(
+      db.listSourceAlerts().filter(alert => alert.source_key === 'test:alert-source')
+        .map(alert => alert.event_type),
+      ['recovery', 'failure']
+    );
+    console.log('✓ Alertes par source avec seuil consécutif et rétablissement');
 
     const cometPeer = cometNetIdentity();
     const cometContributor = cometNetIdentity();

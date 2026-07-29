@@ -19,9 +19,10 @@ const CATEGORY_MAP = {
 };
 
 class PastebinParser {
-  constructor(db, axiosConfigFactory) {
+  constructor(db, axiosConfigFactory, filterTitle = () => true) {
     this.db = db;
     this.axiosConfigFactory = axiosConfigFactory;
+    this.filterTitle = filterTitle;
   }
 
   getSources() {
@@ -247,7 +248,10 @@ class PastebinParser {
           quotaUsed: result.visited,
           quotaStatus: result.truncated ? 'limit_reached' : 'available'
         });
-        all.push(...result.items);
+        const filteredItems = source.assumeRequiredTags === false
+          ? result.items.filter(item => this.filterTitle(item.release_name || item.cleanName || ''))
+          : result.items;
+        all.push(...filteredItems);
       } catch (error) {
         this.db.failSourceSync(stateKey, {
           sourceKind: 'pastebin',

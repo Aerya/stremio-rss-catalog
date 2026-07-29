@@ -2,9 +2,10 @@ const axios = require('axios');
 const crypto = require('crypto');
 
 class StreamFusionParser {
-  constructor(db, axiosConfigFactory) {
+  constructor(db, axiosConfigFactory, filterTitle = () => true) {
     this.db = db;
     this.axiosConfigFactory = axiosConfigFactory;
+    this.filterTitle = filterTitle;
     this.lastPendingCursorKeys = [];
   }
 
@@ -99,6 +100,7 @@ class StreamFusionParser {
   rowToItem(source, row) {
     const title = String(row.raw_title || '').trim();
     if (!title || (!row.imdb_id && !row.tmdb_id)) return null;
+    if (!this.filterTitle(title)) return null;
     const imdbId = String(row.imdb_id || '').match(/tt\d{5,12}/i)?.[0]?.toLowerCase() || null;
     const tmdbId = /^\d+$/.test(String(row.tmdb_id || '')) ? String(row.tmdb_id) : null;
     const typeValue = String(row.type || row.parsed_data?.type || '').toLowerCase();

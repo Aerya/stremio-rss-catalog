@@ -260,6 +260,7 @@ class CometNetParser {
       authenticated: false,
       peerPublicKey: null,
       allowReconnect: true,
+      failureRecorded: false,
       retryDelay: 5000,
       reconnectTimer: null
     };
@@ -284,12 +285,21 @@ class CometNetParser {
     ws.on('close', (code, reason) => {
       if (this.connections.get(source.id) !== connection) return;
       const closeReason = Buffer.from(reason || '').toString().trim();
+      const errorMessage = code === 1000 && !closeReason
+        ? 'Connexion fermée avant identification : pair indisponible, saturé ou limite de pairs atteinte'
+        : `Connexion fermée (${code})${closeReason ? ` : ${closeReason}` : ''}`;
+      if (!connection.failureRecorded) {
+        connection.failureRecorded = true;
+        this.db.failSourceSync(this.sourceKey(source.id), {
+          sourceKind: 'cometnet',
+          startedAt: connection.startedAt,
+          errorMessage
+        });
+      }
       this.setState(source.id, {
         status: this.stopped ? 'disconnected' : 'reconnecting',
         connected_at: null,
-        ...(code !== 1000 ? {
-          last_error: `Connexion fermée (${code})${closeReason ? ` : ${closeReason}` : ''}`
-        } : {})
+        last_error: errorMessage
       });
       this.scheduleReconnect(source, connection);
     });
@@ -394,11 +404,14 @@ class CometNetParser {
       invalid_session: state.invalid_session + 1
     });
     if (close) {
-      this.db.failSourceSync(this.sourceKey(source.id), {
-        sourceKind: 'cometnet',
-        startedAt: connection.startedAt,
-        errorMessage: reason
-      });
+      if (!connection.failureRecorded) {
+        connection.failureRecorded = true;
+        this.db.failSourceSync(this.sourceKey(source.id), {
+          sourceKind: 'cometnet',
+          startedAt: connection.startedAt,
+          errorMessage: reason
+        });
+      }
       connection.ws.close(1008, reason);
     }
   }
@@ -454,9 +467,9 @@ class CometNetParser {
       ws.on('error', error => finish(error));
       ws.on('close', (code, reason) => {
         const detail = Buffer.from(reason || '').toString().trim();
-        finish(new Error(
-          `Connexion CometNet fermée avant l’identification (${code})${detail ? ` : ${detail}` : ''}`
-        ));
+        finish(new Error(code === 1000 && !detail
+          ? 'Connexion CometNet refusée : pair indisponible, saturé ou limite de pairs atteinte'
+          : `Connexion CometNet fermée avant l’identification (${code})${detail ? ` : ${detail}` : ''}`));
       });
     });
     return inspection.finally(() => {

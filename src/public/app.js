@@ -878,9 +878,90 @@ async function loadCatalogManager() {
 window.loadCatalogManager = loadCatalogManager;
 
 async function loadSourceManager() {
-  await Promise.all([loadCatalogManager(), loadSources()]);
+  await Promise.all([loadCatalogManager(), loadSources(), loadSourceAlerts()]);
 }
 window.loadSourceManager = loadSourceManager;
+
+async function loadSourceAlerts() {
+  const thresholdList = document.getElementById('sourceAlertThresholdList');
+  const historyContainer = document.getElementById('sourceAlertHistory');
+  if (!thresholdList || !historyContainer) return;
+  try {
+    const [configResponse, historyResponse] = await Promise.all([
+      fetch('/api/source-alerts/config'),
+      fetch('/api/source-alerts/history?limit=50')
+    ]);
+    const config = await configResponse.json();
+    const history = await historyResponse.json();
+    if (!configResponse.ok) throw new Error(config.error || 'Configuration des alertes inaccessible');
+    if (!historyResponse.ok) throw new Error(history.error || 'Historique des alertes inaccessible');
+
+    document.getElementById('sourceAlertsEnabled').checked = config.enabled !== false;
+    document.getElementById('sourceAlertDefaultThreshold').value = config.default_threshold || 3;
+    thresholdList.innerHTML = config.sources.length
+      ? `<div class="source-alert-threshold-grid">${config.sources.map(source => {
+          const runtime = source.runtime || {};
+          const failures = Number(runtime.consecutive_errors || 0);
+          return `<label class="source-alert-threshold-row">
+            <span>
+              <strong>${escHtml(source.name)}</strong>
+              <small>${escHtml(source.kind)} · ${source.paused ? 'en pause' : `${failures} échec(s) consécutif(s)`}</small>
+            </span>
+            <input type="number" min="1" max="100"
+              data-source-alert-key="${escHtml(source.source_key)}"
+              value="${source.uses_default ? '' : source.threshold}"
+              placeholder="${config.default_threshold}"
+              title="Vide : utiliser le seuil par défaut (${config.default_threshold})">
+          </label>`;
+        }).join('')}</div>`
+      : '<p class="text-muted">Aucune source configurée.</p>';
+
+    historyContainer.innerHTML = history.length
+      ? `<div class="source-alert-history">${history.map(entry => {
+          const recovered = entry.event_type === 'recovery';
+          let channels = Array.isArray(entry.channels) ? entry.channels : [];
+          if (!channels.length && typeof entry.channels === 'string') {
+            try { channels = JSON.parse(entry.channels || '[]'); } catch {}
+          }
+          return `<div class="source-alert-history-row ${recovered ? 'recovery' : 'failure'}">
+            <span class="source-alert-icon">${recovered ? '✓' : '!'}</span>
+            <span>
+              <strong>${escHtml(entry.source_name || entry.source_key)}</strong>
+              <small>${fmtDate(entry.created_at)} · ${escHtml(entry.message || '')}</small>
+              <small>Canaux : ${channels.map(escHtml).join(', ') || 'WebUI'}</small>
+            </span>
+          </div>`;
+        }).join('')}</div>`
+      : '<p class="text-muted">Aucune alerte enregistrée.</p>';
+  } catch (error) {
+    thresholdList.innerHTML = `<p class="source-runtime-error">${escHtml(error.message)}</p>`;
+    historyContainer.innerHTML = '<p class="text-muted">Historique indisponible.</p>';
+  }
+}
+window.loadSourceAlerts = loadSourceAlerts;
+
+async function saveSourceAlerts() {
+  const thresholds = {};
+  document.querySelectorAll('[data-source-alert-key]').forEach(input => {
+    if (input.value !== '') thresholds[input.dataset.sourceAlertKey] = Number(input.value);
+  });
+  const response = await fetch('/api/source-alerts/config', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      enabled: document.getElementById('sourceAlertsEnabled').checked,
+      default_threshold: Number(document.getElementById('sourceAlertDefaultThreshold').value) || 3,
+      thresholds
+    })
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    window.alert(result.error || 'Impossible d’enregistrer les alertes');
+    return;
+  }
+  await loadSourceAlerts();
+}
+window.saveSourceAlerts = saveSourceAlerts;
 
 let activeSourceTab = 'all';
 
@@ -1146,6 +1227,9 @@ function renderPastebins() {
         <div class="manager-row-title">${escHtml(source.name || 'Pastebin')} ${source.paused ? '⏸' : '●'}</div>
         <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
         <div class="manager-row-meta">Limite : ${Number(source.maxPages || 1000).toLocaleString()} pages</div>
+        <div class="manager-row-meta">${source.assume_required_tags !== false
+          ? 'Tags requis : conformité déclarée pour toute la source'
+          : 'Tags requis : vérification de chaque titre'}</div>
         ${sourceRuntimeHtml(source)}
       </div>
       <div class="manager-row-actions">
@@ -1489,12 +1573,13 @@ async function previewPastebin() {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       url,
-      maxPages: Math.min(Number(document.getElementById('pastebinMaxPages').value) || 25, 100)
+      maxPages: Math.min(Number(document.getElementById('pastebinMaxPages').value) || 25, 100),
+      assume_required_tags: document.getElementById('pastebinAssumeRequiredTags').checked
     })
   });
   const data = await response.json();
   output.textContent = response.ok
-    ? `${data.items.toLocaleString()} médias · ${data.visited} pages${data.duplicates ? ` · ${data.duplicates.toLocaleString()} doublons retirés` : ''} · ${Object.entries(data.categories).map(([k,v]) => `${k}: ${v}`).join(' · ')}${data.truncated ? ' · aperçu limité' : ''}`
+    ? `${data.items.toLocaleString()} médias · ${data.visited} pages${data.tags_assumed ? ' · conformité aux tags déclarée' : ' · tags vérifiés titre par titre'}${data.duplicates ? ` · ${data.duplicates.toLocaleString()} doublons retirés` : ''} · ${Object.entries(data.categories).map(([k,v]) => `${k}: ${v}`).join(' · ')}${data.truncated ? ' · aperçu limité' : ''}`
     : (data.error || 'Erreur');
 }
 window.previewPastebin = previewPastebin;
@@ -1509,6 +1594,7 @@ async function savePastebin() {
       force: document.getElementById('pastebinForce').value,
       max_depth: Number(document.getElementById('pastebinMaxDepth').value) || 0,
       max_pages: Number(document.getElementById('pastebinMaxPages').value) || 1000,
+      assume_required_tags: document.getElementById('pastebinAssumeRequiredTags').checked,
       sync_interval_minutes: document.getElementById('pastebinInterval').value || null
     })
   });
@@ -1531,6 +1617,7 @@ async function editPastebin(id) {
   document.getElementById('pastebinMaxDepth').value = source.maxDepth ?? 5;
   document.getElementById('pastebinMaxPages').value = source.maxPages || 1000;
   document.getElementById('pastebinInterval').value = source.sync_interval_minutes || '';
+  document.getElementById('pastebinAssumeRequiredTags').checked = source.assume_required_tags !== false;
   document.getElementById('pastebinSubmit').textContent = 'Enregistrer';
   document.getElementById('pastebinCancel').hidden = false;
 }
@@ -1544,6 +1631,7 @@ function resetPastebinForm() {
   document.getElementById('pastebinMaxDepth').value = 5;
   document.getElementById('pastebinMaxPages').value = 1000;
   document.getElementById('pastebinInterval').value = '';
+  document.getElementById('pastebinAssumeRequiredTags').checked = true;
   document.getElementById('pastebinPreview').textContent = '';
   document.getElementById('pastebinSubmit').textContent = 'Ajouter';
   document.getElementById('pastebinCancel').hidden = true;

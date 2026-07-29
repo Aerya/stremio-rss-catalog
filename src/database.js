@@ -201,6 +201,42 @@ class DatabaseManager {
     `);
 
     this.db.exec(`
+      CREATE TABLE IF NOT EXISTS source_health_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL,
+        source_kind TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        consecutive_errors INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT,
+        http_status INTEGER,
+        created_at INTEGER NOT NULL,
+        processed_at INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS source_alert_state (
+        source_key TEXT PRIMARY KEY,
+        outage_notified INTEGER NOT NULL DEFAULT 0,
+        last_alert_at INTEGER,
+        last_recovery_at INTEGER,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS source_alert_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL,
+        source_name TEXT,
+        event_type TEXT NOT NULL,
+        threshold INTEGER NOT NULL,
+        consecutive_errors INTEGER NOT NULL DEFAULT 0,
+        message TEXT,
+        channels_json TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_source_health_events_pending
+        ON source_health_events(processed_at, id);
+      CREATE INDEX IF NOT EXISTS idx_source_alert_history_created
+        ON source_alert_history(created_at DESC);
+    `);
+
+    this.db.exec(`
       CREATE TABLE IF NOT EXISTS manifest_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         revision INTEGER NOT NULL,
@@ -400,6 +436,9 @@ class DatabaseManager {
       apprise_urls: '',
       omdb_api_key: '',
       notification_language: 'fr',
+      source_alerts_enabled: 'true',
+      source_alert_default_threshold: '3',
+      source_alert_thresholds: '{}',
       classification_migration_version: '0'
     };
 
@@ -1243,6 +1282,14 @@ class DatabaseManager {
       now
     );
     this.recordFeedSuccess(sourceKey);
+    if (Number(current?.consecutive_errors) > 0) {
+      this.recordSourceHealthEvent({
+        sourceKey,
+        sourceKind,
+        eventType: 'recovery',
+        consecutiveErrors: 0
+      });
+    }
   }
 
   failSourceSync(sourceKey, {
@@ -1272,12 +1319,121 @@ class DatabaseManager {
       Math.max(0, now - (Number(startedAt) || now)),
       now, errorMessage || null, httpStatus || null, now
     );
+    const state = this.getSourceSyncState(sourceKey);
+    this.recordSourceHealthEvent({
+      sourceKey,
+      sourceKind,
+      eventType: 'failure',
+      consecutiveErrors: state?.consecutive_errors || 1,
+      errorMessage,
+      httpStatus
+    });
   }
 
   getSourceSyncState(sourceKey) {
     const row = this.db.prepare('SELECT * FROM source_sync_state WHERE source_key = ?').get(sourceKey);
     if (!row) return null;
     return { ...row, cursor: JSON.parse(row.cursor_json || '{}') };
+  }
+
+  recordSourceHealthEvent({
+    sourceKey,
+    sourceKind = 'unknown',
+    eventType,
+    consecutiveErrors = 0,
+    errorMessage = null,
+    httpStatus = null
+  }) {
+    return this.db.prepare(`
+      INSERT INTO source_health_events (
+        source_key, source_kind, event_type, consecutive_errors,
+        error_message, http_status, created_at, processed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
+    `).run(
+      sourceKey,
+      sourceKind,
+      eventType,
+      Math.max(0, Number(consecutiveErrors) || 0),
+      errorMessage || null,
+      httpStatus || null,
+      Date.now()
+    ).lastInsertRowid;
+  }
+
+  getPendingSourceHealthEvents(limit = 200) {
+    return this.db.prepare(`
+      SELECT * FROM source_health_events
+      WHERE processed_at IS NULL
+      ORDER BY id ASC
+      LIMIT ?
+    `).all(Math.min(Math.max(Number(limit) || 200, 1), 1000));
+  }
+
+  markSourceHealthEventsProcessed(ids) {
+    const values = [...new Set((ids || []).map(Number).filter(Number.isInteger))];
+    if (!values.length) return 0;
+    const statement = this.db.prepare(`
+      UPDATE source_health_events SET processed_at = ?
+      WHERE id = ? AND processed_at IS NULL
+    `);
+    return this.db.transaction(eventIds => eventIds.reduce(
+      (count, id) => count + statement.run(Date.now(), id).changes,
+      0
+    ))(values);
+  }
+
+  getSourceAlertState(sourceKey) {
+    return this.db.prepare('SELECT * FROM source_alert_state WHERE source_key = ?').get(sourceKey)
+      || { source_key: sourceKey, outage_notified: 0, last_alert_at: null, last_recovery_at: null };
+  }
+
+  setSourceAlertState(sourceKey, { outageNotified, lastAlertAt = null, lastRecoveryAt = null }) {
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO source_alert_state (
+        source_key, outage_notified, last_alert_at, last_recovery_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(source_key) DO UPDATE SET
+        outage_notified = excluded.outage_notified,
+        last_alert_at = COALESCE(excluded.last_alert_at, source_alert_state.last_alert_at),
+        last_recovery_at = COALESCE(excluded.last_recovery_at, source_alert_state.last_recovery_at),
+        updated_at = excluded.updated_at
+    `).run(sourceKey, outageNotified ? 1 : 0, lastAlertAt, lastRecoveryAt, now);
+  }
+
+  recordSourceAlert({
+    sourceKey,
+    sourceName = null,
+    eventType,
+    threshold,
+    consecutiveErrors = 0,
+    message = null,
+    channels = []
+  }) {
+    return this.db.prepare(`
+      INSERT INTO source_alert_history (
+        source_key, source_name, event_type, threshold,
+        consecutive_errors, message, channels_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      sourceKey,
+      sourceName,
+      eventType,
+      threshold,
+      consecutiveErrors,
+      message,
+      JSON.stringify(channels),
+      Date.now()
+    ).lastInsertRowid;
+  }
+
+  listSourceAlerts(limit = 100) {
+    return this.db.prepare(`
+      SELECT * FROM source_alert_history ORDER BY created_at DESC, id DESC LIMIT ?
+    `).all(Math.min(Math.max(Number(limit) || 100, 1), 500)).map(row => ({
+      ...row,
+      channels: JSON.parse(row.channels_json || '[]')
+    }));
   }
 
   enqueueCometNetItem(sourceId, itemKey, payload) {

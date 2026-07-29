@@ -166,4 +166,37 @@ async function sendDiscordNotification(webhookUrl, syncStats, lang = 'fr') {
   }
 }
 
-module.exports = { sendDiscordNotification };
+async function sendDiscordSourceAlert(webhookUrl, alert) {
+  if (!webhookUrl) return false;
+  const isRecovery = alert.eventType === 'recovery';
+  try {
+    await axios.post(webhookUrl, {
+      username: 'Stremio RSS Catalog',
+      avatar_url: AVATAR_URL,
+      embeds: [{
+        title: isRecovery
+          ? `✅ Source rétablie : ${alert.sourceName}`
+          : `⚠️ Source indisponible : ${alert.sourceName}`,
+        color: isRecovery ? 0x48bb78 : 0xe53e3e,
+        description: alert.message || null,
+        fields: [
+          { name: 'Source', value: `\`${alert.sourceKey}\``, inline: false },
+          ...(!isRecovery ? [{
+            name: 'Échecs consécutifs',
+            value: `${alert.consecutiveErrors} — seuil configuré : ${alert.threshold}`,
+            inline: true
+          }] : [])
+        ],
+        timestamp: new Date().toISOString(),
+        footer: { text: 'Stremio RSS Catalog · surveillance des sources' }
+      }]
+    }, { timeout: 10000 });
+    console.log(`[Discord] Alerte source envoyée : ${alert.sourceKey}`);
+    return true;
+  } catch (error) {
+    console.error('[Discord] Échec envoi alerte source:', error.message);
+    return false;
+  }
+}
+
+module.exports = { sendDiscordNotification, sendDiscordSourceAlert };

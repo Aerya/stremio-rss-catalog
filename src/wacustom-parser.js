@@ -2,9 +2,10 @@ const axios = require('axios');
 const crypto = require('crypto');
 
 class WaCustomParser {
-  constructor(db, axiosConfigFactory) {
+  constructor(db, axiosConfigFactory, filterTitle = () => true) {
     this.db = db;
     this.axiosConfigFactory = axiosConfigFactory;
+    this.filterTitle = filterTitle;
     this.lastPendingCursorKeys = [];
   }
 
@@ -75,7 +76,9 @@ class WaCustomParser {
     const releaseNames = (Array.isArray(row.releases) ? row.releases : [])
       .map(release => release?.release_name)
       .filter(Boolean);
-    const releaseName = releaseNames[0] || String(row.title);
+    const releaseName = (releaseNames.length ? releaseNames : [String(row.title)])
+      .find(candidate => this.filterTitle(candidate));
+    if (!releaseName) return null;
     const identity = crypto.createHash('sha256')
       .update(`${source.id}|${row.id}|${row.updated_at || row.created_at || ''}`)
       .digest('hex').slice(0, 32);

@@ -5,7 +5,7 @@ const path = require('path');
 const axios = require('axios');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const { HttpsProxyAgent } = require('https-proxy-agent');
-const { sendDiscordNotification } = require('./services/discordService');
+const { sendDiscordNotification, sendDiscordSourceAlert } = require('./services/discordService');
 const { sendAppriseNotification } = require('./services/appriseService');
 const { getStrings }              = require('./services/notifStrings');
 const crypto = require('crypto');
@@ -31,13 +31,24 @@ class WebUI {
     this.syncStartedAt = null;
     this.syncStatus = null;
     this.autoRefreshInterval = null;
+    this.sourceAlertInterval = null;
+    this.sourceAlertProcessing = null;
     this.maintenanceInProgress = false;
 
     this.setupMiddleware();
     this.setupRoutes();
     this.runPendingMaintenanceMigrations()
       .catch(error => console.error('[Maintenance] Migration automatique échouée :', error.message))
-      .finally(() => this.startAutoRefresh(true));
+      .finally(() => {
+        this.startAutoRefresh(true);
+        this.processSourceHealthAlerts()
+          .catch(error => console.error('[Alertes sources] Traitement initial échoué :', error.message));
+        this.sourceAlertInterval = setInterval(() => {
+          this.processSourceHealthAlerts()
+            .catch(error => console.error('[Alertes sources] Traitement périodique échoué :', error.message));
+        }, 60 * 1000);
+        this.sourceAlertInterval.unref?.();
+      });
   }
 
   setupMiddleware() {
@@ -546,6 +557,7 @@ class WebUI {
     this.app.get('/api/pastebins', this.authMiddleware.bind(this), (req, res) => {
       res.json(this.rssParser.pastebinParser.getSources().map(source => ({
         ...source,
+        assume_required_tags: source.assumeRequiredTags !== false,
         sync_interval_minutes: source.syncIntervalMinutes || null,
         runtime: this.getSourceRuntime(`pastebin:${source.id}`, source.syncIntervalMinutes)
       })));
@@ -553,7 +565,7 @@ class WebUI {
 
     this.app.post('/api/pastebins/preview', this.authMiddleware.bind(this), async (req, res) => {
       try {
-        const { url, maxPages = 25 } = req.body;
+        const { url, maxPages = 25, assume_required_tags = true } = req.body;
         if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
         const result = await this.rssParser.pastebinParser.discover(url, {
           maxPages: Math.min(Number(maxPages) || 25, 100),
@@ -562,8 +574,11 @@ class WebUI {
         res.json({
           visited: result.visited,
           truncated: result.truncated,
-          items: result.items.length,
+          items: assume_required_tags === false
+            ? result.items.filter(item => this.rssParser.filterByRequiredTags(item.release_name || '')).length
+            : result.items.length,
           raw_items: result.rawItems,
+          tags_assumed: assume_required_tags !== false,
           duplicates: result.duplicates,
           categories: result.items.reduce((acc, item) => {
             acc[item.catalog_type] = (acc[item.catalog_type] || 0) + 1;
@@ -579,7 +594,7 @@ class WebUI {
     this.app.post('/api/pastebins', this.authMiddleware.bind(this), (req, res) => {
       const {
         name = '', url, paused = false, force = 'auto', max_depth = 5,
-        max_pages = 1000, sync_interval_minutes
+        max_pages = 1000, sync_interval_minutes, assume_required_tags = true
       } = req.body;
       if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
       const sources = this.rssParser.pastebinParser.getSources();
@@ -592,6 +607,7 @@ class WebUI {
         force,
         maxDepth: Math.min(Math.max(Number.isFinite(Number(max_depth)) ? Number(max_depth) : 5, 0), 10),
         maxPages: Math.min(Math.max(Number(max_pages) || 1000, 1), 5000),
+        assumeRequiredTags: assume_required_tags !== false,
         syncIntervalMinutes: this.normalizeSourceInterval(sync_interval_minutes)
       };
       sources.push(source);
@@ -616,6 +632,10 @@ class WebUI {
       if (req.body.max_pages !== undefined) {
         next.maxPages = Math.min(Math.max(Number(req.body.max_pages) || 1000, 1), 5000);
         delete next.max_pages;
+      }
+      if (req.body.assume_required_tags !== undefined) {
+        next.assumeRequiredTags = req.body.assume_required_tags !== false;
+        delete next.assume_required_tags;
       }
       if (!/^https?:\/\//i.test(next.url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
       sources[index] = next;
@@ -1940,6 +1960,44 @@ class WebUI {
       res.json([...stats, ...errorsOnly]);
     });
 
+    this.app.get('/api/source-alerts/config', this.authMiddleware.bind(this), (req, res) => {
+      const config = this.getSourceAlertConfig();
+      res.json({
+        enabled: config.enabled,
+        default_threshold: config.defaultThreshold,
+        sources: this.getSourceAlertSources().map(source => ({
+          ...source,
+          threshold: Math.min(Math.max(
+            Number(config.thresholds[source.source_key]) || config.defaultThreshold,
+            1
+          ), 100),
+          uses_default: config.thresholds[source.source_key] === undefined,
+          runtime: this.getSourceRuntime(source.source_key)
+        }))
+      });
+    });
+
+    this.app.put('/api/source-alerts/config', this.authMiddleware.bind(this), async (req, res) => {
+      const enabled = req.body.enabled !== false;
+      const defaultThreshold = Math.min(Math.max(Number(req.body.default_threshold) || 3, 1), 100);
+      const knownKeys = new Set(this.getSourceAlertSources().map(source => source.source_key));
+      const thresholds = {};
+      for (const [sourceKey, rawThreshold] of Object.entries(req.body.thresholds || {})) {
+        if (!knownKeys.has(sourceKey)) continue;
+        const threshold = Number(rawThreshold);
+        if (Number.isFinite(threshold)) thresholds[sourceKey] = Math.min(Math.max(threshold, 1), 100);
+      }
+      this.db.setConfig('source_alerts_enabled', enabled ? 'true' : 'false');
+      this.db.setConfig('source_alert_default_threshold', String(defaultThreshold));
+      this.db.setConfig('source_alert_thresholds', JSON.stringify(thresholds));
+      await this.processSourceHealthAlerts();
+      res.json({ success: true });
+    });
+
+    this.app.get('/api/source-alerts/history', this.authMiddleware.bind(this), (req, res) => {
+      res.json(this.db.listSourceAlerts(Number(req.query.limit) || 100));
+    });
+
     // ─── Sync ───────────────────────────────────────────────────────────────
     this.app.post('/api/sync', this.authMiddleware.bind(this), async (req, res) => {
       if (this.syncInProgress) return res.status(409).json({ error: 'Synchronisation déjà en cours' });
@@ -2526,6 +2584,166 @@ class WebUI {
     return nameMap;
   }
 
+  getSourceAlertSources() {
+    const sources = [];
+    const push = (sourceKey, name, kind, paused = false) => {
+      if (sourceKey && !sources.some(source => source.source_key === sourceKey)) {
+        sources.push({ source_key: sourceKey, name: name || sourceKey, kind, paused: Boolean(paused) });
+      }
+    };
+    this.getRssSources().forEach(source => push(`rss:${source.id}`, source.name, 'rss', source.paused));
+    this.rssParser.pastebinParser.getSources().forEach(source => {
+      push(`pastebin:${source.id}`, source.name, 'pastebin', source.paused);
+    });
+    this.rssParser.stremioManifestParser.getSources().forEach(source => {
+      push(`stremio:${source.id}`, source.name, 'stremio', source.paused);
+    });
+    this.rssParser.newznabParser.getSources().forEach(source => {
+      push(this.rssParser.newznabParser.scheduleKey(source), source.name, source.kind || 'newznab', source.paused);
+    });
+    this.rssParser.webdavParser.getSources().forEach(source => {
+      push(this.rssParser.webdavParser.sourceKey(source.id), source.name, 'webdav', source.paused);
+    });
+    this.rssParser.waCustomParser.getSources().forEach(source => {
+      push(this.rssParser.waCustomParser.sourceKey(source.id), source.name, 'wacustom', source.paused);
+    });
+    this.rssParser.mediaServerParser.getSources().forEach(source => {
+      push(this.rssParser.mediaServerParser.sourceKey(source.id), source.name, source.kind, source.paused);
+    });
+    this.rssParser.streamFusionParser.getSources().forEach(source => {
+      push(this.rssParser.streamFusionParser.sourceKey(source.id), source.name, 'streamfusion', source.paused);
+    });
+    this.rssParser.cometNetParser.getSources().forEach(source => {
+      push(this.rssParser.cometNetParser.sourceKey(source.id), source.name, 'cometnet', source.paused);
+    });
+    this.rssParser.mdblistGuideParser.getSources().forEach(source => {
+      push(this.rssParser.mdblistGuideParser.sourceKey(source.id), source.name, source.kind || 'mdblist', source.paused);
+    });
+    return sources.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  }
+
+  getSourceAlertConfig() {
+    let thresholds = {};
+    try {
+      thresholds = JSON.parse(this.db.getConfig('source_alert_thresholds') || '{}');
+    } catch {}
+    const defaultThreshold = Math.min(Math.max(
+      Number(this.db.getConfig('source_alert_default_threshold')) || 3,
+      1
+    ), 100);
+    return {
+      enabled: this.db.getConfig('source_alerts_enabled') !== 'false',
+      defaultThreshold,
+      thresholds
+    };
+  }
+
+  async sendSourceHealthAlert(alert) {
+    const channels = ['webui'];
+    const discordEnabled = this.db.getConfig('discord_notifications_enabled') === 'true';
+    const webhookUrl = this.db.getConfig('discord_webhook_url');
+    if (discordEnabled && webhookUrl && await sendDiscordSourceAlert(webhookUrl, alert)) {
+      channels.push('discord');
+    }
+    const appriseEnabled = this.db.getConfig('apprise_enabled') === 'true';
+    const appriseServerUrl = this.db.getConfig('apprise_server_url');
+    if (appriseEnabled && appriseServerUrl) {
+      const isRecovery = alert.eventType === 'recovery';
+      const sent = await sendAppriseNotification(
+        appriseServerUrl,
+        this.db.getConfig('apprise_urls'),
+        {
+          title: isRecovery
+            ? `✅ Source rétablie — ${alert.sourceName}`
+            : `⚠️ Source indisponible — ${alert.sourceName}`,
+          body: `${alert.message || ''}\n\nSource : \`${alert.sourceKey}\`${
+            isRecovery ? '' : `\nÉchecs consécutifs : ${alert.consecutiveErrors} / seuil ${alert.threshold}`
+          }`,
+          type: isRecovery ? 'success' : 'failure'
+        }
+      );
+      if (sent) channels.push('apprise');
+    }
+    this.db.recordSourceAlert({ ...alert, channels });
+  }
+
+  async processSourceHealthAlerts() {
+    if (this.sourceAlertProcessing) return this.sourceAlertProcessing;
+    this.sourceAlertProcessing = this.processSourceHealthAlertsUnlocked();
+    try {
+      return await this.sourceAlertProcessing;
+    } finally {
+      this.sourceAlertProcessing = null;
+    }
+  }
+
+  async processSourceHealthAlertsUnlocked() {
+    const config = this.getSourceAlertConfig();
+    const pendingEvents = this.db.getPendingSourceHealthEvents(500);
+    if (!config.enabled) {
+      this.db.markSourceHealthEventsProcessed(pendingEvents.map(event => event.id));
+      return;
+    }
+    const sourceMap = new Map(this.getSourceAlertSources().map(source => [source.source_key, source]));
+    const processFailure = async ({
+      source_key: sourceKey,
+      consecutive_errors: consecutiveErrors,
+      error_message: errorMessage
+    }) => {
+      const source = sourceMap.get(sourceKey);
+      // Certains connecteurs conservent aussi des états techniques internes
+      // (par exemple une catégorie Newznab). L'alerte reste rattachée à la
+      // source configurable, afin d'éviter les doublons et des seuils invisibles.
+      if (!source) return;
+      const threshold = Math.min(Math.max(Number(config.thresholds[sourceKey]) || config.defaultThreshold, 1), 100);
+      const alertState = this.db.getSourceAlertState(sourceKey);
+      if (Number(consecutiveErrors) < threshold || alertState.outage_notified) return;
+      const alert = {
+        sourceKey,
+        sourceName: source?.name || sourceKey,
+        eventType: 'failure',
+        threshold,
+        consecutiveErrors: Number(consecutiveErrors) || threshold,
+        message: errorMessage || this.db.getSourceSyncState(sourceKey)?.last_error_message || 'Source indisponible'
+      };
+      await this.sendSourceHealthAlert(alert);
+      this.db.setSourceAlertState(sourceKey, {
+        outageNotified: true,
+        lastAlertAt: Date.now()
+      });
+    };
+    const processRecovery = async sourceKey => {
+      if (!sourceMap.has(sourceKey)) return;
+      const alertState = this.db.getSourceAlertState(sourceKey);
+      if (!alertState.outage_notified) return;
+      const source = sourceMap.get(sourceKey);
+      const threshold = Math.min(Math.max(Number(config.thresholds[sourceKey]) || config.defaultThreshold, 1), 100);
+      await this.sendSourceHealthAlert({
+        sourceKey,
+        sourceName: source?.name || sourceKey,
+        eventType: 'recovery',
+        threshold,
+        consecutiveErrors: 0,
+        message: 'La source répond de nouveau correctement.'
+      });
+      this.db.setSourceAlertState(sourceKey, {
+        outageNotified: false,
+        lastRecoveryAt: Date.now()
+      });
+    };
+
+    for (const event of pendingEvents) {
+      if (event.event_type === 'failure') await processFailure(event);
+      if (event.event_type === 'recovery') await processRecovery(event.source_key);
+    }
+    // Prend également en compte un seuil abaissé après le dernier échec.
+    for (const state of this.db.listSourceSyncStates()) {
+      if (Number(state.consecutive_errors) > 0) await processFailure(state);
+      else await processRecovery(state.source_key);
+    }
+    this.db.markSourceHealthEventsProcessed(pendingEvents.map(event => event.id));
+  }
+
   getAdditionalRssSources() {
     try {
       const values = JSON.parse(this.db.getConfig('rss_additional_urls') || '[]');
@@ -2592,6 +2810,7 @@ class WebUI {
         forceAll,
         defaultIntervalMinutes: Number(this.db.getConfig('refresh_interval')) || 180
       });
+      await this.processSourceHealthAlerts();
       console.log('Sources récupérées - Éléments: ' + rssData.films.length);
 
       const allItems = [...rssData.films];
@@ -2735,6 +2954,11 @@ class WebUI {
     } catch (error) {
       console.error('Sync error:', error);
       console.error('Stack trace:', error.stack);
+      try {
+        await this.processSourceHealthAlerts();
+      } catch (alertError) {
+        console.error('Source alert processing error:', alertError);
+      }
       this.syncStatus.stage   = 'Erreur';
       this.syncStatus.error   = error.message;
       this.syncStatus.running = false;

@@ -766,6 +766,32 @@ input:checked + .slider::before { transform: translateX(22px); }
 .sensitive-source-value { font-family: monospace; }
 .source-export-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
 .source-export-actions label { font-size: 12px; color: var(--text-muted); }
+.source-alert-settings {
+  margin: 16px 0 22px; padding: 16px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2);
+}
+.source-alert-settings h3 { margin: 0 0 8px; }
+.source-alert-threshold-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px; }
+.source-alert-threshold-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 82px; align-items: center; gap: 12px;
+  padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+}
+.source-alert-threshold-row span { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.source-alert-threshold-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-alert-threshold-row small { color: var(--text-muted); }
+.source-alert-threshold-row input { width: 82px; }
+.source-alert-history-row {
+  display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px;
+  padding: 9px 0; border-top: 1px solid var(--border);
+}
+.source-alert-history-row > span:last-child { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.source-alert-history-row small { color: var(--text-muted); overflow-wrap: anywhere; }
+.source-alert-icon {
+  width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; font-weight: 800;
+}
+.source-alert-history-row.failure .source-alert-icon { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.source-alert-history-row.recovery .source-alert-icon { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
 .manifest-history-head { padding: 10px 0; color: var(--text-muted); font-size: 12px; }
 .manifest-history-row {
   display: grid; grid-template-columns: 54px minmax(0, 1fr) auto;
