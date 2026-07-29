@@ -310,13 +310,15 @@
           <button type="button" class="btn-primary" id="pastebinSubmit" onclick="savePastebin()" data-i18n="sources_add">Ajouter</button>
           <button type="button" class="btn-sm" id="pastebinCancel" onclick="resetPastebinForm()" hidden>Annuler</button>
         </div>
-        <label class="check-inline" style="margin-top:10px">
-          <input id="pastebinAssumeRequiredTags" type="checkbox" checked>
-          <span data-i18n="sources_pastebin_assume_tags">Considérer le contenu de ce Pastebin comme déjà conforme aux tags requis</span>
-        </label>
-        <a href="#required_tags" class="inline-help-link"
-          onclick="navigateToRequiredTags(event)"
-          data-i18n="sources_required_tags_link">Voir les tags requis</a>
+        <div class="pastebin-tags-setting">
+          <label class="check-inline">
+            <input id="pastebinAssumeRequiredTags" type="checkbox" checked>
+            <span data-i18n="sources_pastebin_assume_tags">Considérer le contenu de ce Pastebin comme déjà conforme aux tags requis</span>
+          </label>
+          <a href="#required_tags" class="inline-help-link"
+            onclick="navigateToRequiredTags(event)"
+            data-i18n="sources_required_tags_link">Voir les tags requis</a>
+        </div>
         <div class="integration-cat-hint" style="margin-top:8px" data-i18n="sources_pastebin_assume_tags_help">
           À activer lorsque le Pastebin contient uniquement des médias dans la langue souhaitée,
           mais que ses titres ne portent pas eux-mêmes les marqueurs FRENCH, MULTi, VFF, etc.
