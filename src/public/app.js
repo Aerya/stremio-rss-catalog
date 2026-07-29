@@ -22,7 +22,7 @@ function navigate(sectionId) {
   }
   if (sectionId === 'sources')  loadSourceManager();
   if (sectionId === 'catalogs') loadCatalogManager();
-  if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); }
+  if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); refreshSyncStatus(); }
   if (sectionId === 'failures') loadFailed();
   if (sectionId === 'config')   { loadConfig(); loadMaintenanceHistory(); }
   if (sectionId === 'overview') { loadStats(); loadOverview(); }
@@ -911,9 +911,14 @@ function sourceRuntimeHtml(source) {
     : runtime.last_duration_ms < 1000
       ? `${runtime.last_duration_ms} ms`
       : `${(runtime.last_duration_ms / 1000).toFixed(1)} s`;
-  const quota = runtime.quota_limit
-    ? `${Number(runtime.quota_used || 0).toLocaleString()} / ${Number(runtime.quota_limit).toLocaleString()}`
+  const displayedQuotaLimit = runtime.configured_quota_limit ?? runtime.quota_limit;
+  const quota = displayedQuotaLimit
+    ? runtime.quota_unit === 'catalogue'
+      ? `${Number(displayedQuotaLimit).toLocaleString()} par catalogue`
+      : `${Number(runtime.quota_used || 0).toLocaleString()} / ${Number(displayedQuotaLimit).toLocaleString()}`
     : 'non communiqué';
+  const quotaReached = runtime.quota_status === 'limit_reached'
+    && Number(runtime.quota_used || 0) >= Number(displayedQuotaLimit || 0);
   const status = source.paused
     ? '<span class="source-runtime-paused">En pause</span>'
     : runtime.last_error_at
@@ -925,7 +930,7 @@ function sourceRuntimeHtml(source) {
     <span>Prochaine collecte : ${source.paused ? '—' : fmtDate(runtime.next_sync_at)}</span>
     <span>Durée : ${duration}</span>
     <span>Éléments lus : ${Number(runtime.last_items_fetched || 0).toLocaleString()}</span>
-    <span>Plafond : ${quota}${runtime.quota_status === 'limit_reached' ? ' (atteint)' : ''}</span>
+    <span>Plafond : ${quota}${quotaReached ? ' (atteint)' : ''}</span>
     <span>Fréquence : ${runtime.interval_minutes || '—'} min${runtime.uses_global_interval ? ' (globale)' : ''}</span>
     ${runtime.last_error_message ? `<span class="source-runtime-error" title="${escHtml(runtime.last_error_message)}">${escHtml(runtime.last_error_message)}</span>` : ''}
   </div>`;
@@ -2553,29 +2558,39 @@ async function startSync() {
   try {
     const r = await fetch('/api/sync', { method: 'POST' });
     const d = await r.json();
-    if (!r.ok) { alert(d.error || 'Erreur'); return; }
+    if (!r.ok && r.status !== 409) { alert(d.error || 'Erreur'); return; }
     document.getElementById('syncStatusBox').style.display = 'block';
-    pollSync();
+    await refreshSyncStatus();
   } catch (e) { alert('Erreur réseau'); }
 }
 window.startSync = startSync;
 
+async function refreshSyncStatus() {
+  try {
+    const r = await fetch(`/api/sync/status?_=${Date.now()}`, { cache: 'no-store' });
+    const st = await r.json();
+    updateSyncUI(st);
+    if (st.running) pollSync();
+    return st;
+  } catch (e) {
+    console.error('refreshSyncStatus', e);
+    return null;
+  }
+}
+
 function pollSync() {
-  if (syncPoller) clearInterval(syncPoller);
+  if (syncPoller) return;
   syncPoller = setInterval(async () => {
-    try {
-      const r  = await fetch('/api/sync/status');
-      const st = await r.json();
-      updateSyncUI(st);
-      if (!st.running) {
-        clearInterval(syncPoller);
-        syncPoller = null;
-        loadStats();
-        loadOverview();
-        loadSyncHistory();
-      }
-    } catch (e) { console.error('pollSync', e); }
-  }, 1500);
+    const st = await refreshSyncStatus();
+    if (st && !st.running) {
+      clearInterval(syncPoller);
+      syncPoller = null;
+      loadStats();
+      loadOverview();
+      loadSyncHistory();
+      loadSourceManager();
+    }
+  }, 1000);
 }
 
 function updateSyncUI(st) {
@@ -3536,7 +3551,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadInstallUrl();
 
   // Vérifier si une sync est en cours au chargement
-  fetch('/api/sync/status').then(r => r.json()).then(st => {
+  fetch(`/api/sync/status?_=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).then(st => {
     if (st && st.running) {
       navigate('sync');
       updateSyncUI(st);

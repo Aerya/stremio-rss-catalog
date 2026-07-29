@@ -76,8 +76,12 @@ class MediaServerParser {
       const sectionId = library.id.split(':')[1];
       try {
         const result = await this.plexRequest(source, `/library/sections/${encodeURIComponent(sectionId)}/collections`);
-        const rows = result?.MediaContainer?.Directory || [];
-        for (const row of (Array.isArray(rows) ? rows : [rows]).filter(Boolean)) {
+        const container = result?.MediaContainer || {};
+        const rows = [
+          ...(Array.isArray(container.Directory) ? container.Directory : container.Directory ? [container.Directory] : []),
+          ...(Array.isArray(container.Metadata) ? container.Metadata : container.Metadata ? [container.Metadata] : [])
+        ];
+        for (const row of rows.filter(Boolean)) {
           collections.push({
             id: `collection:${row.$.ratingKey}`,
             name: `${row.$.title} — ${library.name}`,
@@ -177,7 +181,8 @@ class MediaServerParser {
   plexRows(container) {
     const entries = [
       ...(Array.isArray(container?.Video) ? container.Video : container?.Video ? [container.Video] : []),
-      ...(Array.isArray(container?.Directory) ? container.Directory : container?.Directory ? [container.Directory] : [])
+      ...(Array.isArray(container?.Directory) ? container.Directory : container?.Directory ? [container.Directory] : []),
+      ...(Array.isArray(container?.Metadata) ? container.Metadata : container?.Metadata ? [container.Metadata] : [])
     ];
     return entries.map(entry => {
       const attrs = entry.$ || {};

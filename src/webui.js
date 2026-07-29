@@ -636,7 +636,11 @@ class WebUI {
         paused: Boolean(source.paused),
         max_items_per_catalog: Number(source.maxItemsPerCatalog) || 5000,
         sync_interval_minutes: source.syncIntervalMinutes || null,
-        runtime: this.getSourceRuntime(`stremio:${source.id}`, source.syncIntervalMinutes),
+        runtime: {
+          ...this.getSourceRuntime(`stremio:${source.id}`, source.syncIntervalMinutes),
+          configured_quota_limit: Number(source.maxItemsPerCatalog) || 5000,
+          quota_unit: 'catalogue'
+        },
         catalogs: (source.catalogs || []).map(catalog => ({
           ...catalog,
           source_key: parser.sourceKey(source.id, catalog)
@@ -671,7 +675,7 @@ class WebUI {
           name: String(name).trim() || 'Manifeste Stremio',
           url,
           paused: false,
-          maxItemsPerCatalog: Math.min(Math.max(Number(max_items_per_catalog) || 5000, 1), 20000),
+          maxItemsPerCatalog: parser.normalizeMaxItems(max_items_per_catalog),
           syncIntervalMinutes: this.normalizeSourceInterval(sync_interval_minutes),
           catalogs: inspected.catalogs.map(catalog => ({
             ...catalog,
@@ -689,7 +693,11 @@ class WebUI {
           paused: false,
           max_items_per_catalog: source.maxItemsPerCatalog,
           sync_interval_minutes: source.syncIntervalMinutes || null,
-          runtime: this.getSourceRuntime(`stremio:${source.id}`, source.syncIntervalMinutes),
+          runtime: {
+            ...this.getSourceRuntime(`stremio:${source.id}`, source.syncIntervalMinutes),
+            configured_quota_limit: source.maxItemsPerCatalog,
+            quota_unit: 'catalogue'
+          },
           catalogs: source.catalogs.map(catalog => ({
             ...catalog,
             source_key: parser.sourceKey(source.id, catalog)
@@ -716,7 +724,7 @@ class WebUI {
         }));
       }
       if (req.body.max_items_per_catalog !== undefined) {
-        allowed.maxItemsPerCatalog = Math.min(Math.max(Number(req.body.max_items_per_catalog) || 5000, 1), 20000);
+        allowed.maxItemsPerCatalog = parser.normalizeMaxItems(req.body.max_items_per_catalog);
       }
       if (req.body.sync_interval_minutes !== undefined) {
         allowed.syncIntervalMinutes = this.normalizeSourceInterval(req.body.sync_interval_minutes);
@@ -1858,6 +1866,7 @@ class WebUI {
     });
 
     this.app.get('/api/sync/status', this.authMiddleware.bind(this), (req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.json(this.syncStatus || { running: false });
     });
 
@@ -2405,11 +2414,16 @@ class WebUI {
   getAdditionalRssSources() {
     try {
       const values = JSON.parse(this.db.getConfig('rss_additional_urls') || '[]');
-      return (Array.isArray(values) ? values : []).map(value => {
+      return (Array.isArray(values) ? values : []).map((value, index) => {
         const source = typeof value === 'string' ? { url: value } : { ...value };
-        source.id ||= `rss-${crypto.createHash('sha256').update(source.url || crypto.randomUUID()).digest('hex').slice(0, 12)}`;
         source.name ||= source.url;
         source.force ||= 'auto';
+        // Les anciennes configurations ne stockaient pas d'identifiant. Plusieurs
+        // variantes (Films/Séries/Docs) peuvent partager la même URL : l'URL seule
+        // produisait alors le même ID et les actions visaient toujours la première.
+        source.id ||= `rss-${crypto.createHash('sha256')
+          .update(`${source.url || ''}\n${source.name || ''}\n${source.force}\n${index}`)
+          .digest('hex').slice(0, 12)}`;
         source.paused = Boolean(source.paused);
         source.syncIntervalMinutes = this.normalizeSourceInterval(source.syncIntervalMinutes);
         return source;

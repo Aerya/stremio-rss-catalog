@@ -626,7 +626,7 @@
           <input id="stremioSourceName" type="text" placeholder="Nom de la source" data-i18n-placeholder="sources_name_placeholder" class="rss-name-input">
           <input id="stremioSourceUrl" type="password" autocomplete="off"
             placeholder="https://example.net/manifest.json?..." class="flex-1">
-          <input id="stremioMaxItems" type="number" min="1" max="20000" value="5000" title="Maximum par catalogue">
+          <input id="stremioMaxItems" type="number" min="1" max="100000" value="5000" title="Maximum par catalogue">
           <input id="stremioInterval" type="number" min="5" max="43200" placeholder="Fréquence (min)" title="Vide : fréquence globale">
           <button type="button" class="btn-sm" onclick="previewStremioSource()" data-i18n="sources_preview">Prévisualiser</button>
           <button type="button" class="btn-primary" id="stremioSubmit" onclick="saveStremioSource()" data-i18n="sources_add">Ajouter</button>
@@ -921,6 +921,7 @@
             <label>Tags requis (parsing)</label>
             <input type="text" id="required_tags" name="required_tags"
               placeholder="FRENCH,MULTi,TRUEFRENCH,VOF,VFF,VFI,VFQ">
+            <small>Liste libre séparée par des virgules (ex. VO, GERMAN, SWEDISH). Laissez vide pour accepter tous les titres.</small>
           </div>
         </div>
 

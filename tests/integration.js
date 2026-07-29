@@ -377,15 +377,22 @@ async function main() {
     }
     if (req.url.startsWith('/plex/library/sections/1/collections')) {
       res.setHeader('Content-Type', 'application/xml');
-      return res.end('<MediaContainer><Directory ratingKey="50" title="Classiques"/></MediaContainer>');
+      return res.end('<MediaContainer><Metadata ratingKey="50" title="Classiques"/></MediaContainer>');
     }
     if (req.url.startsWith('/plex/library/sections/2/collections')) {
       res.setHeader('Content-Type', 'application/xml');
       return res.end('<MediaContainer/>');
     }
     if (req.url.startsWith('/plex/library/sections/1/all')) {
+      const requestUrl = new URL(req.url, baseUrl);
+      const offset = Number(requestUrl.searchParams.get('X-Plex-Container-Start') || 0);
+      const rows = [
+        '<Metadata ratingKey="101" type="movie" title="Film Plex" year="2026"><Guid id="imdb://tt0000930"/><Guid id="tmdb://930"/></Metadata>',
+        '<Metadata ratingKey="102" type="movie" title="Second Film Plex" year="2025"><Guid id="imdb://tt0000932"/></Metadata>'
+      ];
+      const page = rows.slice(offset, offset + 1).join('');
       res.setHeader('Content-Type', 'application/xml');
-      return res.end('<MediaContainer totalSize="1" size="1"><Video ratingKey="101" type="movie" title="Film Plex" year="2026"><Guid id="imdb://tt0000930"/><Guid id="tmdb://930"/></Video></MediaContainer>');
+      return res.end(`<MediaContainer totalSize="2" size="${page ? 1 : 0}" offset="${offset}">${page}</MediaContainer>`);
     }
     if (req.url.startsWith('/plex/library/collections/50/children')) {
       res.setHeader('Content-Type', 'application/xml');
@@ -404,12 +411,21 @@ async function main() {
           TotalRecordCount: 1
         }));
       }
-      return res.end(JSON.stringify({
-        Items: [{
+      const rows = [
+        {
           Id: 'jf-1', Name: 'Série Jellyfin', Type: 'Series', ProductionYear: 2025,
           ProviderIds: { Imdb: 'tt0000931', Tmdb: '931' }, Genres: ['Drama'], CommunityRating: 8.2
-        }],
-        TotalRecordCount: 1
+        },
+        {
+          Id: 'jf-2', Name: 'Film Jellyfin', Type: 'Movie', ProductionYear: 2026,
+          ProviderIds: { Imdb: 'tt0000933', Tmdb: '933' }, Genres: ['Adventure'], CommunityRating: 7.4
+        }
+      ];
+      const offset = Number(requestUrl.searchParams.get('StartIndex') || 0);
+      const limit = Number(requestUrl.searchParams.get('Limit') || 100);
+      return res.end(JSON.stringify({
+        Items: rows.slice(offset, offset + limit),
+        TotalRecordCount: rows.length
       }));
     }
 
@@ -504,17 +520,18 @@ async function main() {
     const mediaServerParser = new MediaServerParser(db, () => ({ timeout: 2000 }));
     const plexSource = {
       id: 'plex-test', kind: 'plex', name: 'Plex Test', url: `${baseUrl}/plex`,
-      apiKey: 'plex-token', targets: ['library:1', 'collection:50'], maxItems: 100
+      apiKey: 'plex-token', targets: ['library:1', 'collection:50'], maxItems: 100, pageSize: 1
     };
     const plexInspection = await mediaServerParser.inspect(plexSource);
     assert.deepEqual(plexInspection.targets.map(target => target.id), ['library:1', 'library:2', 'collection:50']);
     const plexItems = await mediaServerParser.fetchSource(plexSource);
-    assert.equal(plexItems.length, 1);
+    assert.equal(plexItems.length, 2);
     assert.equal(plexItems[0].direct_meta.imdb_id, 'tt0000930');
+    assert.equal(plexItems[1].direct_meta.imdb_id, 'tt0000932');
 
     const jellyfinSource = {
       id: 'jellyfin-test', kind: 'jellyfin', name: 'Jellyfin Test', url: `${baseUrl}/jellyfin`,
-      apiKey: 'jellyfin-token', targets: ['library:lib-tv', 'collection:jf-collection-1'], maxItems: 100
+      apiKey: 'jellyfin-token', targets: ['library:lib-tv', 'collection:jf-collection-1'], maxItems: 100, pageSize: 1
     };
     const jellyfinInspection = await mediaServerParser.inspect(jellyfinSource);
     assert.equal(jellyfinInspection.targets[0].type, 'series');
@@ -523,8 +540,9 @@ async function main() {
       ['library:lib-tv', 'collection:jf-collection-1']
     );
     const jellyfinItems = await mediaServerParser.fetchSource(jellyfinSource);
-    assert.equal(jellyfinItems.length, 1);
+    assert.equal(jellyfinItems.length, 2);
     assert.equal(jellyfinItems[0].direct_meta.imdb_id, 'tt0000931');
+    assert.equal(jellyfinItems[1].direct_meta.imdb_id, 'tt0000933');
     console.log('✓ Bibliothèques et collections Plex/Jellyfin indexées avec identifiants directs');
 
     const rssParser = new RSSParser({}, db);
@@ -762,6 +780,25 @@ async function main() {
     assert.equal(sourceNames['stremio-manifest:remote-second:movie:remote_movies'], 'Manifeste secondaire — Sélection distante');
     assert.equal(sourceNames['webdav:webdav-test'], 'WebDAV de test');
     assert.equal(sourceNames['wacustom:wacustom-test'], 'WaCustom de test');
+    db.setConfig('rss_additional_urls', JSON.stringify([
+      { name: 'Même source Films', url: `${baseUrl}/shared-rss`, force: 'films' },
+      { name: 'Même source Séries', url: `${baseUrl}/shared-rss`, force: 'series' },
+      { name: 'Même source Docs', url: `${baseUrl}/shared-rss`, force: 'documentaires' }
+    ]));
+    const legacyRssSources = webuiForNames.getAdditionalRssSources();
+    assert.equal(new Set(legacyRssSources.map(source => source.id)).size, 3);
+    assert.deepEqual(
+      webuiForNames.getAdditionalRssSources().map(source => source.id),
+      legacyRssSources.map(source => source.id)
+    );
+    assert.equal(stremioParser.normalizeMaxItems(100000), 100000);
+    assert.equal(stremioParser.normalizeMaxItems(200000), 100000);
+    db.setConfig('required_tags', 'GERMAN,SWEDISH,C++');
+    assert.equal(rssParser.filterByRequiredTags('Film.2026.GERMAN.1080p'), true);
+    assert.equal(rssParser.filterByRequiredTags('Film.2026.FRENCH.1080p'), false);
+    assert.equal(rssParser.filterByRequiredTags('Tutoriel.C++.2026'), true);
+    db.setConfig('required_tags', '');
+    assert.equal(rssParser.filterByRequiredTags('Film.2026.VO.1080p'), true);
     const apiMedia = db.getMediaList({ search: 'API Film One' }).items[0];
     assert.ok(apiMedia.source_urls.includes('newznab:newznab-test:movie'));
 
@@ -911,6 +948,7 @@ async function main() {
     console.log('✓ Reprise des catalogues historiques et de leurs contenus');
     console.log('✓ Suppression durable sans suppression des médias');
     console.log('✓ Import générique de manifestes Stremio avec inspection anonymisée');
+    console.log('✓ Identifiants RSS historiques uniques, plafond manifeste et tags libres');
     console.log('✓ Identifiants Kitsu/YouTubio natifs et catalogue YouTube sans conversion en film');
     console.log('✓ Guide MDBList limité aux médias locaux et ordre de liste conservé');
     console.log('✓ Guides ListSync, SuggestArr et Agregarr normalisés sans importer les médias absents');

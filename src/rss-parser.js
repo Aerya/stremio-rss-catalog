@@ -266,7 +266,10 @@ class RSSParser {
     const raw = this.db.getConfig('required_tags') || '';
     const tags = raw.split(',').map(t => t.trim()).filter(t => t.length > 0);
     if (tags.length === 0) return true;
-    return tags.some(tag => new RegExp('\\b' + tag + '\\b', 'i').test(title));
+    return tags.some(tag => {
+      const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, 'iu').test(title);
+    });
   }
 
   applyForce(catalogType, type, force) {

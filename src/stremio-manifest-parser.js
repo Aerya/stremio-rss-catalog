@@ -16,6 +16,10 @@ class StremioManifestParser {
     }
   }
 
+  normalizeMaxItems(value) {
+    return Math.min(Math.max(Number(value) || 5000, 1), 100000);
+  }
+
   maskUrl(value) {
     return value ? 'manifest.json — URL masquée' : 'URL masquée';
   }
@@ -164,7 +168,7 @@ class StremioManifestParser {
   }
 
   async fetchCatalog(source, catalog) {
-    const limit = Math.min(Math.max(Number(source.maxItemsPerCatalog) || 5000, 1), 20000);
+    const limit = this.normalizeMaxItems(source.maxItemsPerCatalog);
     const items = [];
     const seenIds = new Set();
     let skip = 0;
@@ -207,6 +211,8 @@ class StremioManifestParser {
       if (!forceAll && !this.db.isSourceDue(stateKey, intervalMinutes)) continue;
       const startedAt = this.db.beginSourceSync(stateKey, 'stremio');
       let fetched = 0;
+      let largestCatalogFetched = 0;
+      let limitReached = false;
       let errors = 0;
       for (const catalog of source.catalogs || []) {
         if (
@@ -217,6 +223,8 @@ class StremioManifestParser {
         try {
           const catalogItems = await this.fetchCatalog(source, catalog);
           fetched += catalogItems.length;
+          largestCatalogFetched = Math.max(largestCatalogFetched, catalogItems.length);
+          limitReached ||= catalogItems.length >= this.normalizeMaxItems(source.maxItemsPerCatalog);
           items.push(...catalogItems);
           this.db.recordFeedSuccess(this.sourceKey(source.id, catalog));
         } catch (error) {
@@ -235,9 +243,9 @@ class StremioManifestParser {
           sourceKind: 'stremio',
           startedAt,
           itemsFetched: fetched,
-          quotaLimit: Number(source.maxItemsPerCatalog) || 5000,
-          quotaUsed: fetched,
-          quotaStatus: fetched >= (Number(source.maxItemsPerCatalog) || 5000) ? 'limit_reached' : 'available'
+          quotaLimit: this.normalizeMaxItems(source.maxItemsPerCatalog),
+          quotaUsed: largestCatalogFetched,
+          quotaStatus: limitReached ? 'limit_reached' : 'available'
         });
       }
     }
