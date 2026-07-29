@@ -9,7 +9,32 @@ on:
     types: [published]
 
 jobs:
+  tests:
+    name: Tests et audit de sécurité
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Exécuter les tests d’intégration
+        run: npm test
+
+      - name: Auditer les dépendances de production
+        run: npm audit --omit=dev --audit-level=high
+
   build-and-push:
+    needs: tests
     permissions:
       contents: read
       packages: write
@@ -59,7 +84,7 @@ jobs:
   dependabot-automerge:
     name: Fusion Dependabot après validation
     if: github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
-    needs: build-and-push
+    needs: [tests, build-and-push]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -72,8 +97,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fusionner les mises à jour mineures et correctives
-        if: contains(fromJSON('["version-update:semver-minor","version-update:semver-patch"]'), steps.metadata.outputs.update-type)
-        run: gh pr merge --squash "$PR_URL"
+        if: steps.metadata.outputs.update-type == 'version-update:semver-minor' || steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        run: gh pr merge --squash --delete-branch "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
