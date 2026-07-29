@@ -31,6 +31,60 @@ const EMISSION_DISQUALIFYING_GENRE_IDS = new Set([878, 14, 10765, 16, 27]);
 // Drama (18), Comédie (35), Romance (10749), Action (28), Horreur (27), SF (878), Fantastique (14), Thriller (53)
 const CONCERT_DISQUALIFYING_GENRE_IDS = new Set([18, 35, 10749, 28, 27, 878, 14, 53]);
 
+const DOCUMENTARY_KEYWORDS = new Set(['documentary', 'docuseries']);
+const SPECTACLE_KEYWORDS = new Set([
+  'stand-up comedy', 'stand up comedy', 'comedy special', 'one-man show',
+  'one-woman show', 'stage play', 'theatre', 'theater', 'circus', 'magic show'
+]);
+const CONCERT_KEYWORDS = new Set([
+  'concert', 'concert film', 'live performance', 'music festival', 'live music'
+]);
+const EMISSION_KEYWORDS = new Set([
+  'talk show', 'game show', 'reality show', 'variety show', 'television news', 'magazine show'
+]);
+const EMISSION_TV_TYPES = new Set(['news', 'reality', 'talk show']);
+const DOCUMENTARY_TV_TYPES = new Set(['documentary']);
+
+function normalizeMatchTitle(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function levenshteinRatio(left, right) {
+  if (left === right) return 1;
+  if (!left || !right) return 0;
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i++) {
+    let diagonal = previous[0];
+    previous[0] = i;
+    for (let j = 1; j <= right.length; j++) {
+      const above = previous[j];
+      previous[j] = Math.min(
+        previous[j] + 1,
+        previous[j - 1] + 1,
+        diagonal + (left[i - 1] === right[j - 1] ? 0 : 1)
+      );
+      diagonal = above;
+    }
+  }
+  return 1 - (previous[right.length] / Math.max(left.length, right.length));
+}
+
+function tokenDice(left, right) {
+  const leftTokens = new Set(left.split(' ').filter(Boolean));
+  const rightTokens = new Set(right.split(' ').filter(Boolean));
+  if (!leftTokens.size || !rightTokens.size) return 0;
+  let common = 0;
+  for (const token of leftTokens) if (rightTokens.has(token)) common++;
+  return (2 * common) / (leftTokens.size + rightTokens.size);
+}
+
 class TMDBMatcher {
   constructor(db) {
     this.db   = db;
@@ -111,68 +165,84 @@ class TMDBMatcher {
     throw new Error(`Max retries (${maxRetries}) exceeded for ${url}`);
   }
 
-  async searchMovie(title, year = null, language = 'fr-FR') {
-    const apiKey = this.getApiKey();
-    if (!apiKey) return null;
-    try {
-      const params = { api_key: apiKey, query: title, language, include_adult: true };
-      if (year) params.year = year;
-      const response = await this._fetchWithRetry(
-        `${this.baseUrl}/search/movie`, params, this.getAxiosConfig()
-      );
-      if (response.data.results && response.data.results.length > 0) {
-        const movie = response.data.results[0];
-        const externalIds = await this.getExternalIds('movie', movie.id);
-        return {
-          tmdb_id: movie.id,
-          imdb_id: externalIds?.imdb_id || null,
-          name: movie.title,
-          year: movie.release_date ? movie.release_date.substring(0, 4) : null,
-          poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : null,
-          background: movie.backdrop_path ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}` : null,
-          description: movie.overview || null,
-          genres: movie.genre_ids || [],
-          vote_average: movie.vote_average || null,
-          original_language: movie.original_language || null,
-          origin_country: []
-        };
-      }
-      return null;
-    } catch (error) {
-      console.error(`[TMDB] Error searching movie "${title}":`, error.message);
-      return null;
-    }
+  async searchMovie(title, year = null, language = 'fr-FR', expectedTitle = title, expectedYear = year) {
+    return this.searchMediaCandidates('movie', title, year, language, expectedTitle, expectedYear);
   }
 
-  async searchTVShow(title, year = null, language = 'fr-FR') {
+  async searchTVShow(title, year = null, language = 'fr-FR', expectedTitle = title, expectedYear = year) {
+    return this.searchMediaCandidates('tv', title, year, language, expectedTitle, expectedYear);
+  }
+
+  scoreCandidate(candidate, expectedTitle, expectedYear, mediaType) {
+    const expected = normalizeMatchTitle(expectedTitle);
+    const candidateTitles = [
+      candidate.title, candidate.name, candidate.original_title, candidate.original_name
+    ].map(normalizeMatchTitle).filter(Boolean);
+    const titleSimilarity = candidateTitles.reduce((best, candidateTitle) => Math.max(
+      best,
+      levenshteinRatio(expected, candidateTitle),
+      tokenDice(expected, candidateTitle)
+    ), 0);
+    const exactTitle = candidateTitles.includes(expected);
+    const candidateYear = String(candidate.release_date || candidate.first_air_date || '').slice(0, 4);
+    const requestedYear = /^\d{4}$/.test(String(expectedYear || '')) ? Number(expectedYear) : null;
+    const actualYear = /^\d{4}$/.test(candidateYear) ? Number(candidateYear) : null;
+    let yearPoints = 0;
+    let yearReason = 'année inconnue';
+    if (requestedYear && actualYear) {
+      const difference = Math.abs(requestedYear - actualYear);
+      yearPoints = difference === 0 ? 15 : difference === 1 ? 8 : difference === 2 ? 2 : -12;
+      yearReason = difference === 0 ? 'année exacte' : `écart de ${difference} an(s)`;
+    }
+    const popularityPoints = Math.min(5, Math.log10(Math.max(1, Number(candidate.popularity) || 1)) * 2);
+    const score = Math.max(0, Math.min(
+      100,
+      titleSimilarity * 70 + (exactTitle ? 15 : 0) + yearPoints + popularityPoints
+    ));
+    return {
+      candidate,
+      score,
+      reasons: [
+        `titre ${Math.round(titleSimilarity * 100)} %`,
+        yearReason,
+        mediaType === 'tv' ? 'type série' : 'type film'
+      ]
+    };
+  }
+
+  async searchMediaCandidates(
+    mediaType, title, year = null, language = 'fr-FR',
+    expectedTitle = title, expectedYear = year
+  ) {
     const apiKey = this.getApiKey();
     if (!apiKey) return null;
     try {
       const params = { api_key: apiKey, query: title, language, include_adult: true };
-      if (year) params.first_air_date_year = year;
+      if (year) params[mediaType === 'tv' ? 'first_air_date_year' : 'year'] = year;
       const response = await this._fetchWithRetry(
-        `${this.baseUrl}/search/tv`, params, this.getAxiosConfig()
+        `${this.baseUrl}/search/${mediaType}`, params, this.getAxiosConfig()
       );
-      if (response.data.results && response.data.results.length > 0) {
-        const show = response.data.results[0];
-        const externalIds = await this.getExternalIds('tv', show.id);
-        return {
-          tmdb_id: show.id,
-          imdb_id: externalIds?.imdb_id || null,
-          name: show.name,
-          year: show.first_air_date ? show.first_air_date.substring(0, 4) : null,
-          poster: show.poster_path ? `https://image.tmdb.org/t/p/w500${show.poster_path}` : null,
-          background: show.backdrop_path ? `https://image.tmdb.org/t/p/original${show.backdrop_path}` : null,
-          description: show.overview || null,
-          genres: show.genre_ids || [],
-          vote_average: show.vote_average || null,
-          original_language: show.original_language || null,
-          origin_country: show.origin_country || []
-        };
+      const ranked = (response.data.results || [])
+        .slice(0, 20)
+        .map(candidate => this.scoreCandidate(candidate, expectedTitle, expectedYear, mediaType))
+        .sort((left, right) => right.score - left.score);
+      const best = ranked[0];
+      const minimum = Math.min(95, Math.max(
+        0, Number(this.db.getConfig('tmdb_match_min_confidence')) || 58
+      ));
+      if (!best || best.score < minimum) {
+        if (best) {
+          console.log(`[TMDB] Candidat refusé pour "${expectedTitle}" : ${best.score.toFixed(1)} < ${minimum}`);
+        }
+        return null;
       }
-      return null;
+      const detailed = await this.fetchByTmdbId(best.candidate.id, mediaType, language);
+      if (!detailed) return null;
+      detailed.match_confidence = Math.round(best.score * 10) / 10;
+      detailed.match_reasons = best.reasons;
+      return detailed;
     } catch (error) {
-      console.error(`[TMDB] Error searching TV "${title}":`, error.message);
+      console.error(`[TMDB] Error searching ${mediaType} "${title}":`, error.message);
       return null;
     }
   }
@@ -197,8 +267,8 @@ class TMDBMatcher {
   async matchItem(item) {
     const isTV = item.type === 'series';
     const search = isTV
-      ? (t, y, l) => this.searchTVShow(t, y, l)
-      : (t, y, l) => this.searchMovie(t, y, l);
+      ? (t, y, l) => this.searchTVShow(t, y, l, item.cleanName, item.year)
+      : (t, y, l) => this.searchMovie(t, y, l, item.cleanName, item.year);
 
     // Titre simplifié : on garde seulement les 3 premiers mots pour les titres longs
     const simplifiedName = item.cleanName.split(' ').slice(0, 3).join(' ');
@@ -494,20 +564,32 @@ class TMDBMatcher {
         }
 
         if (match.genres) {
+          const keywordSet = new Set((match.keywords || []).map(keyword => normalizeMatchTitle(keyword)));
+          const hasKeyword = expected => [...expected]
+            .some(keyword => keywordSet.has(normalizeMatchTitle(keyword)));
+          const tvType = normalizeMatchTitle(match.tv_type);
           const isDocGenre      = match.genres.includes(DOCUMENTARY_GENRE_ID);
+          const isDocKeyword    = hasKeyword(DOCUMENTARY_KEYWORDS);
+          const isDocTvType     = DOCUMENTARY_TV_TYPES.has(tvType);
+          const isDocumentary   = isDocGenre || isDocKeyword || isDocTvType;
           const isAnimeGenre    = match.genres.includes(ANIMATION_GENRE_ID);
           const isMusicGenre    = match.genres.includes(MUSIC_GENRE_ID);
+          const isConcertKeyword = hasKeyword(CONCERT_KEYWORDS);
+          const isSpectacleKeyword = hasKeyword(SPECTACLE_KEYWORDS);
           const isEmissionGenre = match.genres.some(g => EMISSIONS_GENRE_IDS.has(g));
+          const isEmissionMetadata = isEmissionGenre
+            || hasKeyword(EMISSION_KEYWORDS)
+            || EMISSION_TV_TYPES.has(tvType);
           const isJapanese      = match.original_language === 'ja'
                                 || (Array.isArray(match.origin_country) && match.origin_country.includes('JP'));
 
           // ── Couche de sécurité documentaires : s'applique toujours, quel que soit le flux ──
           // Mais annulée si des genres contradictoires sont présents (Action, SF, Fantastique, Horreur)
-          if (isDocGenre && catalogType !== 'documentaires') {
+          if (isDocumentary && catalogType !== 'documentaires') {
             const hasDisqualifier = match.genres.some(g => DOC_DISQUALIFYING_GENRE_IDS.has(g));
-            if (!hasDisqualifier) {
+            if (!hasDisqualifier || isDocKeyword || isDocTvType) {
               catalogType = 'documentaires';
-              console.log(`[TMDB] ↪ Forcé en documentaire (genre 99) : ${match.name}`);
+              console.log(`[TMDB] ↪ Forcé en documentaire (genre/type/mot-clé) : ${match.name}`);
             } else {
               console.log(`[TMDB] ↪ Genre 99 ignoré — genres contradictoires présents : ${match.name}`);
             }
@@ -516,15 +598,15 @@ class TMDBMatcher {
           // ── Détection concert : TMDB genre Music (10402) + confirmation OMDb ──
           // Ne s'applique pas si déjà classé explicitement en spectacles ou animés.
           // Disqualifié si le film a des genres narratifs (biopic, comédie musicale…).
-          if (isMusicGenre && !isDocGenre
+          if ((isMusicGenre || isConcertKeyword) && !isDocumentary
               && catalogType !== 'concerts' && catalogType !== 'animés') {
             const hasConcertDisqualifier = match.genres.some(g => CONCERT_DISQUALIFYING_GENRE_IDS.has(g));
             const omdbConfirmsMusic      = this.omdb.isMusicGenre(omdbResult);
             // Concert si : pas de genres narratifs disqualifiants ET OMDb confirme "Music"
             // OU : flux forcé en concerts (déjà géré en amont)
-            if (!hasConcertDisqualifier && omdbConfirmsMusic) {
+            if (!hasConcertDisqualifier && (omdbConfirmsMusic || isConcertKeyword)) {
               catalogType = 'concerts';
-              console.log(`[TMDB+OMDb] ↪ Classé en concert (genre 10402 + OMDb Music) : ${match.name}`);
+              console.log(`[TMDB+OMDb] ↪ Classé en concert (métadonnées concordantes) : ${match.name}`);
             } else if (isMusicGenre && !hasConcertDisqualifier) {
               console.log(`[TMDB] ↪ Genre Music sans confirmation OMDb — conservé ${catalogType} : ${match.name}`);
             }
@@ -537,19 +619,19 @@ class TMDBMatcher {
             const titleLower    = (item.release_name || item.cleanName || '').toLowerCase();
             const hasTitleHint  = /\b(stand[\-\s]?up|one[\-\s]man[\-\s]show|one[\-\s]woman[\-\s]show|spectacle|th[eé][aâ]tre|cirque|magic\s*show|humori[st]te|caf[eé][\-\s]?th[eé][aâ]tre)\b/i.test(titleLower);
             const omdbIsStandup = this.omdb.isStandupComedy(omdbResult);
-            if (hasTitleHint || omdbIsStandup) {
+            if (hasTitleHint || omdbIsStandup || isSpectacleKeyword) {
               catalogType = 'spectacles';
               console.log(`[TMDB+OMDb] ↪ Classé en spectacle (titre/OMDb) : ${match.name}`);
             }
           }
 
           // ── Reclassifications auto (uniquement si le flux est en mode auto) ──
-          if (item.source_force === 'auto' && !isDocGenre
+          if (item.source_force === 'auto' && !isDocumentary
               && catalogType !== 'concerts' && catalogType !== 'spectacles') {
             if (isAnimeGenre && isJapanese) {
               catalogType = 'animés';
               console.log(`[TMDB] ↪ Reclassifié en animé (genre 16 + JP) : ${match.name}`);
-            } else if (isEmissionGenre && catalogType === 'series') {
+            } else if (isEmissionMetadata && catalogType === 'series') {
               const hasEmissionDisqualifier = match.genres.some(g => EMISSION_DISQUALIFYING_GENRE_IDS.has(g));
               if (!hasEmissionDisqualifier) {
                 catalogType = 'emissions';
@@ -581,6 +663,16 @@ class TMDBMatcher {
 
         if (existingMedia) {
           const mediaId = existingMedia.imdb_id;
+          this.db.addMedia({
+            ...existingMedia,
+            poster: match.poster || existingMedia.poster,
+            background: match.background || existingMedia.background,
+            description: match.description || existingMedia.description,
+            genres: match.genres?.length ? match.genres : existingMedia.genres,
+            keywords: match.keywords?.length ? match.keywords : existingMedia.keywords,
+            vote_average: match.vote_average || existingMedia.vote_average,
+            release_name: item.release_name
+          });
           // Média déjà connu : on ajoute juste la nouvelle release
           this.db.addRelease({
             media_imdb_id: mediaId,
@@ -607,6 +699,7 @@ class TMDBMatcher {
             background: match.background,
             description: match.description,
             genres: match.genres,
+            keywords: match.keywords || [],
             vote_average: match.vote_average,
             release_name: item.release_name
           };
@@ -673,6 +766,7 @@ class TMDBMatcher {
               background: null,
               description: null,
               genres: [],
+              keywords: [],
               vote_average: null,
               release_name: item.release_name
             };
@@ -764,17 +858,18 @@ class TMDBMatcher {
     }
   }
 
-  async fetchByTmdbId(tmdbId, mediaType) {
+  async fetchByTmdbId(tmdbId, mediaType, language = 'fr-FR') {
     const apiKey = this.getApiKey();
     if (!apiKey) return null;
     try {
       const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
       const response = await this._fetchWithRetry(
         `${this.baseUrl}/${endpoint}/${tmdbId}`,
-        { api_key: apiKey, append_to_response: 'external_ids' },
+        { api_key: apiKey, language, append_to_response: 'external_ids,keywords' },
         this.getAxiosConfig()
       );
       const d = response.data;
+      const keywordRows = d.keywords?.keywords || d.keywords?.results || [];
       return {
         tmdb_id: d.id,
         imdb_id: d.external_ids?.imdb_id || d.imdb_id || null,
@@ -784,9 +879,11 @@ class TMDBMatcher {
         background: d.backdrop_path ? `https://image.tmdb.org/t/p/original${d.backdrop_path}` : null,
         description: d.overview || null,
         genres: (d.genres || []).map(g => g.id),
+        keywords: keywordRows.map(keyword => keyword.name).filter(Boolean),
         vote_average: d.vote_average || null,
         original_language: d.original_language || null,
         origin_country: d.origin_country || d.production_countries?.map(country => country.iso_3166_1) || [],
+        tv_type: endpoint === 'tv' ? d.type || null : null,
         media_type: mediaType
       };
     } catch (err) {
@@ -854,6 +951,7 @@ class TMDBMatcher {
         background: match.background || null,
         description: match.description || null,
         genres: match.genres || [],
+        keywords: match.keywords || [],
         vote_average: match.vote_average || null,
         release_name: failedRelease.release_name
       };

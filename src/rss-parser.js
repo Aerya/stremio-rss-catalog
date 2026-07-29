@@ -10,11 +10,13 @@ const MDBListGuideParser = require('./mdblist-guide-parser');
 const MediaServerParser = require('./media-server-parser');
 const StreamFusionParser = require('./streamfusion-parser');
 const CometNetParser = require('./cometnet-parser');
+const ReleaseParser = require('./release-parser');
 
 class RSSParser {
   constructor(config, db) {
     this.config = config;
     this.db = db;
+    this.releaseParser = new ReleaseParser(db);
     this.axiosConfig = this.getAxiosConfig();
     this.pastebinParser = new PastebinParser(
       db,
@@ -205,7 +207,7 @@ class RSSParser {
     return null;
   }
 
-  parseReleaseName(title) {
+  parseReleaseName(title, structured = null) {
     const info = {
       name: title,
       year: null,
@@ -249,8 +251,16 @@ class RSSParser {
       info.isSeries = true;
     }
 
+    if (structured && !structured._error) {
+      info.isDoc = info.isDoc || structured.documentary === true;
+      info.isSeries = info.isSeries
+        || (Array.isArray(structured.seasons) && structured.seasons.length > 0)
+        || (Array.isArray(structured.episodes) && structured.episodes.length > 0);
+      if (Number.isInteger(structured.year)) info.year = String(structured.year);
+    }
+
     const yearMatch = title.match(/[.\s](19\d{2}|20\d{2})[.\s]/);
-    if (yearMatch) {
+    if (!info.year && yearMatch) {
       info.year = yearMatch[1];
     }
 
@@ -276,7 +286,13 @@ class RSSParser {
       cleanName = parts[0].trim();
     }
 
+    const structuredTitle = typeof structured?.title === 'string'
+      ? structured.title.replace(/\s+/g, ' ').trim()
+      : '';
+    if (structuredTitle && structuredTitle.length >= 2) cleanName = structuredTitle;
+
     info.cleanName = cleanName;
+    info.structured = structured && !structured._error ? structured : null;
     return info;
   }
 
@@ -311,10 +327,13 @@ class RSSParser {
       console.log(`[RSS] URL hint "${urlHint}" détecté automatiquement depuis : ${this.safeUrl(sourceUrl)}`);
     }
 
+    const acceptedItems = items.filter(item => item?.title && this.filterByRequiredTags(item.title));
+    const structuredResults = this.releaseParser.parseMany(acceptedItems.map(item => item.title));
     const parsed = [];
-    for (const item of items) {
+    for (let itemIndex = 0; itemIndex < acceptedItems.length; itemIndex++) {
+      const item = acceptedItems[itemIndex];
       if (!this.filterByRequiredTags(item.title)) continue;
-      const info = this.parseReleaseName(item.title);
+      const info = this.parseReleaseName(item.title, structuredResults[itemIndex]);
       const releaseId = typeof item.guid === 'object' && item.guid._ ? item.guid._ : (item.guid || item.link);
       // Priorité titre : animé > concert > spectacle > doc > émission > série > film
       const detectedCatalog = info.isAnime     ? 'animés'
@@ -338,7 +357,8 @@ class RSSParser {
         source_url: sourceUrl,
         source_force: force,
         quality: this.extractQuality(item.title),
-        hash: this.extractHash(item)
+        hash: this.extractHash(item),
+        parsed_release: info.structured
       });
     }
     return parsed;

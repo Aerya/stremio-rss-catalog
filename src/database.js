@@ -283,6 +283,18 @@ class DatabaseManager {
         ON cometnet_inbox(source_id, processed_at, received_at);
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS release_parse_cache (
+        release_name TEXT NOT NULL,
+        parser_version TEXT NOT NULL,
+        parsed_json TEXT NOT NULL,
+        parsed_at INTEGER NOT NULL,
+        PRIMARY KEY(release_name, parser_version)
+      );
+      CREATE INDEX IF NOT EXISTS idx_release_parse_cache_parsed_at
+        ON release_parse_cache(parsed_at);
+    `);
+
     // Migration depuis l'ancien schéma catalog_items si nécessaire
     const alreadyMigrated = this.db.prepare("SELECT value FROM config WHERE key = 'schema_v2_migrated'").get();
     if (!alreadyMigrated) {
@@ -296,6 +308,7 @@ class DatabaseManager {
     this._migrateV3SyncHistory();
     this._migrateManagedCatalogPauses();
     this._migrateCatalogMediaTypes();
+    this._migrateMediaEnrichment();
 
     this.initDefaultConfig();
     this.seedManagedCatalogs();
@@ -322,6 +335,14 @@ class DatabaseManager {
     if (!cols.includes('frozen_at')) {
       this.db.prepare("ALTER TABLE custom_catalogs ADD COLUMN frozen_at INTEGER").run();
       console.log('[DB] Migration catalogues : date de gel ajoutée');
+    }
+  }
+
+  _migrateMediaEnrichment() {
+    const cols = this.db.prepare("PRAGMA table_info(media)").all().map(c => c.name);
+    if (!cols.includes('keywords')) {
+      this.db.prepare("ALTER TABLE media ADD COLUMN keywords TEXT").run();
+      console.log('[DB] Migration médias : mots-clés ajoutés');
     }
   }
 
@@ -412,6 +433,7 @@ class DatabaseManager {
       mdblist_guides: '[]',
       manifest_revision: '0',
       tmdb_api_key: '',
+      tmdb_match_min_confidence: '58',
       tvdb_api_key: '',
       proxy_enabled: 'false',
       proxy_host: '',
@@ -851,8 +873,13 @@ class DatabaseManager {
     for (const [key, negate] of [['keywords_include', false], ['keywords_exclude', true]]) {
       const words = Array.isArray(filters[key]) ? filters[key].map(String).filter(Boolean) : [];
       for (const word of words) {
-        conditions.push(`${negate ? 'NOT ' : ''}(m.name LIKE ? OR m.release_name LIKE ?)`);
-        params.push(`%${word}%`, `%${word}%`);
+        conditions.push(`${negate ? 'NOT ' : ''}(
+          m.name LIKE ? OR m.release_name LIKE ? OR EXISTS (
+            SELECT 1 FROM json_each(COALESCE(m.keywords, '[]')) keyword
+            WHERE CAST(keyword.value AS TEXT) LIKE ?
+          )
+        )`);
+        params.push(`%${word}%`, `%${word}%`, `%${word}%`);
       }
     }
 
@@ -894,7 +921,11 @@ class DatabaseManager {
       ORDER BY ${guideOrder} m.first_seen_at DESC
       LIMIT ? OFFSET ?
     `).all(...params);
-    return rows.map(row => ({ ...row, genres: row.genres ? JSON.parse(row.genres) : [] }));
+    return rows.map(row => ({
+      ...row,
+      genres: row.genres ? JSON.parse(row.genres) : [],
+      keywords: row.keywords ? JSON.parse(row.keywords) : []
+    }));
   }
 
   // ─── Médias ───────────────────────────────────────────────────────────────
@@ -904,12 +935,14 @@ class DatabaseManager {
     try {
       this.db.prepare(`
         INSERT INTO media
-          (imdb_id, tmdb_id, type, catalog_type, name, year, poster, background, description, genres, vote_average, release_name, first_seen_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (imdb_id, tmdb_id, type, catalog_type, name, year, poster, background, description, genres, keywords, vote_average, release_name, first_seen_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(imdb_id) DO UPDATE SET
           poster       = excluded.poster,
           background   = excluded.background,
           description  = excluded.description,
+          genres       = excluded.genres,
+          keywords     = excluded.keywords,
           vote_average = excluded.vote_average,
           release_name = excluded.release_name,
           updated_at   = excluded.updated_at
@@ -924,6 +957,7 @@ class DatabaseManager {
         item.background || null,
         item.description || null,
         item.genres ? JSON.stringify(item.genres) : null,
+        item.keywords ? JSON.stringify(item.keywords) : null,
         item.vote_average || null,
         item.release_name || null,
         item.first_seen_at || now,
@@ -939,7 +973,49 @@ class DatabaseManager {
   getMediaByImdbId(imdbId) {
     const row = this.db.prepare('SELECT * FROM media WHERE imdb_id = ?').get(imdbId);
     if (row && row.genres) row.genres = JSON.parse(row.genres);
+    if (row && row.keywords) row.keywords = JSON.parse(row.keywords);
     return row;
+  }
+
+  getReleaseParseCache(releaseNames, parserVersion) {
+    const names = [...new Set((releaseNames || []).filter(Boolean))];
+    if (!names.length) return new Map();
+    const result = new Map();
+    const chunkSize = 500;
+    for (let offset = 0; offset < names.length; offset += chunkSize) {
+      const chunk = names.slice(offset, offset + chunkSize);
+      const rows = this.db.prepare(`
+        SELECT release_name, parsed_json
+        FROM release_parse_cache
+        WHERE parser_version = ?
+          AND release_name IN (${chunk.map(() => '?').join(',')})
+      `).all(parserVersion, ...chunk);
+      for (const row of rows) {
+        try {
+          result.set(row.release_name, JSON.parse(row.parsed_json));
+        } catch {
+          // Une entrée corrompue sera simplement recalculée.
+        }
+      }
+    }
+    return result;
+  }
+
+  setReleaseParseCache(entries, parserVersion) {
+    if (!Array.isArray(entries) || !entries.length) return;
+    const statement = this.db.prepare(`
+      INSERT INTO release_parse_cache (release_name, parser_version, parsed_json, parsed_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(release_name, parser_version) DO UPDATE SET
+        parsed_json = excluded.parsed_json,
+        parsed_at = excluded.parsed_at
+    `);
+    const now = Date.now();
+    this.db.transaction(rows => {
+      for (const [releaseName, parsed] of rows) {
+        statement.run(releaseName, parserVersion, JSON.stringify(parsed), now);
+      }
+    })(entries);
   }
 
   linkMediaIdentity(mediaId, externalId, namespace = null) {
@@ -985,6 +1061,7 @@ class DatabaseManager {
       ? this.db.prepare('SELECT * FROM media WHERE tmdb_id = ? AND type = ? LIMIT 1').get(String(tmdbId), type)
       : this.db.prepare('SELECT * FROM media WHERE tmdb_id = ? LIMIT 1').get(String(tmdbId));
     if (row && row.genres) row.genres = JSON.parse(row.genres);
+    if (row && row.keywords) row.keywords = JSON.parse(row.keywords);
     return row;
   }
 
@@ -996,7 +1073,11 @@ class DatabaseManager {
         ORDER BY first_seen_at DESC
         LIMIT ? OFFSET ?
       `).all(catalogType, typeFilter, Number(limit), Number(skip));
-      return rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+      return rows.map(r => ({
+        ...r,
+        genres: r.genres ? JSON.parse(r.genres) : [],
+        keywords: r.keywords ? JSON.parse(r.keywords) : []
+      }));
     }
     const rows = this.db.prepare(`
       SELECT * FROM media
@@ -1004,7 +1085,11 @@ class DatabaseManager {
       ORDER BY first_seen_at DESC
       LIMIT ? OFFSET ?
     `).all(catalogType, Number(limit), Number(skip));
-    return rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+    return rows.map(r => ({
+      ...r,
+      genres: r.genres ? JSON.parse(r.genres) : [],
+      keywords: r.keywords ? JSON.parse(r.keywords) : []
+    }));
   }
 
   getMediaCount(catalogType, typeFilter = null) {
@@ -1025,7 +1110,11 @@ class DatabaseManager {
         ORDER BY first_seen_at DESC
         LIMIT ? OFFSET ?
       `).all(catalogType, typeFilter, term, term, Number(limit), Number(skip));
-      return rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+      return rows.map(r => ({
+        ...r,
+        genres: r.genres ? JSON.parse(r.genres) : [],
+        keywords: r.keywords ? JSON.parse(r.keywords) : []
+      }));
     }
     const rows = this.db.prepare(`
       SELECT * FROM media
@@ -1033,7 +1122,11 @@ class DatabaseManager {
       ORDER BY first_seen_at DESC
       LIMIT ? OFFSET ?
     `).all(catalogType, term, term, Number(limit), Number(skip));
-    return rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+    return rows.map(r => ({
+      ...r,
+      genres: r.genres ? JSON.parse(r.genres) : [],
+      keywords: r.keywords ? JSON.parse(r.keywords) : []
+    }));
   }
 
   getRecentMediaAdditions(catalogType, limit = 5) {
@@ -1043,7 +1136,11 @@ class DatabaseManager {
       ORDER BY first_seen_at DESC
       LIMIT ?
     `).all(catalogType, limit);
-    return rows.map(r => ({ ...r, genres: r.genres ? JSON.parse(r.genres) : [] }));
+    return rows.map(r => ({
+      ...r,
+      genres: r.genres ? JSON.parse(r.genres) : [],
+      keywords: r.keywords ? JSON.parse(r.keywords) : []
+    }));
   }
 
   // ─── Releases ─────────────────────────────────────────────────────────────
@@ -1277,6 +1374,7 @@ class DatabaseManager {
       items: rows.map(r => ({
         ...r,
         genres: r.genres ? JSON.parse(r.genres) : [],
+        keywords: r.keywords ? JSON.parse(r.keywords) : [],
         release_names: r.release_names_raw ? r.release_names_raw.split('|||') : [],
         source_urls: r.source_urls_raw ? JSON.parse(r.source_urls_raw) : []
       })),

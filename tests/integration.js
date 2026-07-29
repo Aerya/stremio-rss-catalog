@@ -594,6 +594,49 @@ async function main() {
       }));
     }
 
+    if (req.url.startsWith('/3/search/movie')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        results: [
+          {
+            id: 901, title: 'Un titre sans rapport', original_title: 'Unrelated title',
+            release_date: '1998-01-01', popularity: 500, genre_ids: [28]
+          },
+          {
+            id: 9902, title: 'Spectacle Test', original_title: 'Spectacle Test',
+            release_date: '2026-04-01', popularity: 10, genre_ids: [35]
+          }
+        ]
+      }));
+    }
+    if (req.url.startsWith('/3/search/tv')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        results: [{
+          id: 9903, name: 'Le Talk Test', original_name: 'Le Talk Test',
+          first_air_date: '2026-02-01', popularity: 5, genre_ids: [10767]
+        }]
+      }));
+    }
+    if (req.url.startsWith('/3/movie/9902')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        id: 9902, imdb_id: 'tt0999902', title: 'Spectacle Test', release_date: '2026-04-01',
+        poster_path: '/show.jpg', backdrop_path: '/show-bg.jpg', overview: 'Spectacle de test',
+        genres: [{ id: 35 }], vote_average: 7.8, original_language: 'fr',
+        external_ids: { imdb_id: 'tt0999902' },
+        keywords: { keywords: [{ id: 1, name: 'stand-up comedy' }] }
+      }));
+    }
+    if (req.url.startsWith('/3/tv/9903')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        id: 9903, name: 'Le Talk Test', first_air_date: '2026-02-01', type: 'Talk Show',
+        genres: [{ id: 10767 }], vote_average: 7, original_language: 'fr', origin_country: ['FR'],
+        external_ids: { imdb_id: 'tt0999903' },
+        keywords: { results: [{ id: 2, name: 'talk show' }] }
+      }));
+    }
     if (req.url.startsWith('/3/movie/123')) {
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify({
@@ -637,11 +680,74 @@ async function main() {
 
     const matcher = new TMDBMatcher(db);
     matcher.baseUrl = `${baseUrl}/3`;
+    const pttRssParser = new RSSParser({}, db);
+    pttRssParser.releaseParser.parseMany = () => [{
+      title: 'Le Bureau des Légendes',
+      year: 2015,
+      seasons: [1],
+      episodes: [1],
+      languages: ['fr'],
+      resolution: '1080p'
+    }];
+    const pttParsed = pttRssParser._parseItems([{
+      title: 'Le.Bureau.des.Legendes.S01E01.2015.FRENCH.1080p.WEB-DL.x264-GROUP',
+      guid: 'ptt-test'
+    }], 'auto', `${baseUrl}/rss`);
+    assert.equal(pttParsed[0].cleanName, 'Le Bureau des Légendes');
+    assert.equal(pttParsed[0].type, 'series');
+    assert.equal(pttParsed[0].year, '2015');
+    assert.equal(pttParsed[0].parsed_release.resolution, '1080p');
+    console.log('✓ Parsing PTT structuré avec repli historique');
+
+    const rankedMovie = await matcher.searchMovie('Spectacle Test', '2026');
+    assert.equal(rankedMovie.imdb_id, 'tt0999902');
+    assert.ok(rankedMovie.match_confidence >= 90);
+    assert.deepEqual(rankedMovie.keywords, ['stand-up comedy']);
+    const rankedTv = await matcher.searchTVShow('Le Talk Test', '2026');
+    assert.equal(rankedTv.tv_type, 'Talk Show');
+    assert.deepEqual(rankedTv.keywords, ['talk show']);
+    assert.equal(
+      matcher.scoreCandidate(
+        { title: 'Sans rapport', release_date: '1990-01-01' },
+        'Spectacle Test', '2026', 'movie'
+      ).score < 30,
+      true
+    );
+    console.log('✓ Classement multi-candidats et enrichissement TMDB');
+
     const match = await matcher.matchBatch(discovery.items);
     assert.equal(match.matched, 2);
     assert.equal(match.failed, 0);
     assert.equal(db.getMediaByImdbId('tt0000123').year, '2026');
     assert.equal(db.getMediaByImdbId('tt0000456').type, 'series');
+    const enrichedMatch = await matcher.matchBatch([
+      {
+        release_name: 'Spectacle.Test.2026.FRENCH.1080p',
+        indexer_rlz_id: 'tmdb-ranked-spectacle',
+        cleanName: 'Spectacle Test',
+        year: '2026',
+        catalog_type: 'films',
+        type: 'movie',
+        source_force: 'auto',
+        source_url: 'rss:test'
+      },
+      {
+        release_name: 'Le.Talk.Test.S01.2026.FRENCH.1080p',
+        indexer_rlz_id: 'tmdb-ranked-emission',
+        cleanName: 'Le Talk Test',
+        year: '2026',
+        catalog_type: 'series',
+        type: 'series',
+        source_force: 'auto',
+        source_url: 'rss:test'
+      }
+    ]);
+    assert.equal(enrichedMatch.matched, 2);
+    assert.equal(db.getMediaByImdbId('tt0999902').catalog_type, 'spectacles');
+    assert.equal(db.getMediaByImdbId('tt0999903').catalog_type, 'emissions');
+    assert.deepEqual(db.getMediaByImdbId('tt0999902').keywords, ['stand-up comedy']);
+    console.log('✓ Classification TMDB par détails, type et mots-clés');
+    db.db.prepare("DELETE FROM media WHERE imdb_id IN ('tt0999902', 'tt0999903')").run();
     const originalOmdbConfigured = matcher.omdb.isConfigured;
     const originalOmdbFetch = matcher.omdb.fetch;
     let directExistingOmdbCalls = 0;
