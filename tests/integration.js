@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const http = require('http');
 const os = require('os');
 const path = require('path');
+const SQLite = require('better-sqlite3');
 const DatabaseManager = require('../src/database');
 const PastebinParser = require('../src/pastebin-parser');
 const TMDBMatcher = require('../src/tmdb-matcher');
@@ -22,6 +23,131 @@ const { encode, decode } = require('@msgpack/msgpack');
 const header = 'CAT;TMDB;TITLE;SAISON;GROUPES;CAST;DIRECTOR;NETWORK;YEAR;GENRES;RES;URLS=https://alldebrid.com/f/';
 const movieRow = "film;123;Film Test;;[];[];[];[];2026;[28];['MULTI - 1080p'];['abc']";
 const seriesRow = "serie;456;Série Test;1;[];[];[];[];2025;[18];MULTI - 1080p;1:'def'";
+
+function verifyPublishedSchemaUpgrade() {
+  const dbPath = path.join(os.tmpdir(), `stremio-rss-legacy-${process.pid}.db`);
+  const legacy = new SQLite(dbPath);
+  legacy.exec(`
+    CREATE TABLE config (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE sync_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      started_at INTEGER NOT NULL,
+      finished_at INTEGER,
+      total_items INTEGER NOT NULL,
+      matched_items INTEGER NOT NULL,
+      failed_items INTEGER NOT NULL,
+      already_in_db INTEGER DEFAULT 0,
+      films_added INTEGER DEFAULT 0,
+      documentaires_added INTEGER DEFAULT 0,
+      series_added INTEGER DEFAULT 0,
+      status TEXT NOT NULL,
+      error_message TEXT
+    );
+    CREATE TABLE media (
+      imdb_id TEXT PRIMARY KEY,
+      tmdb_id TEXT,
+      type TEXT NOT NULL,
+      catalog_type TEXT NOT NULL,
+      name TEXT NOT NULL,
+      year TEXT,
+      poster TEXT,
+      background TEXT,
+      description TEXT,
+      genres TEXT,
+      vote_average REAL,
+      release_name TEXT,
+      first_seen_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE releases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      media_imdb_id TEXT NOT NULL REFERENCES media(imdb_id) ON DELETE CASCADE,
+      release_name TEXT NOT NULL,
+      indexer_rlz_id TEXT NOT NULL UNIQUE,
+      source_url TEXT,
+      quality TEXT,
+      hash TEXT,
+      added_at INTEGER NOT NULL
+    );
+    CREATE TABLE feed_fetch_errors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_url TEXT NOT NULL,
+      error_msg TEXT,
+      http_status INTEGER,
+      failed_at INTEGER NOT NULL
+    );
+    CREATE TABLE failed_releases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      release_name TEXT NOT NULL,
+      clean_name TEXT,
+      indexer_rlz_id TEXT NOT NULL UNIQUE,
+      source_url TEXT,
+      catalog_type TEXT,
+      type TEXT,
+      year TEXT,
+      fail_reason TEXT,
+      attempted_at INTEGER NOT NULL,
+      retry_count INTEGER DEFAULT 0
+    );
+  `);
+  legacy.prepare('INSERT INTO config (key, value) VALUES (?, ?)').run('tmdb_api_key', 'legacy-key');
+  legacy.prepare('INSERT INTO config (key, value) VALUES (?, ?)').run(
+    'newznab_sources',
+    JSON.stringify([
+      { id: 'default-cap', name: 'Défaut', maxItemsPerCategory: 100000 },
+      { id: 'custom-cap', name: 'Personnalisé', maxItemsPerCategory: 424242 }
+    ])
+  );
+  legacy.prepare(`
+    INSERT INTO media (
+      imdb_id, tmdb_id, type, catalog_type, name, year, genres,
+      release_name, first_seen_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    'tt7654321', '7654321', 'movie', 'films', 'Média existant',
+    '2024', '[]', 'Media.Existant.2024.MULTi', 1000, 1000
+  );
+  legacy.prepare(`
+    INSERT INTO releases (
+      media_imdb_id, release_name, indexer_rlz_id, source_url, added_at
+    ) VALUES (?, ?, ?, ?, ?)
+  `).run('tt7654321', 'Media.Existant.2024.MULTi', 'legacy-release', 'https://indexer.example/rss', 1000);
+  legacy.close();
+
+  const upgraded = new DatabaseManager(dbPath);
+  try {
+    assert.equal(upgraded.getConfig('tmdb_api_key'), 'legacy-key');
+    assert.equal(upgraded.getMediaByImdbId('tt7654321').name, 'Média existant');
+    assert.equal(upgraded.db.prepare('SELECT COUNT(*) AS total FROM releases').get().total, 1);
+    const sources = JSON.parse(upgraded.getConfig('newznab_sources'));
+    assert.equal(sources.find(source => source.id === 'default-cap').maxItemsPerCategory, 10000000);
+    assert.equal(sources.find(source => source.id === 'custom-cap').maxItemsPerCategory, 424242);
+    const addon = new StremioAddon(upgraded);
+    const manifest = addon.getManifest();
+    clearTimeout(addon._warmTimer);
+    assert.equal(manifest.id, 'community.useflowfr.catalog');
+    assert.ok(manifest.catalogs.some(catalog => catalog.id === 'useflowfr_films'));
+    assert.ok(manifest.catalogs.some(catalog => catalog.id === 'useflowfr_series'));
+    const countsBeforeRestart = {
+      media: upgraded.db.prepare('SELECT COUNT(*) AS total FROM media').get().total,
+      releases: upgraded.db.prepare('SELECT COUNT(*) AS total FROM releases').get().total,
+      catalogs: upgraded.db.prepare('SELECT COUNT(*) AS total FROM custom_catalogs').get().total
+    };
+    upgraded.initTables();
+    upgraded.upgradeLegacySourceLimits();
+    upgraded.upgradeSourceLimitsV3();
+    assert.deepEqual({
+      media: upgraded.db.prepare('SELECT COUNT(*) AS total FROM media').get().total,
+      releases: upgraded.db.prepare('SELECT COUNT(*) AS total FROM releases').get().total,
+      catalogs: upgraded.db.prepare('SELECT COUNT(*) AS total FROM custom_catalogs').get().total
+    }, countsBeforeRestart);
+  } finally {
+    upgraded.close();
+    for (const suffix of ['', '-shm', '-wal']) {
+      try { fs.unlinkSync(dbPath + suffix); } catch {}
+    }
+  }
+}
 
 function streamFusionToken(secret, value) {
   const key = crypto.createHash('sha256').update(`sf-peer-cache-v1:${secret}`).digest();
@@ -69,6 +195,8 @@ function signedCometNetTorrent(identity, fields) {
 }
 
 async function main() {
+  verifyPublishedSchemaUpgrade();
+  console.log('✓ Mise à niveau du schéma publié sans perte de données ni de configuration');
   let baseUrl;
   let catalogRequestKeptSecret = false;
   let newznabKeyReceived = false;

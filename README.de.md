@@ -32,9 +32,29 @@
 
 ---
 
-> Ein selbst gehostetes Stremio-Addon, das Kataloge aus Inhalten Ihrer eigenen **BitTorrent-, Usenet- oder sonstigen Indexer** erstellt. Die Katalogquellen sollen den Quellen entsprechen, die Ihre Streaming-Addons tatsächlich verwenden. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaStream/WaCustom, StreamFusion, CometNet und Stremio-Manifeste lassen sich kombinieren.
+> Ein selbst gehostetes Stremio-Addon, das tatsächlich in Ihren eigenen
+> **BitTorrent-, Usenet-, WebDAV- oder sonstigen Quellen** gefundene Inhalte in
+> Stremio-Kataloge umwandelt. RSS, Pastebin, Newznab, Prowlarr, Jackett,
+> NZBHydra2, WaStream/WaCustom, StreamFusion, CometNet und Stremio-Manifeste
+> lassen sich kombinieren.
 
 ---
+
+## Das Prinzip: mit den bei Ihnen verfügbaren Inhalten beginnen
+
+Stremio RSS Catalog erzeugt keine theoretischen Empfehlungslisten. Das Addon
+sammelt Ihre Quellen, identifiziert und dedupliziert die dort gemeldeten Medien
+und baut daraus eine lokale Mediathek. Kataloge entstehen ausschließlich aus
+dieser Mediathek.
+
+MDBList-, ListSync-, SuggestArr- und Agregarr-Leitlisten **wählen diese Medien
+nur aus und ordnen sie**. Ein in Ihren Quellen fehlender Titel bleibt auch im
+fertigen Katalog unsichtbar. So entstehen Trends, Auswahlen und Sammlungen nur
+aus Inhalten, die in Ihrem eigenen System tatsächlich indexiert wurden.
+
+„Verfügbar“ bedeutet hier **in einer konfigurierten Quelle gefunden**. Das Addon
+prüft nicht bei jedem Katalogaufruf Seeder, Debrid-Cache oder die aktuelle
+Gültigkeit eines Links und stellt selbst keine Wiedergabe-Streams bereit.
 
 ## Funktionen
 
@@ -90,7 +110,7 @@
 | **Indexer-APIs** | Mehrere umbenennbare Newznab-, Prowlarr-, Jackett/Torznab- und NZBHydra2-Quellen mit Pagination, inkrementellem Cursor, Obergrenze und Verzögerung |
 | **WaStream/WaCustom** | Mehrere umbenennbare Instanzen; paginierter WASource-Import mit IMDb/TMDB, fortsetzbarer Erfassung, eigener Frequenz, Pause und Obergrenze |
 | **StreamFusion Reborn** | Mehrere umbenennbare Instanzen; signierter und verschlüsselter Import des privaten Caches über die offizielle Peer-API mit Pagination und inkrementellem Cursor |
-| **CometNet** | Signierter persistenter Empfänger für künftige Gossip-Ankündigungen mit Wiederverbindung und Quellenalarmen |
+| **CometNet** | Nicht vollständige Zusatzquelle: signierter persistenter Empfänger für neu weitergeleitete Gossip-Ankündigungen, ohne garantierten Historienimport |
 | **Konfigurationssicherung** | Versionierter Export/Import; sensible Schlüssel und URLs nur auf ausdrücklichen Wunsch |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + integrierter Verbindungstest |
 | **SQLite WAL** | Persistente Daten, parallele Lesezugriffe, optimierte Indizes, Fremdschlüssel und Schreibwartezeit |
@@ -203,6 +223,11 @@ implementiert; ein vollständiger historischer Import ist daher nicht möglich.
 CometNet-Pools sind Vertrauensfilter für Mitwirkende. Ein Pool mit dem Ziel-Peer
 erzwingt weder die erneute Übertragung seines vorhandenen Caches noch einen
 historischen Nachlauf.
+
+> **Kurz gesagt:** CometNet kann die Mediathek nach und nach ergänzen, ist aber
+> keine vollständige Quelle. Für einen kompletten Erstimport sind eine
+> paginierte API, ein Katalog-Manifest, ein RSS-Feed oder ein Cache-Export
+> vorzuziehen.
 
 Eine WebDAV-Quelle zeigt auf einen Stammordner. Das Addon durchsucht Unterordner
 mit `PROPFIND`, behält konfigurierte Videoerweiterungen und verwendet danach
@@ -329,12 +354,48 @@ Hintergrund vorgewärmt. JSON-Antworten werden komprimiert und zusätzlich
 `CATALOG_HTTP_CACHE_SECONDS=0` wird dies deaktiviert; maximal sind `300`
 Sekunden möglich. Suchanfragen werden nicht gecacht.
 
+### Poster und AIOMetadata
+
+Jeder Katalogeintrag enthält bereits eine Poster-URL. Stremio RSS Catalog
+verwendet die Reihenfolge **PostersPlus → RPDB → Metadaten-Poster →
+Platzhalter**. Dadurch werden Kataloge auch ohne weiteres Metadaten-Addon direkt
+und einheitlich in Stremio angezeigt.
+
+Werden die Kataloge anschließend durch
+[AIOMetadata](https://github.com/cedya77/aiometadata) geleitet, kann AIOMetadata
+das Poster abhängig von seinen eigenen Bildanbietern beibehalten oder ersetzen.
+Legen Sie deshalb fest, welches Addon maßgeblich sein soll:
+
+- Stremio RSS Catalog für bereits illustrierte Kataloge;
+- AIOMetadata für eine zentrale Bildauswahl und einen zentralen Bild-Cache;
+- oder dieselbe Vorlage in beiden, wobei AIOMetadata weiterhin seine
+  konfigurierte Anbieterpriorität anwendet.
+
+Die Poster-Verarbeitung hier spart diesen Schritt bei direkter Nutzung, schaltet
+die Bildanbieter von AIOMetadata jedoch nicht automatisch ab.
+
 ### Persistenz
 
 Alles wird in einer SQLite-Datenbank im WAL-Modus (`data/addon.db`) gespeichert.
 Inhalte **akkumulieren sich** — eine Sync ersetzt niemals vorhandene Daten.
 Hunderttausende indexierte Zeilen und parallele Katalog-Lesezugriffe sind für
 einen Anwendungsprozess realistisch.
+
+### Upgrade-Kompatibilität
+
+Upgrades sind für vorhandene Installationen ausgelegt:
+
+- dasselbe `/data`-Volume und dieselbe Datei `addon.db`;
+- dieselbe Addon-ID `community.useflowfr.catalog`;
+- dieselben Routen `manifest.json` und `catalog/...`;
+- dieselben IDs der neun bisherigen Kataloge;
+- vorhandene Einstellungen, Medien und Releases bleiben erhalten;
+- neue Tabellen, Spalten, Indizes und Standardwerte werden durch idempotente
+  Startmigrationen ergänzt.
+
+Das Addon muss daher in Stremio nicht entfernt und neu installiert werden. Eine
+Sicherung des `/data`-Volumes vor dem Upgrade bleibt wie bei jeder
+Datenbankmigration empfehlenswert.
 
 ### Umfang
 

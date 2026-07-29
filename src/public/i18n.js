@@ -18,7 +18,8 @@ const translations = {
     logout: "Déconnexion",
 
     // Description
-    description_text: 'Stremio RSS Catalog crée des catalogues Stremio à partir des contenus trouvés sur vos propres sources BitTorrent, Usenet ou autres : RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2 et manifestes Stremio. L’objectif est d’aligner les contenus affichés sur les indexeurs utilisés par vos addons de stream. Il ne lit pas les contenus lui-même.<br>Tutoriels sur <a href="https://upandclear.org" target="_blank">mon blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> mises à disposition par la communauté StremioFR et auto-hébergement simplifié avec le projet <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a>.',
+    description_text: 'Stremio RSS Catalog construit des catalogues à partir des contenus réellement repérés dans vos propres sources BitTorrent, Usenet, WebDAV ou autres. Les guides servent ensuite à sélectionner et ordonner cette médiathèque locale : ils n’ajoutent jamais un média absent de vos sources. Le résultat vise donc des catalogues de contenus disponibles dans votre écosystème, et non de simples listes de recommandations théoriques. L’addon ne lit pas les contenus lui-même.<br>Tutoriels sur <a href="https://upandclear.org" target="_blank">mon blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> mises à disposition par la communauté StremioFR et auto-hébergement simplifié avec le projet <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a>.',
+    catalogs_availability_goal: "Objectif : transformer les contenus réellement repérés dans vos sources en catalogues Stremio utiles. Les guides ne créent pas de disponibilité : ils sélectionnent et ordonnent uniquement les médias déjà présents dans la médiathèque locale.",
 
     // Stats
     stat_films: "Films",
@@ -93,6 +94,7 @@ const translations = {
     config_postersplus_enable: "Utiliser PostersPlus en priorité pour les affiches",
     config_postersplus_template: "Template URL PostersPlus",
     config_postersplus_test: "Tester avec un média indexé",
+    config_artwork_aiometadata_hint: "L’affiche choisie ici est incluse directement dans chaque réponse de catalogue. Avec AIOMetadata, celui-ci peut néanmoins la conserver ou la remplacer selon ses propres fournisseurs d’illustrations. Pour éviter un double réglage, choisissez l’endroit qui doit faire autorité sur les affiches.",
     config_proxy_title: "Proxy",
     config_proxy_enable: "Activer",
     config_proxy_protocol: "Protocole",
@@ -341,7 +343,8 @@ const translations = {
     logout: "Logout",
 
     // Description
-    description_text: 'Stremio RSS Catalog builds Stremio catalogs from content found on your own BitTorrent, Usenet, or other sources: RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2, and Stremio manifests. Its goal is to align displayed content with the indexers used by your streaming addons. It does not play content itself.<br>Tutorials on <a href="https://upandclear.org" target="_blank">my blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> shared by the StremioFR community and easy self-hosting with the <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a> project.',
+    description_text: 'Stremio RSS Catalog builds catalogs from content actually discovered in your own BitTorrent, Usenet, WebDAV, or other sources. Guides then select and order that local library; they never add media absent from your sources. The result is meant to represent content available in your ecosystem, rather than theoretical recommendation lists. The addon does not play content itself.<br>Tutorials on <a href="https://upandclear.org" target="_blank">my blog</a>, <a href="https://stremiofr.me/" target="_blank">instances</a> shared by the StremioFR community and easy self-hosting with the <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a> project.',
+    catalogs_availability_goal: "Goal: turn content actually discovered in your sources into useful Stremio catalogs. Guides do not create availability: they only select and order media already present in the local library.",
 
     // Stats
     stat_films: "Movies",
@@ -416,6 +419,7 @@ const translations = {
     config_postersplus_enable: "Use PostersPlus first for artwork",
     config_postersplus_template: "PostersPlus URL template",
     config_postersplus_test: "Test with an indexed media item",
+    config_artwork_aiometadata_hint: "The artwork selected here is included directly in every catalog response. When AIOMetadata is used, it may keep or replace it according to its own artwork providers. To avoid configuring the same choice twice, decide which addon is authoritative for artwork.",
     config_proxy_title: "Proxy",
     config_proxy_enable: "Enable",
     config_proxy_protocol: "Protocol",
@@ -664,7 +668,8 @@ const translations = {
     logout: "Abmelden",
 
     // Description
-    description_text: 'Stremio RSS Catalog erstellt Stremio-Kataloge aus Inhalten Ihrer eigenen BitTorrent-, Usenet- oder sonstigen Quellen: RSS, Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2 und Stremio-Manifeste. Ziel ist, die angezeigten Inhalte an die von Ihren Streaming-Addons verwendeten Indexer anzugleichen. Das Addon spielt selbst keine Inhalte ab.<br>Anleitungen auf <a href="https://upandclear.org" target="_blank">meinem Blog</a>, <a href="https://stremiofr.me/" target="_blank">Instanzen</a> von der StremioFR-Community bereitgestellt und einfaches Self-Hosting mit dem <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a>-Projekt.',
+    description_text: 'Stremio RSS Catalog erstellt Kataloge aus Inhalten, die tatsächlich in Ihren eigenen BitTorrent-, Usenet-, WebDAV- oder sonstigen Quellen gefunden wurden. Leitlisten wählen anschließend nur aus dieser lokalen Mediathek aus und ordnen sie; fehlende Medien werden niemals hinzugefügt. Das Ergebnis soll verfügbare Inhalte Ihres eigenen Systems abbilden statt theoretische Empfehlungslisten. Das Addon spielt selbst keine Inhalte ab.<br>Anleitungen auf <a href="https://upandclear.org" target="_blank">meinem Blog</a>, <a href="https://stremiofr.me/" target="_blank">Instanzen</a> von der StremioFR-Community bereitgestellt und einfaches Self-Hosting mit dem <a href="https://ssd.lastharo.eu/" target="_blank">S.S.D.v2</a>-Projekt.',
+    catalogs_availability_goal: "Ziel: tatsächlich in Ihren Quellen gefundene Inhalte in nützliche Stremio-Kataloge umzuwandeln. Leitlisten erzeugen keine Verfügbarkeit; sie wählen und ordnen nur Medien, die bereits in der lokalen Mediathek vorhanden sind.",
 
     // Stats
     stat_films: "Filme",
@@ -739,6 +744,7 @@ const translations = {
     config_postersplus_enable: "PostersPlus vorrangig für Poster verwenden",
     config_postersplus_template: "PostersPlus-URL-Vorlage",
     config_postersplus_test: "Mit einem indexierten Medium testen",
+    config_artwork_aiometadata_hint: "Das hier ausgewählte Poster wird direkt in jede Katalogantwort aufgenommen. Mit AIOMetadata kann es je nach dort konfigurierten Bildanbietern beibehalten oder ersetzt werden. Legen Sie fest, welches Addon für Poster maßgeblich sein soll, um doppelte Einstellungen zu vermeiden.",
     config_proxy_title: "Proxy",
     config_proxy_enable: "Aktivieren",
     config_proxy_protocol: "Protokoll",

@@ -32,9 +32,27 @@
 
 ---
 
-> A self-hosted Stremio addon that builds catalogs from content found on your own **BitTorrent, Usenet, or other indexers**. The goal is to keep catalog sources aligned with the sources actually used by your streaming addons. RSS, Pastebin, WebDAV, Newznab, Prowlarr, Jackett, NZBHydra2, WaStream/WaCustom, StreamFusion, CometNet, and Stremio manifests can be combined.
+> A self-hosted Stremio addon that turns content actually discovered in your own
+> **BitTorrent, Usenet, WebDAV, or other sources** into Stremio catalogs. RSS,
+> Pastebin, Newznab, Prowlarr, Jackett, NZBHydra2, WaStream/WaCustom,
+> StreamFusion, CometNet, and Stremio manifests can be combined.
 
 ---
+
+## The principle: start with what is available to you
+
+Stremio RSS Catalog is not a generator of theoretical recommendation lists. It
+collects your sources, identifies and deduplicates the media they announce, and
+builds a local library. Catalogs are created from that library.
+
+MDBList, ListSync, SuggestArr, and Agregarr guides only **select and order**
+those media. A title absent from your sources remains absent from the final
+catalog. This makes it possible to expose trends, selections, and collections
+made only from content actually indexed in your own ecosystem.
+
+Here, “available” means **discovered in a source you configured**. The addon
+does not recheck seeders, debrid cache status, or link validity on every catalog
+request, and it does not provide playback streams itself.
 
 ## Features
 
@@ -90,7 +108,7 @@
 | **Indexer APIs** | Multiple renameable Newznab, Prowlarr, Jackett/Torznab, and NZBHydra2 sources with pagination, an incremental cursor, cap, and delay |
 | **WaStream/WaCustom** | Multiple renameable instances; paginated WASource content import with IMDb/TMDB IDs, resumable traversal, per-source frequency, pause, and cap |
 | **StreamFusion Reborn** | Multiple renameable instances; signed and encrypted private-cache import through the official Peer API, with pagination and an incremental cursor |
-| **CometNet** | Signed persistent receiver for future gossip announcements, with reconnect monitoring and source alerts |
+| **CometNet** | Non-exhaustive supplemental source: signed persistent receiver for newly routed gossip announcements, with no guaranteed historical import |
 | **Configuration backup** | Versioned export/import; sensitive keys and URLs are excluded unless explicitly requested |
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
 | **SQLite WAL** | Persistent data, concurrent reads, optimized indexes, foreign keys, and busy-write waiting |
@@ -202,6 +220,10 @@ historical backfill is currently unavailable.
 CometNet pools are contributor trust filters. Creating a pool with the target
 peer does not force its existing cache to be replayed and therefore does not
 provide historical backfill.
+
+> **In short:** CometNet can progressively supplement the library, but it is
+> not an exhaustive source. Prefer a paginated API, catalog manifest, RSS feed,
+> or cache export for a complete initial import.
 
 A WebDAV source points to a root folder. The addon scans subfolders with
 `PROPFIND`, keeps configured video extensions, then applies the same title
@@ -326,12 +348,48 @@ the background. JSON responses are compressed and also use a 30-second
 revalidatable HTTP cache. Set `CATALOG_HTTP_CACHE_SECONDS` to `0` to disable it,
 or up to `300` seconds. Searches are not cached.
 
+### Artwork and AIOMetadata
+
+Every catalog item already contains a poster URL. Stremio RSS Catalog applies
+the following priority: **PostersPlus → RPDB → metadata artwork →
+placeholder**. This provides consistent direct rendering in Stremio without
+requiring another metadata addon.
+
+When catalogs are routed through
+[AIOMetadata](https://github.com/cedya77/aiometadata), AIOMetadata may keep or
+replace that poster according to its own artwork providers. Choose which addon
+should be authoritative:
+
+- Stremio RSS Catalog, for catalogs that are already illustrated;
+- AIOMetadata, to centralize artwork selection and image caching;
+- or the same template in both, while remembering that AIOMetadata still
+  applies its configured provider priority.
+
+Processing artwork here removes that work for direct use, but does not
+automatically disable AIOMetadata artwork providers.
+
 ### Persistence
 
 Everything is stored in a WAL-enabled SQLite database (`data/addon.db`).
 Content **accumulates** — a sync never replaces existing data. This is suitable
 for hundreds of thousands of indexed rows and concurrent catalog reads in one
 application process.
+
+### Upgrade compatibility
+
+Upgrades are designed for existing installations:
+
+- the same `/data` volume and `addon.db` file;
+- the same `community.useflowfr.catalog` addon identifier;
+- the same `manifest.json` and `catalog/...` routes;
+- the same identifiers for the nine historical catalogs;
+- existing settings, media, and releases are preserved;
+- new tables, columns, indexes, and defaults are added through idempotent
+  startup migrations.
+
+The addon does not need to be removed and reinstalled in Stremio. Backing up
+the `/data` volume before an upgrade is still recommended, as with any database
+migration.
 
 ### Scope
 

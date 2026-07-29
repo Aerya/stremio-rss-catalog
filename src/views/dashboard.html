@@ -640,6 +640,8 @@
           <div class="field"><label>Limite de sécurité par lot</label><input id="cometNetMaxItems" type="number" min="1" max="10000000" value="10000000"></div>
         </div>
         <div class="integration-cat-hint" style="margin-top:12px">
+          <strong>Source d’appoint non exhaustive :</strong> CometNet ne remplace pas une API
+          paginée, un flux RSS ou un export de cache.<br>
           L’identité cryptographique du pair est épinglée au premier test. Les annonces valides sont
           conservées dans une boîte de réception locale, puis injectées dans les catalogues lors de la
           prochaine synchronisation. CometNet fonctionnant par gossip, cette source reçoit les
@@ -739,6 +741,12 @@
       <div class="page-header">
         <h2 data-i18n="nav_catalogs">Catalogues</h2>
         <button class="btn-sm" onclick="loadCatalogManager()">↺ Actualiser</button>
+      </div>
+
+      <div class="card integration-cat-hint" style="margin-bottom:20px" data-i18n="catalogs_availability_goal">
+        Objectif : transformer les contenus réellement repérés dans vos sources en catalogues
+        Stremio utiles. Les guides ne créent pas de disponibilité : ils sélectionnent et ordonnent
+        uniquement les médias déjà présents dans la médiathèque locale.
       </div>
 
       <details class="card" style="margin-bottom:20px" open>
@@ -1153,6 +1161,12 @@
               Collez directement le template généré pour AIOMetadata. Les variables
               <code>{tmdb_id}</code>, <code>{imdb_id}</code> et <code>{type}</code>
               sont remplacées automatiquement. Si PostersPlus ne s’applique pas, RPDB puis l’affiche d’origine servent de repli.
+            </small>
+            <small class="field-hint" data-i18n="config_artwork_aiometadata_hint">
+              L’affiche choisie ici est incluse directement dans chaque réponse de catalogue.
+              Avec AIOMetadata, celui-ci peut néanmoins la conserver ou la remplacer selon ses
+              propres fournisseurs d’illustrations. Pour éviter un double réglage, choisissez
+              l’endroit qui doit faire autorité sur les affiches.
             </small>
           </div>
           <button type="button" class="btn-sm" onclick="testPostersPlus()" data-i18n="config_postersplus_test">Tester avec un média indexé</button>
