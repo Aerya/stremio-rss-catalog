@@ -1035,6 +1035,8 @@ function sourceRuntimeHtml(source) {
     && Number(runtime.quota_used || 0) >= Number(displayedQuotaLimit || 0);
   const status = source.paused
     ? '<span class="source-runtime-paused">En pause</span>'
+    : runtime.rate_limit_until
+      ? '<span class="source-runtime-paused">Temporisation HTTP 429</span>'
     : runtime.last_error_at
       ? `<span class="source-runtime-error">Erreur${runtime.last_http_status ? ` HTTP ${runtime.last_http_status}` : ''}</span>`
       : '<span class="source-runtime-ok">Active</span>';
@@ -1046,6 +1048,7 @@ function sourceRuntimeHtml(source) {
     <span>Éléments lus pendant ce lot : ${Number(runtime.last_items_fetched || 0).toLocaleString()}</span>
     <span>Limite de sécurité du lot : ${quota}${quotaReached ? ' (lot rempli)' : ''}</span>
     ${runtime.backfill_in_progress ? '<span class="source-runtime-paused">Rattrapage historique en cours — prochain lot prioritaire</span>' : ''}
+    ${runtime.rate_limit_until ? `<span class="source-runtime-paused">Reprise autorisée à partir du ${fmtDate(runtime.rate_limit_until)}</span>` : ''}
     <span>Fréquence : ${runtime.interval_minutes || '—'} min${runtime.uses_global_interval ? ' (globale)' : ''}</span>
     ${runtime.last_error_message ? `<span class="source-runtime-error" title="${escHtml(runtime.last_error_message)}">${escHtml(runtime.last_error_message)}</span>` : ''}
   </div>`;

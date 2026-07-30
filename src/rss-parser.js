@@ -11,6 +11,7 @@ const MediaServerParser = require('./media-server-parser');
 const StreamFusionParser = require('./streamfusion-parser');
 const CometNetParser = require('./cometnet-parser');
 const ReleaseParser = require('./release-parser');
+const { parseRetryAfterAt, rateLimitMessage } = require('./http-rate-limit');
 
 class RSSParser {
   constructor(config, db) {
@@ -98,6 +99,10 @@ class RSSParser {
   }
 
   async fetchRSS(url, { stateKey = url, sourceKind = 'rss' } = {}) {
+    if (this.db.isSourceRateLimited(stateKey)) {
+      console.log(`RSS temporairement limité, collecte différée : ${this.safeUrl(url)}`);
+      return [];
+    }
     const startedAt = this.db.beginSourceSync(stateKey, sourceKind);
     try {
       console.log(`Fetching RSS: ${this.safeUrl(url)}`);
@@ -116,10 +121,16 @@ class RSSParser {
       this.db.finishSourceSync(stateKey, { sourceKind, startedAt, itemsFetched: 0 });
       return [];
     } catch (error) {
-      console.error(`Error fetching RSS ${this.safeUrl(url)}:`, error.message);
       const httpStatus = error.response?.status || null;
-      this.db.failSourceSync(stateKey, { sourceKind, startedAt, errorMessage: error.message, httpStatus });
-      if (stateKey !== url) this.db.recordFeedError(url, error.message, httpStatus);
+      const retryAfterAt = parseRetryAfterAt(error);
+      const errorMessage = retryAfterAt
+        ? rateLimitMessage('Le serveur RSS', retryAfterAt)
+        : error.message;
+      console.error(`Error fetching RSS ${this.safeUrl(url)}:`, errorMessage);
+      this.db.failSourceSync(stateKey, {
+        sourceKind, startedAt, errorMessage, httpStatus, retryAfterAt
+      });
+      if (stateKey !== url) this.db.recordFeedError(url, errorMessage, httpStatus);
       return [];
     }
   }

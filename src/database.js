@@ -1772,6 +1772,10 @@ class DatabaseManager {
   } = {}) {
     const now = Date.now();
     const current = this.getSourceSyncState(sourceKey);
+    const nextCursor = JSON.parse(JSON.stringify(
+      cursor === undefined ? (current?.cursor || {}) : cursor
+    ));
+    delete nextCursor._rate_limit_until;
     this.db.prepare(`
       INSERT INTO source_sync_state (
         source_key, source_kind, last_attempt_at, last_success_at,
@@ -1800,7 +1804,7 @@ class DatabaseManager {
       quotaLimit === null ? current?.quota_limit ?? null : Number(quotaLimit),
       quotaUsed === null ? current?.quota_used ?? null : Number(quotaUsed),
       quotaStatus === null ? current?.quota_status ?? null : String(quotaStatus),
-      JSON.stringify(cursor === undefined ? (current?.cursor || {}) : cursor),
+      JSON.stringify(nextCursor),
       now
     );
     this.recordFeedSuccess(sourceKey);
@@ -1818,28 +1822,49 @@ class DatabaseManager {
     sourceKind = 'unknown',
     startedAt = Date.now(),
     errorMessage = null,
-    httpStatus = null
+    httpStatus = null,
+    itemsFetched = 0,
+    cursor = undefined,
+    retryAfterAt = null,
+    quotaLimit = null,
+    quotaUsed = null,
+    quotaStatus = null
   } = {}) {
     const now = Date.now();
+    const current = this.getSourceSyncState(sourceKey);
+    const nextCursor = JSON.parse(JSON.stringify(
+      cursor === undefined ? (current?.cursor || {}) : cursor
+    ));
+    if (Number(retryAfterAt) > now) nextCursor._rate_limit_until = Number(retryAfterAt);
     this.db.prepare(`
       INSERT INTO source_sync_state (
-        source_key, source_kind, last_attempt_at, last_duration_ms,
+        source_key, source_kind, last_attempt_at, last_duration_ms, last_items_fetched,
         last_error_at, last_error_message, last_http_status,
-        consecutive_errors, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+        consecutive_errors, quota_limit, quota_used, quota_status, cursor_json, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
       ON CONFLICT(source_key) DO UPDATE SET
         source_kind = excluded.source_kind,
         last_attempt_at = excluded.last_attempt_at,
         last_duration_ms = excluded.last_duration_ms,
+        last_items_fetched = excluded.last_items_fetched,
         last_error_at = excluded.last_error_at,
         last_error_message = excluded.last_error_message,
         last_http_status = excluded.last_http_status,
         consecutive_errors = source_sync_state.consecutive_errors + 1,
+        quota_limit = COALESCE(excluded.quota_limit, source_sync_state.quota_limit),
+        quota_used = COALESCE(excluded.quota_used, source_sync_state.quota_used),
+        quota_status = COALESCE(excluded.quota_status, source_sync_state.quota_status),
+        cursor_json = excluded.cursor_json,
         updated_at = excluded.updated_at
     `).run(
       sourceKey, sourceKind, Number(startedAt) || now,
       Math.max(0, now - (Number(startedAt) || now)),
-      now, errorMessage || null, httpStatus || null, now
+      Math.max(0, Number(itemsFetched) || 0),
+      now, errorMessage || null, httpStatus || null,
+      quotaLimit === null ? null : Number(quotaLimit),
+      quotaUsed === null ? null : Number(quotaUsed),
+      quotaStatus === null ? null : String(quotaStatus),
+      JSON.stringify(nextCursor), now
     );
     const state = this.getSourceSyncState(sourceKey);
     this.recordSourceHealthEvent({
@@ -2032,7 +2057,18 @@ class DatabaseManager {
   isSourceDue(sourceKey, intervalMinutes, now = Date.now()) {
     const state = this.getSourceSyncState(sourceKey);
     if (!state?.last_attempt_at) return true;
-    return now - state.last_attempt_at >= Math.max(1, Number(intervalMinutes) || 1) * 60 * 1000;
+    const scheduledAt = state.last_attempt_at + Math.max(1, Number(intervalMinutes) || 1) * 60 * 1000;
+    return now >= Math.max(scheduledAt, this.getSourceRateLimitUntil(sourceKey));
+  }
+
+  getSourceRateLimitUntil(sourceKey) {
+    const state = this.getSourceSyncState(sourceKey);
+    const value = Number(state?.cursor?._rate_limit_until) || 0;
+    return value > Date.now() ? value : 0;
+  }
+
+  isSourceRateLimited(sourceKey, now = Date.now()) {
+    return this.getSourceRateLimitUntil(sourceKey) > now;
   }
 
   deleteSourceSyncState(sourceKey) {
@@ -2069,7 +2105,12 @@ class DatabaseManager {
         let cursor;
         try { cursor = JSON.parse(row.cursor_json || '{}'); } catch { continue; }
         if (!cursor.pending || typeof cursor.pending !== 'object') continue;
-        update.run(JSON.stringify({ committed: cursor.pending }), Date.now(), row.source_key);
+        update.run(JSON.stringify({
+          committed: cursor.pending,
+          ...(Number(cursor._rate_limit_until) > Date.now()
+            ? { _rate_limit_until: Number(cursor._rate_limit_until) }
+            : {})
+        }), Date.now(), row.source_key);
         committed++;
       }
     });

@@ -2642,13 +2642,17 @@ class WebUI {
     const own = this.normalizeSourceInterval(ownInterval);
     const intervalMinutes = own || Number(this.db.getConfig('refresh_interval')) || 180;
     const state = this.db.getSourceSyncState(sourceKey);
+    const rateLimitUntil = this.db.getSourceRateLimitUntil(sourceKey);
     return {
       source_key: sourceKey,
       interval_minutes: intervalMinutes,
       uses_global_interval: !own,
-      next_sync_at: state?.last_attempt_at
-        ? state.last_attempt_at + intervalMinutes * 60 * 1000
-        : Date.now(),
+      next_sync_at: Math.max(
+        state?.last_attempt_at
+          ? state.last_attempt_at + intervalMinutes * 60 * 1000
+          : Date.now(),
+        rateLimitUntil
+      ),
       last_attempt_at: state?.last_attempt_at || null,
       last_success_at: state?.last_success_at || null,
       last_duration_ms: state?.last_duration_ms || null,
@@ -2657,6 +2661,7 @@ class WebUI {
       last_error_message: state?.last_error_message || null,
       last_http_status: state?.last_http_status || null,
       consecutive_errors: state?.consecutive_errors || 0,
+      rate_limit_until: rateLimitUntil || null,
       quota_limit: state?.quota_limit ?? null,
       quota_used: state?.quota_used ?? null,
       quota_status: state?.quota_status || null,
