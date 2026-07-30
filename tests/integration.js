@@ -211,6 +211,9 @@ async function main() {
   let suggestArrAuthenticated = false;
   let agregarrKeyReceived = false;
   let streamFusionAuthenticated = false;
+  let rateLimitedRssRequests = 0;
+  let newznabRateLimitAfterOffset = null;
+  let newznabRateLimitHits = 0;
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     if (req.method === 'PROPFIND' && (req.url === '/dav/' || req.url === '/dav/Films/')) {
@@ -255,6 +258,12 @@ async function main() {
     if (req.url === '/image-source.png') {
       res.setHeader('Content-Type', 'image/png');
       return res.end(Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'));
+    }
+    if (req.url === '/rate-limited-rss') {
+      rateLimitedRssRequests++;
+      res.statusCode = 429;
+      res.setHeader('Retry-After', '120');
+      return res.end('rate limited');
     }
     if (req.url === '/master') return res.end('#FILMS\nmovie\n#SERIES\nseries\n');
     if (req.url === '/movie') return res.end(`${header}\n${movieRow}\n`);
@@ -503,6 +512,16 @@ async function main() {
       }
       const category = requestUrl.searchParams.get('cat');
       const offset = Number(requestUrl.searchParams.get('offset') || 0);
+      if (
+        category === '2000'
+        && newznabRateLimitAfterOffset !== null
+        && offset >= newznabRateLimitAfterOffset
+      ) {
+        newznabRateLimitHits++;
+        res.statusCode = 429;
+        res.setHeader('Retry-After', '120');
+        return res.end('rate limited');
+      }
       const movieItems = [
         ['api-film-1', 'API Film One 2026 FRENCH 1080p', '0000901', '2000'],
         ['api-film-2', 'API Film Two 2025 FRENCH 2160p', '0000902', '2060'],
@@ -758,6 +777,18 @@ async function main() {
     assert.equal(legacyEpisode.isSeries, true);
     assert.equal(legacyEpisode.year, '2026');
     assert.equal(legacyEpisode.typeConfidence, 'high');
+    const rateLimitedRss = await pttRssParser.fetchRSS(`${baseUrl}/rate-limited-rss`, {
+      stateKey: 'rss:rate-limited-test'
+    });
+    assert.deepEqual(rateLimitedRss, []);
+    const rateLimitedRssState = db.getSourceSyncState('rss:rate-limited-test');
+    assert.equal(rateLimitedRssState.last_http_status, 429);
+    assert.ok(rateLimitedRssState.cursor._rate_limit_until > Date.now());
+    assert.match(rateLimitedRssState.last_error_message, /reprise autorisée/);
+    await pttRssParser.fetchRSS(`${baseUrl}/rate-limited-rss`, {
+      stateKey: 'rss:rate-limited-test'
+    });
+    assert.equal(rateLimitedRssRequests, 1);
     console.log('✓ Parsing PTT structuré avec repli historique');
 
     const rankedMovie = await matcher.searchMovie('Spectacle Test', '2026');
@@ -1288,6 +1319,39 @@ async function main() {
     assert.equal(incrementalMovies.length, 0);
     assert.equal(db.getSourceSyncState('newznab:newznab-test:movie').quota_status, 'cursor_reached');
     assert.ok(newznabKeyReceived);
+    const rateLimitedNewznabSource = {
+      ...newznabSource,
+      id: 'newznab-rate-limit-test',
+      maxItemsPerCategory: 10
+    };
+    newznabRateLimitAfterOffset = 2;
+    const partialNewznabMovies = await rssParser.newznabParser.fetchCategory(
+      rateLimitedNewznabSource, 'movie', '2000', capabilities
+    );
+    assert.equal(partialNewznabMovies.length, 2);
+    assert.equal(newznabRateLimitHits, 1);
+    const partialStateKey = 'newznab:newznab-rate-limit-test:movie';
+    const partialState = db.getSourceSyncState(partialStateKey);
+    assert.equal(partialState.last_http_status, 429);
+    assert.equal(partialState.last_items_fetched, 2);
+    assert.equal(partialState.quota_status, 'rate_limited');
+    assert.equal(partialState.cursor.pending.backfill_offset, 0);
+    assert.equal(db.commitPendingSourceCursors([partialStateKey]), 1);
+    const resumableCursor = db.getSourceSyncState(partialStateKey).cursor;
+    resumableCursor._rate_limit_until = 1;
+    db.db.prepare(
+      'UPDATE source_sync_state SET cursor_json = ? WHERE source_key = ?'
+    ).run(JSON.stringify(resumableCursor), partialStateKey);
+    newznabRateLimitAfterOffset = null;
+    const resumedNewznabMovies = await rssParser.newznabParser.fetchCategory(
+      rateLimitedNewznabSource, 'movie', '2000', capabilities
+    );
+    assert.deepEqual(resumedNewznabMovies.map(item => item.indexer_rlz_id), ['api-film-3']);
+    assert.equal(
+      db.getSourceSyncState(partialStateKey).cursor.pending.backfill_complete,
+      true
+    );
+    console.log('✓ Temporisation 429 RSS et reprise paginée Newznab/Torznab');
     const newznabMatch = await matcher.matchBatch(newznabMovies);
     assert.equal(newznabMatch.matched, 3);
     assert.ok(db.getMediaByImdbId('tt0000901'));
