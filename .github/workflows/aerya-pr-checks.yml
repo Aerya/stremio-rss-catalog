@@ -1,0 +1,48 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate root project
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run project tests when defined
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if node -e "const p=require('./package.json'); const s=p.scripts?.test; process.exit(s && !s.includes('no test specified') ? 0 : 1)"; then
+            npm test
+          else
+            echo "Aucun test exploitable déclaré."
+          fi
+
+      - name: Validate Python syntax
+        if: ${{ hashFiles('requirements.txt', '*.py', '**/*.py') != '' }}
+        run: python3 -m compileall -q .
+
+      - name: Build root Dockerfile
+        run: docker build --pull --tag stremio-rss-catalog-pr:${{ github.sha }} .
