@@ -587,7 +587,11 @@ class TMDBMatcher {
       let match = null;
       try {
         const isAnime = item.catalog_type === 'animés';
-        match = item.direct_meta
+        match = item.direct_meta && item.enrich_direct_meta && item.tmdb_id && this.getApiKey()
+          ? (await this.fetchByTmdbId(item.tmdb_id, item.type === 'series' ? 'tv' : 'movie')) || item.direct_meta
+          : item.direct_meta && item.enrich_direct_meta && this.getApiKey()
+          ? (await this.fetchByImdbId(item.direct_meta.imdb_id)) || item.direct_meta
+          : item.direct_meta
           ? item.direct_meta
           : item.tmdb_id
           ? await this.fetchByTmdbId(item.tmdb_id, item.type === 'series' ? 'tv' : 'movie')
@@ -917,7 +921,9 @@ class TMDBMatcher {
           poster: m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : null,
           background: m.backdrop_path ? `https://image.tmdb.org/t/p/original${m.backdrop_path}` : null,
           description: m.overview || null, genres: m.genre_ids || [],
-          vote_average: m.vote_average || null, media_type: 'movie'
+          vote_average: m.vote_average || null, media_type: 'movie',
+          original_language: m.original_language || null,
+          origin_country: m.origin_country || []
         };
       }
       if (data.tv_results && data.tv_results.length > 0) {
@@ -928,7 +934,9 @@ class TMDBMatcher {
           poster: s.poster_path ? `https://image.tmdb.org/t/p/w500${s.poster_path}` : null,
           background: s.backdrop_path ? `https://image.tmdb.org/t/p/original${s.backdrop_path}` : null,
           description: s.overview || null, genres: s.genre_ids || [],
-          vote_average: s.vote_average || null, media_type: 'tv'
+          vote_average: s.vote_average || null, media_type: 'tv',
+          original_language: s.original_language || null,
+          origin_country: s.origin_country || []
         };
       }
       return null;

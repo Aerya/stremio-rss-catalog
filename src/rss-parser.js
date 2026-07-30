@@ -27,7 +27,7 @@ class RSSParser {
     this.newznabParser = new NewznabParser(
       db,
       () => this.getAxiosConfig(),
-      (items, force, sourceUrl) => this._parseItems(items, force, sourceUrl)
+      (items, force, sourceUrl, options) => this._parseItems(items, force, sourceUrl, options)
     );
     this.webdavParser = new WebDavParser(
       db,
@@ -336,9 +336,11 @@ class RSSParser {
     return { catalogType, type };
   }
 
-  _parseItems(items, force, sourceUrl) {
+  _parseItems(items, force, sourceUrl, options = {}) {
     // En mode auto : tenter de deviner la catégorie depuis l'URL du flux
-    const urlHint = (force === 'auto' || !force) ? this.guessForceFromUrl(sourceUrl) : null;
+    const urlHint = (force === 'auto' || !force) && !options.ignoreUrlHint
+      ? this.guessForceFromUrl(sourceUrl)
+      : null;
     const effectiveForce = (force && force !== 'auto') ? force : (urlHint || 'auto');
 
     if (urlHint && (force === 'auto' || !force)) {
@@ -361,8 +363,25 @@ class RSSParser {
                             : info.isEmission  ? 'emissions'
                             : info.isSeries    ? 'series'
                             : 'films';
-      const detectedType = info.isSeries ? 'series' : 'movie';
-      const detected = this.applyForce(detectedCatalog, detectedType, effectiveForce);
+      let detectedType = info.isSeries ? 'series' : 'movie';
+      let catalogType = detectedCatalog;
+      const typeHint = options.typeHint === 'series'
+        ? 'series'
+        : options.typeHint === 'movie'
+          ? 'movie'
+          : null;
+
+      // Les catégories parentes Newznab/Torznab indiquent Film ou TV sans
+      // devoir écraser les catalogues plus précis détectés dans leur contenu.
+      if (effectiveForce === 'auto' && typeHint) {
+        if ((catalogType === 'films' || catalogType === 'series') && info.typeConfidence === 'low') {
+          detectedType = typeHint;
+          catalogType = typeHint === 'series' ? 'series' : 'films';
+        } else if (catalogType === 'documentaires' || catalogType === 'animés') {
+          detectedType = info.typeConfidence === 'high' ? detectedType : typeHint;
+        }
+      }
+      const detected = this.applyForce(catalogType, detectedType, effectiveForce);
 
       parsed.push({
         release_name: item.title,

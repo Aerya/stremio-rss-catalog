@@ -116,13 +116,37 @@ class NewznabParser {
       .map(attr => [String(attr.$.name).toLowerCase(), attr.$.value]));
   }
 
+  itemAttributeValues(item, name) {
+    const expected = String(name).toLowerCase();
+    const attrs = [
+      ...(!item?.['newznab:attr'] ? [] : (Array.isArray(item['newznab:attr']) ? item['newznab:attr'] : [item['newznab:attr']])),
+      ...(!item?.['torznab:attr'] ? [] : (Array.isArray(item['torznab:attr']) ? item['torznab:attr'] : [item['torznab:attr']]))
+    ];
+    return attrs
+      .filter(attr => String(attr?.$?.name || '').toLowerCase() === expected)
+      .map(attr => String(attr.$.value || '').trim())
+      .filter(Boolean);
+  }
+
+  catalogHint(item, capabilities, mediaType) {
+    const categoryNames = new Map((capabilities?.categories || [])
+      .map(category => [String(category.id), String(category.name || '').toLowerCase()]));
+    const categoryText = this.itemAttributeValues(item, 'category')
+      .map(categoryId => categoryNames.get(categoryId) || '')
+      .filter(Boolean)
+      .join(' ');
+    if (/(?:anime|animation|manga)/i.test(categoryText)) return 'animés';
+    if (/(?:documentary|documentaire|docuser)/i.test(categoryText)) return 'documentaires';
+    return null;
+  }
+
   normalizeImdbId(value) {
     if (!value) return null;
     const match = String(value).match(/(?:tt)?(\d{7,10})/i);
     return match ? `tt${match[1]}` : null;
   }
 
-  enrichParsedItems(rawItems, parsedItems) {
+  enrichParsedItems(rawItems, parsedItems, capabilities = null, mediaType = null) {
     const byId = new Map();
     for (const item of rawItems) {
       const id = typeof item.guid === 'object' ? item.guid._ : (item.guid || item.link);
@@ -131,18 +155,26 @@ class NewznabParser {
     return parsedItems.map(item => {
       const raw = byId.get(String(item.indexer_rlz_id));
       const attrs = this.itemAttributes(raw);
+      const catalogHint = mediaType ? this.catalogHint(raw, capabilities, mediaType) : null;
+      const hintedType = mediaType === 'series' ? 'series' : mediaType === 'movie' ? 'movie' : item.type;
+      const classifiedItem = {
+        ...item,
+        ...(catalogHint ? { catalog_type: catalogHint, type: hintedType } : {}),
+        source_force: 'auto',
+        enrich_direct_meta: true
+      };
       const imdbId = this.normalizeImdbId(attrs.imdb || attrs.imdbid);
       const tmdbId = /^\d+$/.test(String(attrs.tmdbid || attrs.tmdb || ''))
         ? String(attrs.tmdbid || attrs.tmdb)
         : null;
-      if (!imdbId) return tmdbId ? { ...item, tmdb_id: tmdbId } : item;
+      if (!imdbId) return tmdbId ? { ...classifiedItem, tmdb_id: tmdbId } : classifiedItem;
       return {
-        ...item,
+        ...classifiedItem,
         ...(tmdbId ? { tmdb_id: tmdbId } : {}),
         direct_meta: {
           imdb_id: imdbId,
-          name: item.cleanName,
-          year: item.year,
+          name: classifiedItem.cleanName,
+          year: classifiedItem.year,
           poster: null,
           background: null,
           description: null,
@@ -208,8 +240,11 @@ class NewznabParser {
         });
 
         if (uniqueItems.length) {
-          const pageItems = this.parseItems(uniqueItems, force, sourceKey);
-          parsed.push(...this.enrichParsedItems(uniqueItems, pageItems));
+          const pageItems = this.parseItems(uniqueItems, 'auto', sourceKey, {
+            typeHint: mediaType,
+            ignoreUrlHint: true
+          });
+          parsed.push(...this.enrichParsedItems(uniqueItems, pageItems, caps, mediaType));
         }
         offset += page.items.length;
         const pageDates = page.items.map(item => this.itemPublishedAt(item)).filter(Boolean);

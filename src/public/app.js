@@ -2391,7 +2391,7 @@ function newznabPayload() {
 
 function indexerKindLabel(kind) {
   return {
-    newznab: 'Newznab',
+    newznab: 'Newznab/Torznab',
     prowlarr: 'Prowlarr',
     jackett: 'Jackett',
     nzbhydra2: 'NZBHydra2'
@@ -2403,7 +2403,7 @@ function updateIndexerHelp() {
   const input = document.getElementById('newznabSourceUrl');
   const help = document.getElementById('indexerUrlHelp');
   const examples = {
-    newznab: ['https://site.fr/api', 'URL complète de l’API Newznab.'],
+    newznab: ['https://site.fr/api', 'URL de base de l’API Newznab/Torznab directe, sans apikey, t ni cat.'],
     prowlarr: ['http://prowlarr:9696/1/api', 'Copiez l’URL Torznab/Newznab d’un indexeur Prowlarr. Une source par indexeur est recommandée.'],
     jackett: ['http://jackett:9117/api/v2.0/indexers/mon-indexeur/results/torznab/api', 'URL Torznab d’un indexeur Jackett. L’endpoint « all » est accepté, mais chaque indexeur séparé donne un meilleur suivi.'],
     nzbhydra2: ['http://nzbhydra2:5076/api', 'URL de l’API Newznab de NZBHydra2.']
@@ -2457,7 +2457,7 @@ async function previewNewznabSource() {
   });
   const data = await response.json();
   output.textContent = response.ok
-    ? `${t('sources_newznab_connection_ok')} · ${t('sources_newznab_server_limit')} ${data.server_max} · ${data.categories.length} ${t('sources_newznab_categories_available')}`
+    ? `${t('sources_newznab_connection_ok')} · ${t('sources_newznab_server_limit')} ${data.server_max} · ${data.categories.length} ${t('sources_newznab_categories_available')} · ${t('sources_newznab_test_not_saved')}`
     : (data.error || 'Erreur');
 }
 window.previewNewznabSource = previewNewznabSource;

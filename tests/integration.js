@@ -493,27 +493,35 @@ async function main() {
             <limits max="2" default="2"/>
             <categories>
               <category id="2000" name="Movies"/>
+              <category id="2060" name="Movies/Anime"/>
+              <category id="2070" name="Movies/Documentary"/>
               <category id="5000" name="TV"/>
+              <category id="5070" name="TV/Anime"/>
+              <category id="5080" name="TV/Documentary"/>
             </categories>
           </caps>`);
       }
       const category = requestUrl.searchParams.get('cat');
       const offset = Number(requestUrl.searchParams.get('offset') || 0);
       const movieItems = [
-        ['api-film-1', 'API Film One 2026 FRENCH 1080p', '0000901'],
-        ['api-film-2', 'API Film Two 2025 FRENCH 2160p', '0000902'],
-        ['api-film-3', 'API Film Three 2024 FRENCH WEB-DL', '0000903']
+        ['api-film-1', 'API Film One 2026 FRENCH 1080p', '0000901', '2000'],
+        ['api-film-2', 'API Film Two 2025 FRENCH 2160p', '0000902', '2060'],
+        ['api-film-3', 'API Film Three 2024 FRENCH WEB-DL', '0000903', '2070']
       ];
-      const seriesItems = [['api-series-1', 'API Series S01E01 2026 FRENCH 1080p', '0000910']];
+      const seriesItems = [
+        ['api-series-1', 'API Series 2026 FRENCH 1080p', '0000910', '5000'],
+        ['api-series-2', 'API Animation 2025 FRENCH 1080p', '0000911', '5070'],
+        ['api-series-3', 'API Docuserie 2024 FRENCH WEB-DL', '0000912', '5080']
+      ];
       const all = category === '5000' ? seriesItems : movieItems;
       const limit = Number(requestUrl.searchParams.get('limit') || 2);
-      const items = all.slice(offset, offset + limit).map(([guid, title, imdb]) => `
+      const items = all.slice(offset, offset + limit).map(([guid, title, imdb, itemCategory]) => `
         <item>
           <title>${title}</title>
           <guid isPermaLink="false">${guid}</guid>
           <link>${baseUrl}/nzb/${guid}</link>
           <pubDate>Mon, 27 Jul 2026 12:00:00 GMT</pubDate>
-          <newznab:attr name="category" value="${category}"/>
+          <newznab:attr name="category" value="${itemCategory}"/>
           <newznab:attr name="imdb" value="${imdb}"/>
         </item>`).join('');
       return res.end(`<?xml version="1.0"?>
@@ -651,6 +659,36 @@ async function main() {
         genres: [{ id: 10767 }], vote_average: 7, original_language: 'fr', origin_country: ['FR'],
         external_ids: { imdb_id: 'tt0999903' },
         keywords: { results: [{ id: 2, name: 'talk show' }] }
+      }));
+    }
+    if (req.url.startsWith('/3/find/tt0000901')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        movie_results: [{
+          id: 901, title: 'API Film One', release_date: '2026-01-01',
+          genre_ids: [28], original_language: 'fr', origin_country: ['FR']
+        }],
+        tv_results: []
+      }));
+    }
+    if (req.url.startsWith('/3/find/tt0000902')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        movie_results: [{
+          id: 902, title: 'API Film Two', release_date: '2025-01-01',
+          genre_ids: [16], original_language: 'ja', origin_country: ['JP']
+        }],
+        tv_results: []
+      }));
+    }
+    if (req.url.startsWith('/3/find/tt0000903')) {
+      res.setHeader('Content-Type', 'application/json');
+      return res.end(JSON.stringify({
+        movie_results: [{
+          id: 903, title: 'API Film Three', release_date: '2024-01-01',
+          genre_ids: [99], original_language: 'fr', origin_country: ['FR']
+        }],
+        tv_results: []
       }));
     }
     if (req.url.startsWith('/3/movie/123')) {
@@ -1192,7 +1230,10 @@ async function main() {
     };
     const capabilities = await rssParser.newznabParser.inspect(newznabSource);
     assert.equal(capabilities.serverMax, 2);
-    assert.deepEqual(capabilities.categories.map(category => category.id), ['2000', '5000']);
+    assert.deepEqual(
+      capabilities.categories.map(category => category.id),
+      ['2000', '2060', '2070', '5000', '5070', '5080']
+    );
     const newznabMovies = await rssParser.newznabParser.fetchCategory(
       newznabSource, 'movie', '2000', capabilities
     );
@@ -1202,12 +1243,44 @@ async function main() {
       newznabMovies.map(item => item.direct_meta.imdb_id),
       ['tt0000901', 'tt0000902', 'tt0000903']
     );
+    assert.deepEqual(
+      newznabMovies.map(item => [item.catalog_type, item.type, item.source_force]),
+      [
+        ['films', 'movie', 'auto'],
+        ['animés', 'movie', 'auto'],
+        ['documentaires', 'movie', 'auto']
+      ]
+    );
+    const newznabSeries = await rssParser.newznabParser.fetchCategory(
+      newznabSource, 'series', '5000', capabilities
+    );
+    assert.deepEqual(
+      newznabSeries.map(item => [item.catalog_type, item.type, item.source_force]),
+      [
+        ['series', 'series', 'auto'],
+        ['animés', 'series', 'auto'],
+        ['documentaires', 'series', 'auto']
+      ]
+    );
+    const torznabSpecialized = [
+      ...rssParser._parseItems([
+        { guid: 'api-concert', title: 'Artiste Live In Paris 2026 FRENCH 1080p' },
+        { guid: 'api-spectacle', title: 'Humoriste Stand-Up 2026 FRENCH 1080p' }
+      ], 'auto', 'newznab:test:movie', { typeHint: 'movie', ignoreUrlHint: true }),
+      ...rssParser._parseItems([
+        { guid: 'api-emission', title: 'Emission Speciale 2026 FRENCH HDTV' }
+      ], 'auto', 'newznab:test:series', { typeHint: 'series', ignoreUrlHint: true })
+    ];
+    assert.deepEqual(
+      torznabSpecialized.map(item => item.catalog_type),
+      ['concerts', 'spectacles', 'emissions']
+    );
     const newznabState = db.getSourceSyncState('newznab:newznab-test:movie');
     assert.equal(newznabState.last_items_fetched, 3);
     assert.equal(newznabState.quota_status, 'limit_reached');
     assert.equal(newznabState.cursor.pending.recent_ids.length, 3);
     assert.deepEqual(newznabState.cursor.committed, {});
-    assert.equal(db.commitPendingSourceCursors(), 1);
+    assert.equal(db.commitPendingSourceCursors(), 2);
     assert.equal(db.getSourceSyncState('newznab:newznab-test:movie').cursor.committed.recent_ids.length, 3);
     const incrementalMovies = await rssParser.newznabParser.fetchCategory(
       newznabSource, 'movie', '2000', capabilities
@@ -1218,6 +1291,9 @@ async function main() {
     const newznabMatch = await matcher.matchBatch(newznabMovies);
     assert.equal(newznabMatch.matched, 3);
     assert.ok(db.getMediaByImdbId('tt0000901'));
+    assert.equal(db.getMediaByImdbId('tt0000902').catalog_type, 'animés');
+    assert.equal(db.getMediaByImdbId('tt0000903').catalog_type, 'documentaires');
+    console.log('✓ Sources Newznab/Torznab classées dans tous les catalogues compatibles');
 
     const stremioParser = new StremioManifestParser(db);
     const remoteUrl = `${baseUrl}/addon/manifest.json?token=secret-test`;
@@ -1430,15 +1506,23 @@ async function main() {
     assert.equal(addon.isCatalogCached('useflowfr_films', { search: 'Film' }), false);
     assert.deepEqual(
       new Set(historical.metas.map(item => item.id)),
-      new Set(['tt0000123', 'tt0000789', 'tt0000901', 'tt0000902', 'tt0000903', 'tt0000920'])
+      new Set(['tt0000123', 'tt0000789', 'tt0000901', 'tt0000920'])
     );
+    const newznabAnimeCatalog = await addon.handleCatalog({
+      type: 'movie', id: 'useflowfr_animes_films', extra: {}
+    });
+    assert.ok(newznabAnimeCatalog.metas.some(item => item.id === 'tt0000902'));
+    const newznabDocumentaryCatalog = await addon.handleCatalog({
+      type: 'movie', id: 'useflowfr_documentaires', extra: {}
+    });
+    assert.ok(newznabDocumentaryCatalog.metas.some(item => item.id === 'tt0000903'));
     const response = await addon.handleCatalog({ type: 'movie', id: 'custom_films_2026', extra: {} });
     assert.deepEqual(response.metas.map(item => item.id), ['tt0000123']);
 
     const frozenCatalog = db.saveCustomCatalog({
       ...mixedCatalog,
       updates_enabled: false,
-      frozen_at: Date.now() - 1000
+      frozen_at: 1
     });
     assert.equal(frozenCatalog.updates_enabled, false);
     assert.equal(db.getCustomCatalogMedia(frozenCatalog).length, 0);
