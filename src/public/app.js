@@ -1987,7 +1987,8 @@ function streamFusionPayload() {
     page_size: Number(document.getElementById('streamFusionPageSize').value) || 1000,
     request_delay_ms: Number(document.getElementById('streamFusionDelay').value) || 0,
     sync_interval_minutes: document.getElementById('streamFusionInterval').value || null,
-    use_proxy: document.getElementById('streamFusionUseProxy').checked
+    use_proxy: document.getElementById('streamFusionUseProxy').checked,
+    catalog_types: selectedSourceCatalogTypes('streamFusionCatalogTypes')
   };
 }
 
@@ -2004,7 +2005,7 @@ function renderStreamFusionSources() {
       <div class="manager-row-main">
         <div class="manager-row-title">${escHtml(source.name || 'StreamFusion')} <span class="source-name-badge">StreamFusion</span> ${source.paused ? '⏸' : '●'}</div>
         <div class="manager-row-meta sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
-        <div class="manager-row-meta">cache privé · limite de lot ${Number(source.max_items_per_sync).toLocaleString()} · pages de ${Number(source.page_size).toLocaleString()} ${source.use_proxy ? '· proxy global' : '· connexion directe'}</div>
+        <div class="manager-row-meta">catalogues : ${escHtml(sourceCatalogSummary(source))} · cache privé · limite de lot ${Number(source.max_items_per_sync).toLocaleString()} · pages de ${Number(source.page_size).toLocaleString()} ${source.use_proxy ? '· proxy global' : '· connexion directe'}</div>
         ${sourceRuntimeHtml(source)}
       </div>
       <div class="manager-row-actions">
@@ -2063,6 +2064,7 @@ async function editStreamFusionSource(id) {
   document.getElementById('streamFusionDelay').value = source.request_delay_ms ?? 100;
   document.getElementById('streamFusionInterval').value = source.sync_interval_minutes || '';
   document.getElementById('streamFusionUseProxy').checked = source.use_proxy;
+  renderSourceCatalogSelector('streamFusionCatalogTypes', source.catalog_types);
   document.getElementById('streamFusionSubmit').textContent = 'Enregistrer';
   document.getElementById('streamFusionCancel').hidden = false;
 }
@@ -2081,6 +2083,7 @@ function resetStreamFusionForm() {
   document.getElementById('streamFusionDelay').value = 100;
   document.getElementById('streamFusionInterval').value = '';
   document.getElementById('streamFusionUseProxy').checked = false;
+  renderSourceCatalogSelector('streamFusionCatalogTypes');
   document.getElementById('streamFusionPreview').textContent = '';
   document.getElementById('streamFusionSubmit').textContent = 'Ajouter';
   document.getElementById('streamFusionCancel').hidden = true;
@@ -2108,7 +2111,8 @@ function cometNetPayload() {
     source_id: document.getElementById('cometNetEditId').value || null,
     name: document.getElementById('cometNetName').value.trim(),
     url: document.getElementById('cometNetUrl').value.trim(),
-    max_items_per_sync: Number(document.getElementById('cometNetMaxItems').value) || 10000000
+    max_items_per_sync: Number(document.getElementById('cometNetMaxItems').value) || 10000000,
+    catalog_types: selectedSourceCatalogTypes('cometNetCatalogTypes')
   };
 }
 
@@ -2149,6 +2153,7 @@ function renderCometNetSources() {
           · en attente ${Number(inbox.pending || 0).toLocaleString()}
           · session ${Number(state.received_session || 0).toLocaleString()}
           ${state.invalid_session ? `· rejetées ${Number(state.invalid_session).toLocaleString()}` : ''}
+          · catalogues ${escHtml(sourceCatalogSummary(source))}
         </div>
         <div class="manager-row-meta">
           Dernier message : ${state.last_message_at ? fmtDate(state.last_message_at) : 'jamais'}
@@ -2215,6 +2220,7 @@ async function editCometNetSource(id) {
   document.getElementById('cometNetName').value = source.name || '';
   document.getElementById('cometNetUrl').value = secrets.url || '';
   document.getElementById('cometNetMaxItems').value = source.max_items_per_sync || 10000000;
+  renderSourceCatalogSelector('cometNetCatalogTypes', source.catalog_types);
   document.getElementById('cometNetSubmit').textContent = 'Enregistrer';
   document.getElementById('cometNetCancel').hidden = false;
 }
@@ -2225,6 +2231,7 @@ function resetCometNetForm() {
   document.getElementById('cometNetName').value = '';
   document.getElementById('cometNetUrl').value = '';
   document.getElementById('cometNetMaxItems').value = 10000000;
+  renderSourceCatalogSelector('cometNetCatalogTypes');
   document.getElementById('cometNetPreview').textContent = '';
   document.getElementById('cometNetSubmit').textContent = 'Ajouter';
   document.getElementById('cometNetCancel').hidden = true;
@@ -2262,7 +2269,8 @@ function waCustomPayload() {
     max_items_per_sync: Number(document.getElementById('wacustomMaxItems').value) || 10000000,
     page_size: Number(document.getElementById('wacustomPageSize').value) || 1000,
     request_delay_ms: Number(document.getElementById('wacustomDelay').value) || 0,
-    sync_interval_minutes: document.getElementById('wacustomInterval').value || null
+    sync_interval_minutes: document.getElementById('wacustomInterval').value || null,
+    catalog_types: selectedSourceCatalogTypes('wacustomCatalogTypes')
   };
 }
 
@@ -2282,6 +2290,7 @@ function renderWaCustomSources() {
           limite de lot ${Number(source.max_items_per_sync).toLocaleString()} éléments
           · page ${Number(source.page_size).toLocaleString()}
           · délai ${Number(source.request_delay_ms).toLocaleString()} ms
+          · catalogues ${escHtml(sourceCatalogSummary(source))}
         </div>
         ${sourceRuntimeHtml(source)}
       </div>
@@ -2340,6 +2349,7 @@ async function editWaCustomSource(id) {
   document.getElementById('wacustomPageSize').value = source.page_size || 1000;
   document.getElementById('wacustomDelay').value = source.request_delay_ms ?? 250;
   document.getElementById('wacustomInterval').value = source.sync_interval_minutes || '';
+  renderSourceCatalogSelector('wacustomCatalogTypes', source.catalog_types);
   document.getElementById('wacustomSubmit').textContent = 'Enregistrer';
   document.getElementById('wacustomCancel').hidden = false;
 }
@@ -2355,6 +2365,7 @@ function resetWaCustomForm() {
   document.getElementById('wacustomPageSize').value = 1000;
   document.getElementById('wacustomDelay').value = 250;
   document.getElementById('wacustomInterval').value = '';
+  renderSourceCatalogSelector('wacustomCatalogTypes');
   document.getElementById('wacustomPreview').textContent = '';
   document.getElementById('wacustomSubmit').textContent = 'Ajouter';
   document.getElementById('wacustomCancel').hidden = true;
@@ -2383,6 +2394,8 @@ function newznabPayload() {
     kind: document.getElementById('newznabSourceKind').value,
     url: document.getElementById('newznabSourceUrl').value.trim(),
     api_key: document.getElementById('newznabApiKey').value.trim(),
+    category_mode: document.getElementById('newznabAutoCategories').checked ? 'auto' : 'manual',
+    catalog_types: [...document.querySelectorAll('.newznab-catalog-type:checked')].map(input => input.value),
     movie_categories: document.getElementById('newznabMovieCategories').value.trim(),
     series_categories: document.getElementById('newznabSeriesCategories').value.trim(),
     max_items_per_category: Number(document.getElementById('newznabMaxItems').value) || 10000000,
@@ -2391,6 +2404,62 @@ function newznabPayload() {
     sync_interval_minutes: document.getElementById('newznabInterval').value || null
   };
 }
+
+const NEWZNAB_CATALOG_LABELS = {
+  films: 'Films',
+  series: 'Séries',
+  documentaires: 'Documentaires',
+  emissions: 'Émissions TV',
+  'animés': 'Animés',
+  concerts: 'Concerts',
+  spectacles: 'Spectacles'
+};
+const SOURCE_CATALOG_I18N_KEYS = {
+  films: 'stat_films',
+  series: 'stat_series',
+  documentaires: 'stat_documentaires',
+  emissions: 'stat_emissions',
+  'animés': 'stat_animes',
+  concerts: 'stat_concerts',
+  spectacles: 'stat_spectacles'
+};
+
+function sourceCatalogLabel(type) {
+  return t(SOURCE_CATALOG_I18N_KEYS[type]) || NEWZNAB_CATALOG_LABELS[type] || type;
+}
+
+function renderSourceCatalogSelector(containerId, selected = Object.keys(NEWZNAB_CATALOG_LABELS)) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const selectedSet = new Set(selected?.length ? selected : Object.keys(NEWZNAB_CATALOG_LABELS));
+  container.innerHTML = Object.keys(NEWZNAB_CATALOG_LABELS).map(type => `
+    <label class="catalog-source-choice">
+      <input type="checkbox" value="${escHtml(type)}" ${selectedSet.has(type) ? 'checked' : ''}>
+      <span>${escHtml(sourceCatalogLabel(type))}</span>
+    </label>`).join('');
+}
+
+function selectedSourceCatalogTypes(containerId) {
+  return [...document.querySelectorAll(`#${containerId} input[type="checkbox"]:checked`)]
+    .map(input => input.value);
+}
+
+function sourceCatalogSummary(source) {
+  return (source.catalog_types || Object.keys(NEWZNAB_CATALOG_LABELS))
+    .map(sourceCatalogLabel)
+    .join(', ');
+}
+
+function updateNewznabCategoryMode() {
+  const automatic = document.getElementById('newznabAutoCategories')?.checked !== false;
+  for (const id of ['newznabMovieCategories', 'newznabSeriesCategories']) {
+    const input = document.getElementById(id);
+    if (!input) continue;
+    input.readOnly = automatic;
+    input.classList.toggle('newznab-category-readonly', automatic);
+  }
+}
+window.updateNewznabCategoryMode = updateNewznabCategoryMode;
 
 function indexerKindLabel(kind) {
   return {
@@ -2429,7 +2498,10 @@ function renderNewznabSources() {
         <div class="manager-row-title">${escHtml(source.name || 'Indexeur')} <span class="source-name-badge">${indexerKindLabel(source.kind)}</span> ${source.paused ? '⏸' : '●'}</div>
         <div class="manager-row-meta manager-row-url sensitive-source-value">${escHtml(maskedSourceUrl(source.url))}</div>
         <div class="manager-row-meta">
-          ${t('sources_newznab_categories_short')} :
+          ${t('sources_newznab_catalogs_short')} :
+          ${(source.catalog_types || []).map(type => escHtml(sourceCatalogLabel(type))).join(', ')}
+          · ${source.category_mode === 'auto' ? t('sources_newznab_detection_auto') : t('sources_newznab_detection_manual')}
+          · ${t('sources_newznab_categories_short')} :
           ${(source.catalogs || []).map(catalog => `${escHtml(catalog.name)} ${escHtml(catalog.category_ids)}`).join(' · ')}
           · limite de lot ${source.max_items_per_category.toLocaleString()} éléments/catégorie/synchronisation
           · pages de ${source.page_size} (limite serveur)
@@ -2459,14 +2531,31 @@ async function previewNewznabSource() {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
   });
   const data = await response.json();
-  output.textContent = response.ok
-    ? `${t('sources_newznab_connection_ok')} · ${t('sources_newznab_server_limit')} ${data.server_max} · ${data.categories.length} ${t('sources_newznab_categories_available')} · ${t('sources_newznab_test_not_saved')}`
-    : (data.error || 'Erreur');
+  if (!response.ok) {
+    output.textContent = data.error || 'Erreur';
+    return;
+  }
+  const suggestions = data.category_suggestions || {};
+  if (payload.category_mode === 'auto') {
+    document.getElementById('newznabMovieCategories').value = suggestions.movie || '';
+    document.getElementById('newznabSeriesCategories').value = suggestions.series || '';
+  }
+  const detected = Object.entries(suggestions.byCatalog || {})
+    .filter(([, categories]) => categories.movie?.length || categories.series?.length)
+    .map(([type, categories]) => {
+      const ids = [...(categories.movie || []), ...(categories.series || [])];
+      return `${sourceCatalogLabel(type)} ${ids.join(',')}`;
+    })
+    .join(' · ');
+  output.textContent = `${t('sources_newznab_connection_ok')} · ${t('sources_newznab_server_limit')} ${data.server_max} · ${data.categories.length} ${t('sources_newznab_categories_available')}${detected ? ` · ${t('sources_newznab_detected')}: ${detected}` : ''} · ${t('sources_newznab_test_not_saved')}`;
 }
 window.previewNewznabSource = previewNewznabSource;
 
 async function saveNewznabSource() {
   const id = document.getElementById('newznabEditId').value;
+  if (!document.querySelector('.newznab-catalog-type:checked')) {
+    return alert(t('sources_newznab_catalog_required'));
+  }
   const response = await fetch(id ? `/api/newznab-sources/${id}` : '/api/newznab-sources', {
     method: id ? 'PUT' : 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2492,6 +2581,11 @@ async function editNewznabSource(id) {
   document.getElementById('newznabApiKey').placeholder = 'Laisser vide pour conserver la clé';
   document.getElementById('newznabMovieCategories').value = source.categories?.movie || '';
   document.getElementById('newznabSeriesCategories').value = source.categories?.series || '';
+  document.getElementById('newznabAutoCategories').checked = source.category_mode === 'auto';
+  const selectedCatalogs = new Set(source.catalog_types || Object.keys(NEWZNAB_CATALOG_LABELS));
+  document.querySelectorAll('.newznab-catalog-type').forEach(input => {
+    input.checked = selectedCatalogs.has(input.value);
+  });
   document.getElementById('newznabMaxItems').value = source.max_items_per_category || 10000000;
   document.getElementById('newznabRequestDelay').value = source.request_delay_ms || 750;
   document.getElementById('newznabLookbackHours').value = source.lookback_hours || 24;
@@ -2499,6 +2593,7 @@ async function editNewznabSource(id) {
   document.getElementById('newznabSubmit').textContent = 'Enregistrer';
   document.getElementById('newznabCancel').hidden = false;
   updateIndexerHelp();
+  updateNewznabCategoryMode();
 }
 window.editNewznabSource = editNewznabSource;
 
@@ -2511,6 +2606,8 @@ function resetNewznabForm() {
   document.getElementById('newznabApiKey').placeholder = '';
   document.getElementById('newznabMovieCategories').value = '2000';
   document.getElementById('newznabSeriesCategories').value = '5000';
+  document.getElementById('newznabAutoCategories').checked = true;
+  document.querySelectorAll('.newznab-catalog-type').forEach(input => { input.checked = true; });
   document.getElementById('newznabMaxItems').value = 10000000;
   document.getElementById('newznabRequestDelay').value = 750;
   document.getElementById('newznabLookbackHours').value = 24;
@@ -2519,6 +2616,7 @@ function resetNewznabForm() {
   document.getElementById('newznabSubmit').textContent = 'Ajouter';
   document.getElementById('newznabCancel').hidden = true;
   updateIndexerHelp();
+  updateNewznabCategoryMode();
 }
 window.resetNewznabForm = resetNewznabForm;
 
@@ -3853,6 +3951,10 @@ function applyI18nToElement(el) {
 document.addEventListener('DOMContentLoaded', () => {
   applyTheme();
   initI18n();
+  updateNewznabCategoryMode();
+  renderSourceCatalogSelector('wacustomCatalogTypes');
+  renderSourceCatalogSelector('streamFusionCatalogTypes');
+  renderSourceCatalogSelector('cometNetCatalogTypes');
   loadStats();
   loadOverview();
   loadInstallUrl();

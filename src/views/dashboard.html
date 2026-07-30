@@ -495,6 +495,26 @@
             <label data-i18n="sources_newznab_key">Clé API</label>
             <input id="newznabApiKey" type="password" autocomplete="off">
           </div>
+          <div class="field newznab-catalog-field">
+            <label data-i18n="sources_newznab_catalogs">Catalogues à alimenter</label>
+            <div id="newznabCatalogTypes" class="catalog-source-choices newznab-catalog-choices">
+              <label class="catalog-source-choice"><input class="newznab-catalog-type" type="checkbox" value="films" checked> <span data-i18n="stat_films">Films</span></label>
+              <label class="catalog-source-choice"><input class="newznab-catalog-type" type="checkbox" value="series" checked> <span data-i18n="stat_series">Séries</span></label>
+              <label class="catalog-source-choice"><input class="newznab-catalog-type" type="checkbox" value="documentaires" checked> <span data-i18n="stat_documentaires">Documentaires</span></label>
+              <label class="catalog-source-choice"><input class="newznab-catalog-type" type="checkbox" value="emissions" checked> <span data-i18n="stat_emissions">Émissions TV</span></label>
+              <label class="catalog-source-choice"><input class="newznab-catalog-type" type="checkbox" value="animés" checked> <span data-i18n="stat_animes">Animés</span></label>
+              <label class="catalog-source-choice"><input class="newznab-catalog-type" type="checkbox" value="concerts" checked> <span data-i18n="stat_concerts">Concerts</span></label>
+              <label class="catalog-source-choice"><input class="newznab-catalog-type" type="checkbox" value="spectacles" checked> <span data-i18n="stat_spectacles">Spectacles</span></label>
+            </div>
+            <small data-i18n="sources_newznab_catalogs_help">Tout est sélectionné par défaut. Décochez les catalogues que cette source ne doit pas alimenter.</small>
+          </div>
+          <div class="field newznab-catalog-field">
+            <label class="check-inline">
+              <input id="newznabAutoCategories" type="checkbox" checked onchange="updateNewznabCategoryMode()">
+              <span data-i18n="sources_newznab_auto_categories">Détecter automatiquement les catégories de l’API</span>
+            </label>
+            <small data-i18n="sources_newznab_auto_categories_help">Le bouton Tester affiche et applique les identifiants correspondant aux catalogues cochés. Désactivez cette option pour saisir les catégories manuellement.</small>
+          </div>
           <div class="field">
             <label data-i18n="sources_newznab_movie_categories">Catégories Films</label>
             <input id="newznabMovieCategories" type="text" value="2000" placeholder="2000">
@@ -575,6 +595,10 @@
             <label>Fréquence de collecte (min)</label>
             <input id="wacustomInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale">
           </div>
+          <div class="field newznab-catalog-field">
+            <label data-i18n="sources_newznab_catalogs">Catalogues à alimenter</label>
+            <div id="wacustomCatalogTypes" class="catalog-source-choices newznab-catalog-choices"></div>
+          </div>
         </div>
         <div class="integration-cat-hint" style="margin-top:12px">
           Le premier parcours est repris automatiquement par lots jusqu’à sa fin.
@@ -612,6 +636,10 @@
           <div class="field"><label>Délai entre les pages (ms)</label><input id="streamFusionDelay" type="number" min="0" max="10000" value="100"></div>
           <div class="field"><label>Fréquence de collecte (min)</label><input id="streamFusionInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale"></div>
           <div class="field"><label class="check-inline"><input id="streamFusionUseProxy" type="checkbox"> Utiliser le proxy global</label></div>
+          <div class="field newznab-catalog-field">
+            <label data-i18n="sources_newznab_catalogs">Catalogues à alimenter</label>
+            <div id="streamFusionCatalogTypes" class="catalog-source-choices newznab-catalog-choices"></div>
+          </div>
         </div>
         <div class="integration-cat-hint" style="margin-top:12px">
           Première collecte paginée, puis reprise incrémentale avec le timestamp et le curseur
@@ -643,6 +671,10 @@
           <div class="field"><label>Nom du pair ciblé</label><input id="cometNetName" type="text" placeholder="Mon Comet local"></div>
           <div class="field"><label>URL WebSocket CometNet</label><input id="cometNetUrl" type="password" autocomplete="off" placeholder="wss://comet.example.net"></div>
           <div class="field"><label>Limite de sécurité par lot</label><input id="cometNetMaxItems" type="number" min="1" max="10000000" value="10000000"></div>
+          <div class="field newznab-catalog-field">
+            <label data-i18n="sources_newznab_catalogs">Catalogues à alimenter</label>
+            <div id="cometNetCatalogTypes" class="catalog-source-choices newznab-catalog-choices"></div>
+          </div>
         </div>
         <div class="integration-cat-hint" style="margin-top:12px">
           <strong>Source d’appoint non exhaustive :</strong> CometNet ne remplace pas une API

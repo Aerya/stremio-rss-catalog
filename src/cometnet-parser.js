@@ -493,7 +493,11 @@ class CometNetParser {
       catalog_type: isSeries ? 'series' : 'films',
       type: isSeries ? 'series' : 'movie',
       source_url: this.sourceKey(source.id),
-      source_force: isSeries ? 'series' : 'films',
+      source_force: 'auto',
+      allowed_catalog_types: Array.isArray(source.catalogTypes) && source.catalogTypes.length
+        ? source.catalogTypes
+        : ['films', 'series', 'documentaires', 'emissions', 'animés', 'concerts', 'spectacles'],
+      enrich_direct_meta: Array.isArray(source.catalogTypes) && source.catalogTypes.length < 7,
       quality: row.parsed?.quality || row.parsed?.resolution || this.extractQuality(title),
       hash: row.info_hash,
       direct_meta: {

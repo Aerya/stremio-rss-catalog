@@ -502,11 +502,14 @@ async function main() {
             <limits max="2" default="2"/>
             <categories>
               <category id="2000" name="Movies"/>
+              <category id="2040" name="Movies/Live Show"/>
+              <category id="2050" name="Movies/Concert"/>
               <category id="2060" name="Movies/Anime"/>
               <category id="2070" name="Movies/Documentary"/>
               <category id="5000" name="TV"/>
               <category id="5070" name="TV/Anime"/>
               <category id="5080" name="TV/Documentary"/>
+              <category id="5090" name="TV/Emission"/>
             </categories>
           </caps>`);
       }
@@ -1054,6 +1057,8 @@ async function main() {
     assert.equal(waCustomFirst.length, 1);
     assert.equal(waCustomFirst[0].direct_meta.imdb_id, 'tt0000920');
     assert.equal(waCustomFirst[0].source_url, 'wacustom:wacustom-test');
+    assert.equal(waCustomFirst[0].source_force, 'auto');
+    assert.equal(waCustomFirst[0].allowed_catalog_types.length, 7);
     assert.ok(waCustomCookieReceived);
     assert.equal(db.commitPendingSourceCursors(['wacustom:wacustom-test']), 1);
     const waCustomSecond = await waCustomParser.fetchSource(waCustomSource);
@@ -1097,6 +1102,8 @@ async function main() {
     assert.equal(streamFusionFirst.length, 1);
     assert.equal(streamFusionFirst[0].direct_meta.imdb_id, 'tt0000940');
     assert.equal(streamFusionFirst[0].source_url, 'streamfusion:streamfusion-test');
+    assert.equal(streamFusionFirst[0].source_force, 'auto');
+    assert.equal(streamFusionFirst[0].allowed_catalog_types.length, 7);
     assert.equal(streamFusionAuthenticated, true);
     assert.equal(db.commitPendingSourceCursors(['streamfusion:streamfusion-test']), 1);
     const streamFusionSecond = await streamFusionParser.fetchSource(streamFusionSource);
@@ -1240,6 +1247,8 @@ async function main() {
       assert.equal(cometItems.length, 1);
       assert.equal(cometItems[0].direct_meta.imdb_id, 'tt0000950');
       assert.equal(cometItems[0].source_url, 'cometnet:cometnet-test');
+      assert.equal(cometItems[0].source_force, 'auto');
+      assert.equal(cometItems[0].allowed_catalog_types.length, 7);
       assert.equal(db.markCometNetItemsProcessed(cometNetParser.lastPendingInboxKeys), 1);
       assert.equal(db.getCometNetInboxStats(cometNetSource.id).pending, 0);
     } finally {
@@ -1263,8 +1272,42 @@ async function main() {
     assert.equal(capabilities.serverMax, 2);
     assert.deepEqual(
       capabilities.categories.map(category => category.id),
-      ['2000', '2060', '2070', '5000', '5070', '5080']
+      ['2000', '2040', '2050', '2060', '2070', '5000', '5070', '5080', '5090']
     );
+    const allCategorySuggestions = rssParser.newznabParser.categorySuggestions(capabilities.categories);
+    assert.deepEqual(allCategorySuggestions.byCatalog.spectacles.movie, ['2040']);
+    assert.deepEqual(allCategorySuggestions.byCatalog.concerts.movie, ['2050']);
+    assert.deepEqual(allCategorySuggestions.byCatalog['animés'], { movie: ['2060'], series: ['5070'] });
+    assert.deepEqual(allCategorySuggestions.byCatalog.documentaires, { movie: ['2070'], series: ['5080'] });
+    assert.deepEqual(allCategorySuggestions.byCatalog.emissions.series, ['5090']);
+    const selectedCategorySuggestions = rssParser.newznabParser.categorySuggestions(
+      capabilities.categories,
+      ['documentaires', 'concerts', 'emissions']
+    );
+    assert.equal(selectedCategorySuggestions.movie, '2070,2050');
+    assert.equal(selectedCategorySuggestions.series, '5080,5090');
+    const frenchIndexerSuggestions = rssParser.newznabParser.categorySuggestions([
+      { id: '2000', name: 'Films', path: 'Films' },
+      { id: '2010', name: 'Animation', path: 'Films/Animation' },
+      { id: '2020', name: 'Film', path: 'Films/Film' },
+      { id: '2030', name: 'Documentaire', path: 'Films/Documentaire' },
+      { id: '2040', name: 'Spectacle', path: 'Films/Spectacle' },
+      { id: '2060', name: 'Concert', path: 'Films/Concert' },
+      { id: '2510', name: 'Court-métrage', path: 'Films/Court-métrage' },
+      { id: '5000', name: 'Séries TV', path: 'Séries TV' },
+      { id: '5040', name: 'Série TV', path: 'Séries TV/Série TV' },
+      { id: '5060', name: 'Sport', path: 'Séries TV/Sport' },
+      { id: '5070', name: 'Animation Série', path: 'Séries TV/Animation Série' },
+      { id: '5080', name: 'Émission TV', path: 'Séries TV/Émission TV' },
+      { id: '5090', name: 'Vidéo', path: 'Vidéo' },
+      { id: '5091', name: 'Vidéo-clips', path: 'Vidéo/Vidéo-clips' },
+      { id: '5092', name: 'Autre', path: 'Vidéo/Autre' },
+      { id: '8000', name: 'Documentaire', path: 'Autre/Documentaire' }
+    ]);
+    assert.equal(frenchIndexerSuggestions.movie, '2020,2510,2030,8000,2010,2060,2040');
+    assert.equal(frenchIndexerSuggestions.series, '5040,5060,5080,5070');
+    assert.ok(!frenchIndexerSuggestions.series.includes('5090'));
+    assert.ok(!frenchIndexerSuggestions.series.includes('5092'));
     const newznabMovies = await rssParser.newznabParser.fetchCategory(
       newznabSource, 'movie', '2000', capabilities
     );
@@ -1306,6 +1349,28 @@ async function main() {
       torznabSpecialized.map(item => item.catalog_type),
       ['concerts', 'spectacles', 'emissions']
     );
+    const restrictedIndexerResult = await matcher.matchBatch([{
+      indexer_rlz_id: 'api-restricted-documentary',
+      release_name: 'Documentaire API 2026 FRENCH 1080p',
+      cleanName: 'Documentaire API',
+      year: '2026',
+      type: 'movie',
+      catalog_type: 'films',
+      source_force: 'auto',
+      allowed_catalog_types: ['films'],
+      direct_meta: {
+        imdb_id: 'tt0999910',
+        name: 'Documentaire API',
+        year: '2026',
+        genres: [99],
+        keywords: [],
+        original_language: 'fr',
+        origin_country: ['FR']
+      }
+    }]);
+    assert.equal(restrictedIndexerResult.matched, 0);
+    assert.equal(restrictedIndexerResult.failed, 0);
+    assert.equal(db.getMediaByImdbId('tt0999910'), undefined);
     const newznabState = db.getSourceSyncState('newznab:newznab-test:movie');
     assert.equal(newznabState.last_items_fetched, 3);
     assert.equal(newznabState.quota_status, 'limit_reached');

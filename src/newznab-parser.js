@@ -72,12 +72,91 @@ class NewznabParser {
     }
   }
 
-  collectCategories(node, output = []) {
+  supportedCatalogTypes() {
+    return ['films', 'series', 'documentaires', 'emissions', 'animés', 'concerts', 'spectacles'];
+  }
+
+  normalizeCatalogTypes(value) {
+    const requested = Array.isArray(value) ? value : [];
+    const normalized = requested.filter(type => this.supportedCatalogTypes().includes(type));
+    return normalized.length ? [...new Set(normalized)] : this.supportedCatalogTypes();
+  }
+
+  normalizeCategoryText(value) {
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  }
+
+  classifyCategory(category) {
+    const ownText = this.normalizeCategoryText(category.name);
+    const text = this.normalizeCategoryText(category.path || category.name);
+    const id = String(category.id || '');
+    const seriesCategory = /^5\d{3}$/.test(id)
+      || /(?:^|[/ >_-])(?:tv|series?|serie)(?:$|[/ >_-])/.test(text);
+    if (/(?:documentary|documentaire|docuser)/.test(text)) {
+      return { catalogType: 'documentaires', mediaType: seriesCategory ? 'series' : 'movie' };
+    }
+    if (/(?:emission|talk[ _-]?show|reality|variet|tele[- ]?realite)/.test(text)) {
+      return { catalogType: 'emissions', mediaType: 'series' };
+    }
+    if (/(?:concert)/.test(text)) {
+      return { catalogType: 'concerts', mediaType: 'movie' };
+    }
+    if (/(?:spectacle|live[ _-]?show|stand[ _-]?up|one[ _-]?man[ _-]?show|theatre|cirque|comedy[ _-]?special)/.test(text)) {
+      return { catalogType: 'spectacles', mediaType: 'movie' };
+    }
+    if (/(?:anime|animation|manga)/.test(text)) {
+      return { catalogType: 'animés', mediaType: seriesCategory ? 'series' : 'movie' };
+    }
+    if (/(?:^|[/ >_-])(?:tv|series?|serie|sport|television)(?:$|[/ >_-])/.test(ownText)) {
+      return { catalogType: 'series', mediaType: 'series' };
+    }
+    if (id === '2000' || /(?:movie|film|cinema|court[ _-]?metrage)/.test(ownText)) {
+      return { catalogType: 'films', mediaType: 'movie' };
+    }
+    return null;
+  }
+
+  categorySuggestions(categories, selectedCatalogTypes = null) {
+    const selected = this.normalizeCatalogTypes(selectedCatalogTypes);
+    const byCatalog = Object.fromEntries(this.supportedCatalogTypes().map(type => [type, {
+      movie: [],
+      series: []
+    }]));
+    for (const category of categories || []) {
+      const classification = this.classifyCategory(category);
+      if (!classification) continue;
+      byCatalog[classification.catalogType][classification.mediaType].push(String(category.id));
+    }
+    if (byCatalog.films.movie.some(id => id !== '2000')) {
+      byCatalog.films.movie = byCatalog.films.movie.filter(id => id !== '2000');
+    }
+    if (byCatalog.series.series.some(id => id !== '5000')) {
+      byCatalog.series.series = byCatalog.series.series.filter(id => id !== '5000');
+    }
+    for (const target of Object.values(byCatalog)) {
+      target.movie = [...new Set(target.movie)];
+      target.series = [...new Set(target.series)];
+    }
+    const joinIds = mediaType => [...new Set(selected.flatMap(type => byCatalog[type][mediaType]))].join(',');
+    return {
+      selected,
+      byCatalog,
+      movie: joinIds('movie'),
+      series: joinIds('series')
+    };
+  }
+
+  collectCategories(node, output = [], parentPath = '') {
     if (!node || typeof node !== 'object') return output;
-    if (node.$?.id) output.push({ id: String(node.$.id), name: String(node.$.name || node.$.id) });
+    const name = node.$?.id ? String(node.$.name || node.$.id) : '';
+    const path = name ? [parentPath, name].filter(Boolean).join('/') : parentPath;
+    if (node.$?.id) output.push({ id: String(node.$.id), name, path });
     for (const value of Object.values(node)) {
-      if (Array.isArray(value)) value.forEach(item => this.collectCategories(item, output));
-      else if (value && typeof value === 'object') this.collectCategories(value, output);
+      if (Array.isArray(value)) value.forEach(item => this.collectCategories(item, output, path));
+      else if (value && typeof value === 'object') this.collectCategories(value, output, path);
     }
     return output;
   }
@@ -138,14 +217,14 @@ class NewznabParser {
   }
 
   catalogHint(item, capabilities, mediaType) {
-    const categoryNames = new Map((capabilities?.categories || [])
-      .map(category => [String(category.id), String(category.name || '').toLowerCase()]));
-    const categoryText = this.itemAttributeValues(item, 'category')
-      .map(categoryId => categoryNames.get(categoryId) || '')
-      .filter(Boolean)
-      .join(' ');
-    if (/(?:anime|animation|manga)/i.test(categoryText)) return 'animés';
-    if (/(?:documentary|documentaire|docuser)/i.test(categoryText)) return 'documentaires';
+    const categories = new Map((capabilities?.categories || [])
+      .map(category => [String(category.id), category]));
+    for (const categoryId of this.itemAttributeValues(item, 'category')) {
+      const classification = this.classifyCategory(categories.get(categoryId) || {});
+      if (classification && classification.catalogType !== (mediaType === 'series' ? 'series' : 'films')) {
+        return classification.catalogType;
+      }
+    }
     return null;
   }
 
@@ -257,7 +336,9 @@ class NewznabParser {
             typeHint: mediaType,
             ignoreUrlHint: true
           });
-          parsed.push(...this.enrichParsedItems(uniqueItems, pageItems, caps, mediaType));
+          const allowedCatalogTypes = this.normalizeCatalogTypes(source.catalogTypes);
+          parsed.push(...this.enrichParsedItems(uniqueItems, pageItems, caps, mediaType)
+            .map(item => ({ ...item, allowed_catalog_types: allowedCatalogTypes })));
         }
         offset += page.items.length;
         const pageDates = page.items.map(item => this.itemPublishedAt(item)).filter(Boolean);
