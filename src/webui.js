@@ -838,6 +838,8 @@ class WebUI {
         paused: Boolean(source.paused),
         has_api_key: Boolean(source.apiKey),
         categories: source.categories || {},
+        catalog_types: parser.normalizeCatalogTypes(source.catalogTypes),
+        category_mode: source.categoryMode === 'auto' ? 'auto' : 'manual',
         max_items_per_category: Number(source.maxItemsPerCategory) || 10000000,
         page_size: Number(source.pageSize) || Number(source.serverMax) || 100,
         request_delay_ms: Number(source.requestDelayMs) || 750,
@@ -851,6 +853,31 @@ class WebUI {
     const normalizeCategoryIds = value => String(value || '')
       .split(',').map(item => item.trim()).filter(Boolean).join(',');
     const validCategoryIds = value => !value || /^\d+(?:,\d+)*$/.test(value);
+    const normalizeCatalogTypes = (parser, value, provided = false) => {
+      if (provided && (!Array.isArray(value) || !value.length)) {
+        throw new Error('Sélectionnez au moins un catalogue à alimenter');
+      }
+      const normalized = parser.normalizeCatalogTypes(value);
+      if (provided && normalized.length !== new Set(value).size) {
+        throw new Error('Sélection de catalogues invalide');
+      }
+      return normalized;
+    };
+    const resolveNewznabCategories = (parser, inspection, categoryMode, catalogTypes, movieValue, seriesValue) => {
+      if (categoryMode === 'auto') {
+        const suggestions = parser.categorySuggestions(inspection.categories, catalogTypes);
+        if (!suggestions.movie && !suggestions.series) {
+          throw new Error('Aucune catégorie compatible détectée : utilisez le mode manuel');
+        }
+        return { movie: suggestions.movie, series: suggestions.series };
+      }
+      const movie = normalizeCategoryIds(movieValue);
+      const series = normalizeCategoryIds(seriesValue);
+      if ((!movie && !series) || !validCategoryIds(movie) || !validCategoryIds(series)) {
+        throw new Error('Catégories Newznab invalides');
+      }
+      return { movie, series };
+    };
 
     this.app.get('/api/newznab-sources', this.authMiddleware.bind(this), (req, res) => {
       res.json(this.rssParser.newznabParser.getSources().map(serializeNewznabSource));
@@ -862,11 +889,15 @@ class WebUI {
         if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
         if (!['newznab', 'prowlarr', 'jackett', 'nzbhydra2'].includes(kind)) return res.status(400).json({ error: 'Type d’indexeur invalide' });
         if (!String(apiKey || '').trim()) return res.status(400).json({ error: 'Clé API requise' });
-        const inspection = await this.rssParser.newznabParser.inspect({ url, apiKey: String(apiKey).trim(), kind });
+        const parser = this.rssParser.newznabParser;
+        const catalogTypes = normalizeCatalogTypes(parser, req.body.catalog_types, req.body.catalog_types !== undefined);
+        const inspection = await parser.inspect({ url, apiKey: String(apiKey).trim(), kind });
+        const suggestions = parser.categorySuggestions(inspection.categories, catalogTypes);
         res.json({
           server_max: inspection.serverMax,
           server_default: inspection.serverDefault,
-          categories: inspection.categories
+          categories: inspection.categories,
+          category_suggestions: suggestions
         });
       } catch (error) {
         res.status(400).json({ error: error.message });
@@ -877,22 +908,23 @@ class WebUI {
       try {
         const {
           name = '', kind = 'newznab', url, api_key: apiKey, movie_categories = '2000',
-          series_categories = '5000', max_items_per_category = 1000,
+          series_categories = '5000', category_mode = 'auto', catalog_types: requestedCatalogTypes,
+          max_items_per_category = 10000000,
           request_delay_ms = 750, lookback_hours = 24,
           sync_interval_minutes, paused = false
         } = req.body;
         if (!/^https?:\/\//i.test(url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
         if (!['newznab', 'prowlarr', 'jackett', 'nzbhydra2'].includes(kind)) return res.status(400).json({ error: 'Type d’indexeur invalide' });
         if (!String(apiKey || '').trim()) return res.status(400).json({ error: 'Clé API requise' });
-        const movie = normalizeCategoryIds(movie_categories);
-        const series = normalizeCategoryIds(series_categories);
-        if ((!movie && !series) || !validCategoryIds(movie) || !validCategoryIds(series)) {
-          return res.status(400).json({ error: 'Catégories Newznab invalides' });
-        }
         const parser = this.rssParser.newznabParser;
+        const catalogTypes = normalizeCatalogTypes(parser, requestedCatalogTypes, requestedCatalogTypes !== undefined);
+        const categoryMode = category_mode === 'manual' ? 'manual' : 'auto';
         const sources = parser.getSources();
         if (sources.some(source => source.url === url)) return res.status(409).json({ error: 'Cette source existe déjà' });
         const inspection = await parser.inspect({ url, apiKey: String(apiKey).trim(), kind });
+        const categories = resolveNewznabCategories(
+          parser, inspection, categoryMode, catalogTypes, movie_categories, series_categories
+        );
         const source = {
           id: crypto.randomUUID(),
           name: String(name).trim() || new URL(url).hostname,
@@ -900,7 +932,9 @@ class WebUI {
           url,
           apiKey: String(apiKey).trim(),
           paused: Boolean(paused),
-          categories: { movie, series },
+          categories,
+          catalogTypes,
+          categoryMode,
           maxItemsPerCategory: Math.min(Math.max(Number(max_items_per_category) || 10000000, 1), 10000000),
           pageSize: inspection.serverMax,
           requestDelayMs: Math.min(Math.max(Number(request_delay_ms) || 750, 250), 10000),
@@ -927,7 +961,9 @@ class WebUI {
         kind: current.kind,
         url: current.url,
         apiKey: current.apiKey,
-        categories: current.categories
+        categories: current.categories,
+        catalogTypes: parser.normalizeCatalogTypes(current.catalogTypes),
+        categoryMode: current.categoryMode === 'auto' ? 'auto' : 'manual'
       });
       if (req.body.name !== undefined) next.name = String(req.body.name).trim() || current.name;
       if (req.body.kind !== undefined && ['newznab', 'prowlarr', 'jackett', 'nzbhydra2'].includes(req.body.kind)) next.kind = req.body.kind;
@@ -937,14 +973,14 @@ class WebUI {
         if (!/^https?:\/\//i.test(req.body.url || '')) return res.status(400).json({ error: 'URL HTTP(S) invalide' });
         next.url = req.body.url;
       }
-      if (req.body.movie_categories !== undefined || req.body.series_categories !== undefined) {
-        const movie = normalizeCategoryIds(req.body.movie_categories ?? current.categories?.movie);
-        const series = normalizeCategoryIds(req.body.series_categories ?? current.categories?.series);
-        if ((!movie && !series) || !validCategoryIds(movie) || !validCategoryIds(series)) {
-          return res.status(400).json({ error: 'Catégories Newznab invalides' });
-        }
-        next.categories = { movie, series };
-      }
+      next.catalogTypes = normalizeCatalogTypes(
+        parser,
+        req.body.catalog_types ?? current.catalogTypes,
+        req.body.catalog_types !== undefined
+      );
+      next.categoryMode = req.body.category_mode !== undefined
+        ? (req.body.category_mode === 'manual' ? 'manual' : 'auto')
+        : (current.categoryMode === 'auto' ? 'auto' : 'manual');
       if (req.body.max_items_per_category !== undefined) {
         next.maxItemsPerCategory = Math.min(Math.max(Number(req.body.max_items_per_category) || 10000000, 1), 10000000);
       }
@@ -958,17 +994,41 @@ class WebUI {
         next.syncIntervalMinutes = this.normalizeSourceInterval(req.body.sync_interval_minutes);
       }
       try {
-        if (next.url !== current.url || next.apiKey !== current.apiKey || next.kind !== current.kind) {
+        const connectionChanged = next.url !== current.url || next.apiKey !== current.apiKey || next.kind !== current.kind;
+        const categoriesChanged = req.body.movie_categories !== undefined
+          || req.body.series_categories !== undefined
+          || req.body.catalog_types !== undefined
+          || req.body.category_mode !== undefined;
+        if (connectionChanged || next.categoryMode === 'auto') {
           const inspection = await parser.inspect(next);
           next.serverMax = inspection.serverMax;
           next.pageSize = Math.min(Number(next.pageSize) || inspection.serverMax, inspection.serverMax);
+          next.categories = resolveNewznabCategories(
+            parser,
+            inspection,
+            next.categoryMode,
+            next.catalogTypes,
+            req.body.movie_categories ?? current.categories?.movie,
+            req.body.series_categories ?? current.categories?.series
+          );
+        } else if (categoriesChanged) {
+          next.categories = resolveNewznabCategories(
+            parser,
+            { categories: [] },
+            next.categoryMode,
+            next.catalogTypes,
+            req.body.movie_categories ?? current.categories?.movie,
+            req.body.series_categories ?? current.categories?.series
+          );
         }
         sources[index] = next;
         const cursorConfigAfter = JSON.stringify({
           kind: next.kind,
           url: next.url,
           apiKey: next.apiKey,
-          categories: next.categories
+          categories: next.categories,
+          catalogTypes: next.catalogTypes,
+          categoryMode: next.categoryMode
         });
         if (cursorConfigAfter !== cursorConfigBefore) {
           const kinds = [...new Set([current.kind || 'newznab', next.kind || 'newznab'])];
@@ -1142,6 +1202,7 @@ class WebUI {
       url: source.url,
       paused: Boolean(source.paused),
       has_admin_password: Boolean(source.adminPassword),
+      catalog_types: this.rssParser.newznabParser.normalizeCatalogTypes(source.catalogTypes),
       max_items_per_sync: Number(source.maxItemsPerSync) || 10000000,
       page_size: Number(source.pageSize) || 1000,
       request_delay_ms: Number(source.requestDelayMs) || 250,
@@ -1193,6 +1254,11 @@ class WebUI {
           url: waCustomParser.baseUrl(url),
           adminPassword: String(adminPassword),
           paused: Boolean(req.body.paused),
+          catalogTypes: normalizeCatalogTypes(
+            this.rssParser.newznabParser,
+            req.body.catalog_types,
+            req.body.catalog_types !== undefined
+          ),
           maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 10000000, 1), 10000000),
           pageSize: Math.min(Math.max(Number(req.body.page_size) || 1000, 10), 5000),
           requestDelayMs: Math.min(Math.max(Number(req.body.request_delay_ms) || 250, 0), 10000),
@@ -1219,6 +1285,9 @@ class WebUI {
           ...(req.body.url !== undefined ? { url: waCustomParser.baseUrl(req.body.url) } : {}),
           ...(req.body.admin_password ? { adminPassword: String(req.body.admin_password) } : {}),
           ...(req.body.paused !== undefined ? { paused: Boolean(req.body.paused) } : {}),
+          ...(req.body.catalog_types !== undefined ? {
+            catalogTypes: normalizeCatalogTypes(this.rssParser.newznabParser, req.body.catalog_types, true)
+          } : {}),
           ...(req.body.max_items_per_sync !== undefined ? {
             maxItemsPerSync: Math.min(Math.max(Number(req.body.max_items_per_sync) || 10000000, 1), 10000000)
           } : {}),
@@ -1236,10 +1305,12 @@ class WebUI {
           return res.status(400).json({ error: 'URL HTTP(S) invalide' });
         }
         const connectionChanged = next.url !== current.url || next.adminPassword !== current.adminPassword;
+        const selectionChanged = JSON.stringify(next.catalogTypes || [])
+          !== JSON.stringify(current.catalogTypes || []);
         if (connectionChanged) await waCustomParser.inspect(next);
         sources[index] = next;
         this.db.setConfig('wacustom_sources', JSON.stringify(sources));
-        if (connectionChanged) this.db.deleteSourceSyncState(waCustomParser.sourceKey(next.id));
+        if (connectionChanged || selectionChanged) this.db.deleteSourceSyncState(waCustomParser.sourceKey(next.id));
         res.json(waCustomForApi(next));
       } catch (error) {
         res.status(400).json({ error: error.message });
@@ -1365,6 +1436,7 @@ class WebUI {
       paused: Boolean(source.paused),
       has_key_id: Boolean(source.keyId),
       has_secret: Boolean(source.secret),
+      catalog_types: this.rssParser.newznabParser.normalizeCatalogTypes(source.catalogTypes),
       max_items_per_sync: Number(source.maxItemsPerSync) || 10000000,
       page_size: Number(source.pageSize) || 1000,
       request_delay_ms: Number(source.requestDelayMs) || 100,
@@ -1381,6 +1453,9 @@ class WebUI {
       ...(String(body.secret || '').trim() ? { secret: String(body.secret).trim() } : {}),
       ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
       ...(body.use_proxy !== undefined ? { useProxy: Boolean(body.use_proxy) } : {}),
+      ...(body.catalog_types !== undefined ? {
+        catalogTypes: normalizeCatalogTypes(this.rssParser.newznabParser, body.catalog_types, true)
+      } : {}),
       ...(body.max_items_per_sync !== undefined ? {
         maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 10000000, 1), 10000000)
       } : {}),
@@ -1433,10 +1508,12 @@ class WebUI {
         const current = sources[index];
         const next = streamFusionPayload(req.body, current);
         const connectionChanged = ['url', 'keyId', 'secret'].some(field => next[field] !== current[field]);
+        const selectionChanged = JSON.stringify(next.catalogTypes || [])
+          !== JSON.stringify(current.catalogTypes || []);
         if (connectionChanged) await streamFusionParser.inspect(next);
         sources[index] = next;
         this.db.setConfig('streamfusion_sources', JSON.stringify(sources));
-        if (connectionChanged) this.db.deleteSourceSyncState(streamFusionParser.sourceKey(next.id));
+        if (connectionChanged || selectionChanged) this.db.deleteSourceSyncState(streamFusionParser.sourceKey(next.id));
         res.json(streamFusionForApi(next));
       } catch (error) {
         res.status(400).json({ error: error.message });
@@ -1461,6 +1538,7 @@ class WebUI {
         name: source.name,
         url: source.url,
         paused: Boolean(source.paused),
+        catalog_types: this.rssParser.newznabParser.normalizeCatalogTypes(source.catalogTypes),
         max_items_per_sync: Number(source.maxItemsPerSync) || 10000000,
         source_key: cometNetParser.sourceKey(source.id),
         peer_node_id: source.peerNodeId || null,
@@ -1481,6 +1559,9 @@ class WebUI {
         : {}),
       ...(body.url !== undefined ? { url: cometNetParser.normalizeUrl(body.url) } : {}),
       ...(body.paused !== undefined ? { paused: Boolean(body.paused) } : {}),
+      ...(body.catalog_types !== undefined ? {
+        catalogTypes: normalizeCatalogTypes(this.rssParser.newznabParser, body.catalog_types, true)
+      } : {}),
       ...(body.max_items_per_sync !== undefined ? {
         maxItemsPerSync: Math.min(Math.max(Number(body.max_items_per_sync) || 10000000, 1), 10000000)
       } : {})

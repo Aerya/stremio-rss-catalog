@@ -128,6 +128,12 @@ class TMDBMatcher {
     }
   }
 
+  isCatalogAllowed(item, catalogType) {
+    return !Array.isArray(item.allowed_catalog_types)
+      || !item.allowed_catalog_types.length
+      || item.allowed_catalog_types.includes(catalogType);
+  }
+
   getApiKey() {
     return this.db.getConfig('tmdb_api_key');
   }
@@ -538,6 +544,10 @@ class TMDBMatcher {
       if (item.tmdb_id) {
         const existingByTmdb = this.db.getMediaByTmdbId(item.tmdb_id, item.type);
         if (existingByTmdb) {
+          if (!this.isCatalogAllowed(item, existingByTmdb.catalog_type)) {
+            if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
+            continue;
+          }
           this.db.addRelease({
             media_imdb_id: existingByTmdb.imdb_id,
             release_name: item.release_name,
@@ -566,6 +576,10 @@ class TMDBMatcher {
         const existingDirect = this.db.getMediaByImdbId(item.direct_meta.imdb_id)
           || externalIds.map(externalId => this.db.getMediaByExternalId(externalId)).find(Boolean);
         if (existingDirect) {
+          if (!this.isCatalogAllowed(item, existingDirect.catalog_type)) {
+            if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
+            continue;
+          }
           this.db.addRelease({
             media_imdb_id: existingDirect.imdb_id,
             release_name: item.release_name,
@@ -731,6 +745,12 @@ class TMDBMatcher {
           : [];
         const existingMedia = this.db.getMediaByImdbId(match.imdb_id)
           || externalIds.map(externalId => this.db.getMediaByExternalId(externalId)).find(Boolean);
+        const finalCatalogType = existingMedia?.catalog_type || catalogType;
+        if (!this.isCatalogAllowed(item, finalCatalogType)) {
+          console.log(`[TMDB] ↪ Ignoré par la sélection de catalogues : ${match.name} (${finalCatalogType})`);
+          if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
+          continue;
+        }
 
         if (existingMedia) {
           const mediaId = existingMedia.imdb_id;
@@ -819,6 +839,10 @@ class TMDBMatcher {
 
         if (tvdbMatch && tvdbMatch.imdb_id) {
           const catalogType = tvdbMatch.isDocumentary ? 'documentaires' : item.catalog_type;
+          if (!this.isCatalogAllowed(item, catalogType)) {
+            if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
+            continue;
+          }
           console.log(`[TVDB] ✓ Fallback match : ${item.cleanName} → ${tvdbMatch.name} (${tvdbMatch.imdb_id})${tvdbMatch.isDocumentary ? ' [docu]' : ''}`);
 
           const existingMedia = this.db.getMediaByImdbId(tvdbMatch.imdb_id);
