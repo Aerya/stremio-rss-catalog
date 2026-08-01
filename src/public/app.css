@@ -991,7 +991,7 @@ input:checked + .slider::before { transform: translateX(22px); }
 /* ─── Overview infos ─────────────────────────────────────────────── */
 .overview-info-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 12px;
 }
 .overview-info-card {

@@ -107,6 +107,28 @@ async function loadOverview() {
     // Sources RSS
     document.getElementById('ovSourcesCount').textContent = d.sourcesCount.toLocaleString();
 
+    // Catalogues exposés et règles appliquées avant création des médias
+    const activeCatalogs = d.activeCatalogs || { count: 0, items: 0, catalogs: [] };
+    document.getElementById('ovActiveCatalogsCount').textContent = Number(activeCatalogs.items || 0).toLocaleString();
+    document.getElementById('ovActiveCatalogsDetails').textContent = formatI18n('ov_active_catalogs_details', {
+      catalogs: Number(activeCatalogs.count || 0).toLocaleString(),
+      items: Number(activeCatalogs.items || 0).toLocaleString()
+    });
+
+    const filtering = d.releaseFiltering || {};
+    const min = filtering.minimumResolution ? `${filtering.minimumResolution}p` : '';
+    const max = filtering.maximumResolution ? `${filtering.maximumResolution}p` : '';
+    const resolution = min && max
+      ? formatI18n('ov_resolution_range', { min, max })
+      : min ? formatI18n('ov_resolution_minimum', { min })
+        : max ? formatI18n('ov_resolution_maximum', { max })
+          : t('ov_resolution_any');
+    document.getElementById('ovReleaseFilteringResolution').textContent = resolution;
+    const tags = Array.isArray(filtering.requiredTags) ? filtering.requiredTags : [];
+    document.getElementById('ovReleaseFilteringTags').textContent = tags.length
+      ? formatI18n('ov_filtering_tags', { count: tags.length, tags: tags.join(', ') })
+      : t('ov_filtering_tags_all');
+
     // Derniers ajouts par catégorie — vue liste compacte
     const container = document.getElementById('ovRecentGrid');
     const cats = [
@@ -3420,10 +3442,15 @@ async function analyzeResolutionReprocessing() {
   try {
     const data = await fetchResolutionReprocessingJson('/api/maintenance/resolution-reprocessing/analysis');
     if (data.status?.running) {
-      output.textContent = t('resolution_reprocess_running');
-      return;
+      const progress = data.status.total
+        ? ` ${Math.round((data.status.progress || 0) / data.status.total * 100)} %`
+        : '';
+      output.textContent = t('resolution_reprocess_analyzing') + progress;
+      setTimeout(analyzeResolutionReprocessing, 1000);
+      return false;
     }
     renderResolutionReprocessingAnalysis(data);
+    return true;
   } catch (error) {
     output.textContent = `✗ ${error.message}`;
   } finally {
@@ -3458,7 +3485,6 @@ async function applyResolutionReprocessing() {
   const output = document.getElementById('resolutionReprocessResult');
   const btn = document.getElementById('resolutionReprocessApplyBtn');
   if (!await saveConfig()) return;
-  await analyzeResolutionReprocessing();
   if (!confirm(t('resolution_reprocess_confirm'))) return;
   btn.disabled = true;
   output.textContent = t('resolution_reprocess_starting');

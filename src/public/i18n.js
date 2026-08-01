@@ -210,6 +210,15 @@ const translations = {
     nav_sync: "Synchronisation",
     nav_failures: "Échecs",
     nav_config: "Configuration",
+    ov_active_catalogs: "Catalogues actifs",
+    ov_active_catalogs_details: "{catalogs} actif(s) · {items} éléments exposés",
+    ov_release_filtering: "Filtrage des releases",
+    ov_filtering_tags: "{count} tag(s) : {tags}",
+    ov_filtering_tags_all: "Tous les tags acceptés",
+    ov_resolution_range: "{min} à {max}",
+    ov_resolution_minimum: "≥ {min}",
+    ov_resolution_maximum: "≤ {max}",
+    ov_resolution_any: "Toutes résolutions",
 
     // Library
     library_search_placeholder: "Rechercher un titre...",
@@ -639,6 +648,15 @@ const translations = {
     nav_sync: "Synchronization",
     nav_failures: "Failures",
     nav_config: "Configuration",
+    ov_active_catalogs: "Active catalogs",
+    ov_active_catalogs_details: "{catalogs} active · {items} exposed items",
+    ov_release_filtering: "Release filtering",
+    ov_filtering_tags: "{count} tag(s): {tags}",
+    ov_filtering_tags_all: "All tags accepted",
+    ov_resolution_range: "{min} to {max}",
+    ov_resolution_minimum: "≥ {min}",
+    ov_resolution_maximum: "≤ {max}",
+    ov_resolution_any: "All resolutions",
 
     // Library
     library_search_placeholder: "Search a title...",
@@ -1068,6 +1086,15 @@ const translations = {
     nav_sync: "Synchronisierung",
     nav_failures: "Fehler",
     nav_config: "Konfiguration",
+    ov_active_catalogs: "Aktive Kataloge",
+    ov_active_catalogs_details: "{catalogs} aktiv · {items} bereitgestellte Elemente",
+    ov_release_filtering: "Release-Filterung",
+    ov_filtering_tags: "{count} Tag(s): {tags}",
+    ov_filtering_tags_all: "Alle Tags akzeptiert",
+    ov_resolution_range: "{min} bis {max}",
+    ov_resolution_minimum: "≥ {min}",
+    ov_resolution_maximum: "≤ {max}",
+    ov_resolution_any: "Alle Auflösungen",
 
     // Library
     library_search_placeholder: "Titel suchen...",

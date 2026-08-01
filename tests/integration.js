@@ -1623,6 +1623,10 @@ async function main() {
       ['tt0000789', 'tt0000123']
     );
     assert.equal(db.countCustomCatalogMedia(guidedCatalog), 2);
+    const activeCatalogOverview = db.getActiveCatalogOverview();
+    assert.ok(activeCatalogOverview.count >= 1);
+    assert.ok(activeCatalogOverview.items >= 2);
+    assert.ok(activeCatalogOverview.catalogs.some(item => item.id === guidedCatalog.id));
 
     const addon = new StremioAddon(db);
     db.setConfig('image_cache_enabled', 'true');
