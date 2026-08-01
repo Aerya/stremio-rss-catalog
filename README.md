@@ -102,7 +102,7 @@ lecture, et ne fournit pas lui-même de streams.
 | **Cache d’affiches** | Proxy/cache local facultatif des fichiers image avec TTL, taille maximale, rafraîchissement et éviction |
 | **RPDB** | Affiches avec notes intégrées (optionnel) |
 | **PostersPlus** | Template d’affiche compatible AIOMetadata, rempli directement avec les identifiants IMDb/TMDB ; repli RPDB puis affiche d’origine |
-| **Notifs Discord** | Notifications enrichies avec galerie d'affiches à chaque sync |
+| **Notifs Discord** | Notifications enrichies avec galerie d'affiches à chaque sync ; PostersPlus prioritaire, puis RPDB ou l’affiche d’origine |
 | **Notifs Apprise** | Notifications multi-services via serveur Apprise (optionnel) |
 | **Langue des notifs** | Langue Discord/Apprise configurable indépendamment de la WebUI (FR/EN/DE) |
 | **Sync auto explicite** | Collecte des sources dues selon leur fréquence → normalisation et matching → catalogues non gelés → cache Stremio invalidé |
@@ -121,6 +121,7 @@ lecture, et ne fournit pas lui-même de streams.
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + test de connexion intégré |
 | **SQLite WAL** | Données persistantes, lectures concurrentes, index optimisés, contraintes étrangères et attente en cas d’écriture occupée |
 | **Filtrage par tags** | Tags requis configurables depuis la WebUI (FRENCH, MULTi, 1080p…) |
+| **Filtrage par résolution** | Bornes minimale et maximale facultatives avant parsing : une release explicitement hors plage ne crée aucun média |
 | **Docker** | Image multi-arch `linux/amd64` + `linux/arm64` |
 
 > Par défaut limité aux contenus disponibles en VF (FRENCH / MULTi / TRUEFRENCH / VOF / VFF / VFI / VFQ) — modifiable depuis la WebUI
@@ -282,8 +283,16 @@ TTL et sa propre limite de taille.
 
 Ordre : **PostersPlus → RPDB → métadonnées → placeholder**. Si
 [AIOMetadata](https://github.com/cedya77/aiometadata) est aussi utilisé,
-choisissez lequel des deux doit faire autorité : AIOMetadata peut conserver ou
-remplacer l’affiche déjà fournie par ce catalogue.
+réglez son fournisseur d’affiche sur `meta` pour conserver l’affiche déjà fournie
+par ce catalogue ; TMDB, Fanart ou RPDB la remplacent. Les galeries Discord
+suivent le même ordre de priorité.
+
+### Filtre de résolution
+
+Les limites de résolution s’appliquent avant parsing et matching à toutes les
+sources basées sur des releases. Avec un minimum de `720p`, les releases reconnues
+en 480p, 576p ou SD sont exclues et ne peuvent donc créer aucun média. Une release
+sans résolution explicite reste acceptée.
 
 ### Périmètre
 

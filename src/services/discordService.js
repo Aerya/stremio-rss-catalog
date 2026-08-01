@@ -4,7 +4,31 @@ const { getStrings } = require('./notifStrings');
 
 const AVATAR_URL = 'https://raw.githubusercontent.com/Aerya/stremio-rss-catalog/main/src/public/logo.png';
 
-function getPosterUrl(item, rpdbEnabled, rpdbKey) {
+function buildPostersPlusUrl(item, template) {
+  const value = String(template || '').trim();
+  if (!value || !/^tt\d+$/i.test(item?.imdb_id || '')) return null;
+  let result = value;
+  const values = {
+    '{tmdb_id}': item.tmdb_id ? String(item.tmdb_id) : '',
+    '{imdb_id}': String(item.imdb_id),
+    '{type}': item.type === 'series' ? 'tv' : 'movie'
+  };
+  for (const [placeholder, replacement] of Object.entries(values)) {
+    result = result.split(placeholder).join(encodeURIComponent(replacement));
+  }
+  try {
+    const url = new URL(result);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function getPosterUrl(item, { postersPlusEnabled = false, postersPlusTemplate = '', rpdbEnabled = false, rpdbKey = '' } = {}) {
+  if (postersPlusEnabled) {
+    const postersPlusUrl = buildPostersPlusUrl(item, postersPlusTemplate);
+    if (postersPlusUrl) return postersPlusUrl;
+  }
   if (rpdbEnabled && rpdbKey && item.imdb_id) {
     return `https://api.ratingposterdb.com/${rpdbKey}/imdb/poster-default/${item.imdb_id}.jpg?fallback=true`;
   }
@@ -21,13 +45,13 @@ async function downloadImage(url) {
   }
 }
 
-async function createCompositeImage(items, rpdbEnabled, rpdbKey) {
+async function createCompositeImage(items, artworkConfig) {
   const posterWidth  = 200;
   const posterHeight = 300;
   const spacing      = 10;
 
   const posterBuffers = await Promise.all(
-    items.map(item => downloadImage(getPosterUrl(item, rpdbEnabled, rpdbKey)))
+    items.map(item => downloadImage(getPosterUrl(item, artworkConfig)))
   );
 
   const validPosters = posterBuffers.filter(b => b !== null);
@@ -55,10 +79,10 @@ async function createCompositeImage(items, rpdbEnabled, rpdbKey) {
     .toBuffer();
 }
 
-async function sendGallery(webhookUrl, items, rpdbEnabled, rpdbKey, title, color, filename) {
+async function sendGallery(webhookUrl, items, artworkConfig, title, color, filename) {
   if (!items || items.length === 0) return;
 
-  const compositeImage = await createCompositeImage(items, rpdbEnabled, rpdbKey);
+  const compositeImage = await createCompositeImage(items, artworkConfig);
   if (!compositeImage) return;
 
   const FormData = require('form-data');
@@ -149,15 +173,16 @@ async function sendDiscordNotification(webhookUrl, syncStats, lang = 'fr') {
 
     // ─── Galeries d'affiches ─────────────────────────────────────────────────
     if (syncStats.recentAdditions) {
-      const { rpdbEnabled, rpdbKey, recentAdditions } = syncStats;
+      const { rpdbEnabled, rpdbKey, postersPlusEnabled, postersPlusTemplate, recentAdditions } = syncStats;
+      const artworkConfig = { rpdbEnabled, rpdbKey, postersPlusEnabled, postersPlusTemplate };
 
-      await sendGallery(webhookUrl, recentAdditions.films,         rpdbEnabled, rpdbKey, s.galleryFilms,      0x667eea, 'films.png');
-      await sendGallery(webhookUrl, recentAdditions.documentaires, rpdbEnabled, rpdbKey, s.galleryDocs,       0x48bb78, 'documentaires.png');
-      await sendGallery(webhookUrl, recentAdditions.series,        rpdbEnabled, rpdbKey, s.gallerySeries,     0xed8936, 'series.png');
-      await sendGallery(webhookUrl, recentAdditions.emissions,     rpdbEnabled, rpdbKey, s.galleryEmissions,  0xe91e63, 'emissions.png');
-      await sendGallery(webhookUrl, recentAdditions.animes,        rpdbEnabled, rpdbKey, s.galleryAnimes,     0xa855f7, 'animes.png');
-      await sendGallery(webhookUrl, recentAdditions.concerts,      rpdbEnabled, rpdbKey, s.galleryConcerts,   0xfb7185, 'concerts.png');
-      await sendGallery(webhookUrl, recentAdditions.spectacles,    rpdbEnabled, rpdbKey, s.gallerySpectacles, 0x2dd4bf, 'spectacles.png');
+      await sendGallery(webhookUrl, recentAdditions.films,         artworkConfig, s.galleryFilms,      0x667eea, 'films.png');
+      await sendGallery(webhookUrl, recentAdditions.documentaires, artworkConfig, s.galleryDocs,       0x48bb78, 'documentaires.png');
+      await sendGallery(webhookUrl, recentAdditions.series,        artworkConfig, s.gallerySeries,     0xed8936, 'series.png');
+      await sendGallery(webhookUrl, recentAdditions.emissions,     artworkConfig, s.galleryEmissions,  0xe91e63, 'emissions.png');
+      await sendGallery(webhookUrl, recentAdditions.animes,        artworkConfig, s.galleryAnimes,     0xa855f7, 'animes.png');
+      await sendGallery(webhookUrl, recentAdditions.concerts,      artworkConfig, s.galleryConcerts,   0xfb7185, 'concerts.png');
+      await sendGallery(webhookUrl, recentAdditions.spectacles,    artworkConfig, s.gallerySpectacles, 0x2dd4bf, 'spectacles.png');
     }
 
     console.log('[Discord] Notification envoyée');
@@ -199,4 +224,4 @@ async function sendDiscordSourceAlert(webhookUrl, alert) {
   }
 }
 
-module.exports = { sendDiscordNotification, sendDiscordSourceAlert };
+module.exports = { sendDiscordNotification, sendDiscordSourceAlert, buildPostersPlusUrl, getPosterUrl };

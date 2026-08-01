@@ -3252,7 +3252,9 @@ class WebUI {
           duration,
           installUrl:  this.baseUrl ? `${this.baseUrl}/manifest.json` : null,
           rpdbEnabled: this.db.getConfig('discord_rpdb_posters_enabled') === 'true',
-          rpdbKey:     this.db.getConfig('rpdb_api_key')
+          rpdbKey:     this.db.getConfig('rpdb_api_key'),
+          postersPlusEnabled: this.db.getConfig('postersplus_enabled') === 'true',
+          postersPlusTemplate: this.db.getConfig('postersplus_url_template')
         };
         const enhancedEnabled = this.db.getConfig('discord_enhanced_notifications_enabled') === 'true';
         if (enhancedEnabled && (filmsAdded > 0 || documentairesAdded > 0 || seriesAdded > 0 || emissionsAdded > 0 || animesAdded > 0 || concertsAdded > 0 || spectaclesAdded > 0)) {

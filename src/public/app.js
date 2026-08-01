@@ -3824,7 +3824,7 @@ async function loadConfig() {
     const r = await fetch('/api/config');
     const cfg = await r.json();
 
-    ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
+    ['required_tags', 'minimum_resolution', 'maximum_resolution', 'tmdb_api_key', 'tvdb_api_key',
      'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
      'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
      'proxy_password', 'refresh_interval', 'image_cache_ttl_hours', 'image_cache_max_mb',
@@ -3853,7 +3853,7 @@ async function saveConfig(e) {
   msg.textContent = '';
 
   const cfg = {};
-  ['required_tags', 'tmdb_api_key', 'tvdb_api_key',
+  ['required_tags', 'minimum_resolution', 'maximum_resolution', 'tmdb_api_key', 'tvdb_api_key',
    'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
    'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
    'proxy_password', 'refresh_interval', 'image_cache_ttl_hours', 'image_cache_max_mb',

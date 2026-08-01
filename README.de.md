@@ -101,7 +101,7 @@ stellt selbst keine Streams bereit.
 | **Poster-Cache** | Optionaler lokaler Bild-Proxy/-Cache mit TTL, Maximalgröße, Aktualisierung und Verdrängung |
 | **RPDB** | Bewertungs-Poster (optional) |
 | **PostersPlus** | Direkte Unterstützung für AIOMetadata-kompatible URL-Templates mit RPDB- und Originalbild-Fallback |
-| **Discord-Benachrichtigungen** | Erweiterte Benachrichtigungen mit Poster-Galerie bei jeder Sync |
+| **Discord-Benachrichtigungen** | Erweiterte Benachrichtigungen mit Poster-Galerie bei jeder Sync; PostersPlus zuerst, danach RPDB oder das Originalposter |
 | **Apprise-Benachrichtigungen** | Multi-Service-Benachrichtigungen via Apprise-Server (optional) |
 | **Benachrichtigungssprache** | Discord/Apprise-Sprache unabhängig von der WebUI konfigurierbar (FR/EN/DE) |
 | **Erklärte Auto-Sync** | Fällige Quellen nach eigenem Zeitplan sammeln → normalisieren und abgleichen → nicht eingefrorene Kataloge → Stremio-Cache leeren |
@@ -120,6 +120,7 @@ stellt selbst keine Streams bereit.
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + integrierter Verbindungstest |
 | **SQLite WAL** | Persistente Daten, parallele Lesezugriffe, optimierte Indizes, Fremdschlüssel und Schreibwartezeit |
 | **Tag-Filterung** | Konfigurierbare erforderliche Tags über die WebUI (FRENCH, MULTi, 1080p…) |
+| **Auflösungsfilterung** | Optionale Mindest- und Höchstgrenzen vor dem Parsing: Eine ausdrücklich außerhalb liegende Release erzeugt keine Medien |
 | **Docker** | Multi-Arch-Image `linux/amd64` + `linux/arm64` |
 
 > Standardmäßig auf französischsprachige Inhalte beschränkt (FRENCH / MULTi / TRUEFRENCH / VOF / VFF / VFI / VFQ) — konfigurierbar über die WebUI
@@ -324,8 +325,16 @@ Größenlimits.
 
 Priorität: **PostersPlus → RPDB → Metadaten-Poster → Platzhalter**. Wenn
 [AIOMetadata](https://github.com/cedya77/aiometadata) ebenfalls verwendet wird,
-legen Sie fest, welches Addon maßgeblich ist: AIOMetadata kann das bereits vom
-Katalog gelieferte Poster behalten oder ersetzen.
+setzen Sie dessen Poster-Anbieter auf `meta`, um das bereits vom Katalog gelieferte
+Poster beizubehalten; TMDB, Fanart und RPDB ersetzen es. Discord-Galerien folgen
+derselben Priorität.
+
+### Auflösungsfilter
+
+Auflösungsgrenzen werden vor Parsing und Abgleich auf alle releasebasierten Quellen
+angewandt. Mit einem Minimum von `720p` werden als 480p, 576p oder SD erkannte
+Releases ausgeschlossen und können daher keine Medien erzeugen. Releases ohne
+ausdrückliche Auflösung bleiben zulässig.
 
 ### Umfang
 
