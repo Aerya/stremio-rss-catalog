@@ -155,6 +155,11 @@
         </div>
       </div>
 
+      <div style="margin-top:24px">
+        <h3 class="section-label" data-i18n="ov_catalog_statistics">Statistiques de catalogues</h3>
+        <div id="ovCatalogStatistics"><p class="text-muted" data-i18n="sync_loading">Chargement...</p></div>
+      </div>
+
       <!-- Installation -->
       <div class="card" style="margin-top:24px">
         <h3 data-i18n="install_title">Installation dans Stremio</h3>
@@ -239,6 +244,13 @@
           <span class="tab-count" id="tabCountSpectacles"></span>
         </button>
       </div>
+
+      <details class="card library-source-statistics" id="librarySourceStatistics" style="margin-bottom:18px" ontoggle="toggleLibrarySourceStatistics(this.open)">
+        <summary data-i18n="library_source_statistics">Statistiques des sources du catalogue affiché</summary>
+        <div id="librarySourceStatisticsContent" class="text-muted" style="margin-top:12px" data-i18n="library_source_statistics_hint">
+          Ouvrez ce panneau pour charger la répartition par source.
+        </div>
+      </details>
 
       <div id="libraryGrid" class="media-grid"></div>
       <div id="libraryPager" class="pager"></div>

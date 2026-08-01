@@ -2128,6 +2128,7 @@ class WebUI {
       const failedCount = this.db.getFailedReleasesCount();
       const sources     = this.db.getSourceStats();
       const activeCatalogs = this.db.getActiveCatalogOverview();
+      const catalogStatistics = this.db.getAllCatalogSourceStatistics();
       const requiredTags = String(this.db.getConfig('required_tags') || '')
         .split(',').map(tag => tag.trim()).filter(Boolean);
       const recentByCat = {
@@ -2147,6 +2148,13 @@ class WebUI {
         sourcesCount: sources.length,
         recentByCat,
         activeCatalogs,
+        catalogStatistics: catalogStatistics.map(catalog => ({
+          ...catalog,
+          sources: catalog.sources.map(source => ({
+            ...source,
+            name: this.getSourceNameMap()[source.source_url] || source.source_url
+          }))
+        })),
         releaseFiltering: {
           requiredTags,
           minimumResolution: this.db.getConfig('minimum_resolution') || '',
@@ -2159,7 +2167,7 @@ class WebUI {
 
     // ─── Media Library ──────────────────────────────────────────────────────
     this.app.get('/api/media/list', this.authMiddleware.bind(this), (req, res) => {
-      const { catalog, search, page = 1, limit = 24, sort = 'date_desc', year, quality } = req.query;
+      const { catalog, search, page = 1, limit = 24, sort = 'date_desc', year, quality, imdb_id: imdbId } = req.query;
       const result = this.db.getMediaList({
         catalog: catalog || null,
         search: search || '',
@@ -2167,7 +2175,8 @@ class WebUI {
         limit: parseInt(limit) || 24,
         sort: sort || 'date_desc',
         year: year || null,
-        quality: quality || null
+        quality: quality || null,
+        imdbId: imdbId || null
       });
       const sourceNameMap = this.getSourceNameMap();
       result.items = result.items.map(item => ({
@@ -2177,6 +2186,15 @@ class WebUI {
           .filter(Boolean))]
       }));
       res.json(result);
+    });
+
+    this.app.get('/api/media/source-stats', this.authMiddleware.bind(this), (req, res) => {
+      const catalogType = String(req.query.catalog || '');
+      const allowed = new Set(['films', 'documentaires', 'series', 'emissions', 'animés', 'concerts', 'spectacles']);
+      const nameMap = this.getSourceNameMap();
+      const sources = this.db.getMediaSourceStatistics(allowed.has(catalogType) ? catalogType : null)
+        .map(source => ({ ...source, name: nameMap[source.source_url] || source.source_url }));
+      res.json({ catalog: allowed.has(catalogType) ? catalogType : null, sources });
     });
 
     this.app.get('/api/media/years', this.authMiddleware.bind(this), (req, res) => {

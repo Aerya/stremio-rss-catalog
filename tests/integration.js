@@ -1627,6 +1627,11 @@ async function main() {
     assert.ok(activeCatalogOverview.count >= 1);
     assert.ok(activeCatalogOverview.items >= 2);
     assert.ok(activeCatalogOverview.catalogs.some(item => item.id === guidedCatalog.id));
+    const guidedCatalogStats = db.getCatalogSourceStatistics(guidedCatalog);
+    assert.equal(guidedCatalogStats.media_count, 2);
+    assert.ok(guidedCatalogStats.last_media_added_at);
+    assert.ok(guidedCatalogStats.sources.length >= 1);
+    assert.ok(db.getMediaSourceStatistics('films').some(item => item.media_count >= 1));
 
     const addon = new StremioAddon(db);
     db.setConfig('image_cache_enabled', 'true');

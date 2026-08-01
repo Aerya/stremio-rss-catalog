@@ -152,8 +152,10 @@ async function loadOverview() {
       const imdb  = /^tt\d+$/i.test(m.imdb_id || '')
         ? `<a class="ov-row-imdb" href="https://www.imdb.com/title/${escHtml(m.imdb_id)}" target="_blank">${escHtml(m.imdb_id)}</a>`
         : '';
+      const catalog = encodeURIComponent(m.catalog_type || '');
+      const mediaId = encodeURIComponent(m.imdb_id || '');
       return `<li class="ov-row">
-        <span class="ov-row-title" title="${title}">${title}</span>
+        <button type="button" class="ov-row-title ov-row-link" title="${title}" onclick="openMediaInLibrary('${catalog}', '${mediaId}')">${title}</button>
         <span class="ov-row-meta">${year}${imdb}</span>
       </li>`;
     };
@@ -168,6 +170,21 @@ async function loadOverview() {
         <ul class="ov-list">${c.items.slice(0, 10).map(renderRow).join('')}</ul>
       </details>
     `).join('');
+
+    const catalogStats = document.getElementById('ovCatalogStatistics');
+    catalogStats.innerHTML = (d.catalogStatistics || []).map(catalog => `
+      <details class="ov-catalog-stat">
+        <summary>
+          <span class="ov-catalog-state ${catalog.enabled ? 'active' : 'inactive'}">${catalog.enabled ? t('ov_catalog_active') : t('ov_catalog_inactive')}</span>
+          <strong>${escHtml(catalog.name)}</strong>
+          <span class="ov-catalog-stat-summary">${Number(catalog.media_count || 0).toLocaleString()} · ${formatOverviewDate(catalog.last_media_added_at)}</span>
+        </summary>
+        <div class="ov-catalog-stat-details">
+          ${catalog.sources?.length ? `<table class="source-stat-table"><thead><tr><th>${t('ov_source')}</th><th>${t('ov_media_count')}</th><th>${t('ov_last_added')}</th></tr></thead><tbody>
+            ${catalog.sources.map(source => `<tr><td>${escHtml(source.name || source.source_url)}</td><td>${Number(source.media_count || 0).toLocaleString()}</td><td>${formatOverviewDate(source.last_added_at)}</td></tr>`).join('')}
+          </tbody></table>` : `<p class="text-muted">${t('ov_catalog_no_sources')}</p>`}
+        </div>
+      </details>`).join('') || `<p class="text-muted">${t('library_no_results')}</p>`;
   } catch (e) { console.error('loadOverview', e); }
 }
 
@@ -217,6 +234,7 @@ let libPage = 1;
 let libLimit = parseInt(localStorage.getItem('libLimit')) || 25;
 let libCatalog = '';
 let libSearch = '';
+let libImdbId = '';
 let libSort = 'date_desc';
 let libYear = '';
 let libView = 'grid';     // 'grid' | 'list'
@@ -258,7 +276,7 @@ function debounceLibSearch() {
     if (libMode === 'releases') {
       libRlzSearch = val; libRlzPage = 1; loadReleases();
     } else {
-      libSearch = val; libPage = 1; loadLibrary();
+      libSearch = val; libImdbId = ''; libPage = 1; loadLibrary();
     }
   }, 350);
 }
@@ -283,6 +301,7 @@ function onSortChange() {
 window.onSortChange = onSortChange;
 
 function selectYear(y) {
+  libImdbId = '';
   libYear = y;
   libPage = 1;
   // Sync quick pills
@@ -306,6 +325,7 @@ function debounceYearInput(val) {
     // Validate: single year (4 digits) or range (YYYY-YYYY)
     if (!v || /^\d{4}$/.test(v) || /^\d{4}-\d{4}$/.test(v)) {
       libYear = v;
+      libImdbId = '';
       libPage = 1;
       loadLibrary();
     }
@@ -330,8 +350,10 @@ document.querySelectorAll('.tab-btn[data-catalog]').forEach(btn => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     libCatalog = btn.dataset.catalog;
+    libImdbId = '';
     libPage = 1;
     loadLibrary();
+    if (document.getElementById('librarySourceStatistics')?.open) loadLibrarySourceStatistics();
   });
 });
 
@@ -351,6 +373,7 @@ async function loadLibrary() {
     if (libCatalog)  params.append('catalog',  libCatalog);
     if (libSearch)   params.append('search',   libSearch);
     if (libYear)     params.append('year',     libYear);
+    if (libImdbId)   params.append('imdb_id',  libImdbId);
 
     const r = await fetch('/api/media/list?' + params);
     const d = await r.json();
@@ -391,6 +414,57 @@ async function loadLibraryCounts() {
     }
   } catch (e) { /* silencieux */ }
 }
+
+function formatOverviewDate(timestamp) {
+  return timestamp
+    ? new Date(Number(timestamp)).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    : t('ov_catalog_never');
+}
+
+function openMediaInLibrary(catalog, mediaId) {
+  libCatalog = decodeURIComponent(catalog || '');
+  libImdbId = decodeURIComponent(mediaId || '');
+  libSearch = '';
+  libPage = 1;
+  const search = document.getElementById('libSearch');
+  if (search) search.value = '';
+  document.querySelectorAll('.tab-btn[data-catalog]').forEach(button => {
+    button.classList.toggle('active', button.dataset.catalog === libCatalog);
+  });
+  navigate('library');
+}
+window.openMediaInLibrary = openMediaInLibrary;
+
+async function loadLibrarySourceStatistics() {
+  const container = document.getElementById('librarySourceStatisticsContent');
+  if (!container) return;
+  container.textContent = t('sync_loading');
+  try {
+    const params = new URLSearchParams();
+    if (libCatalog) params.set('catalog', libCatalog);
+    const response = await fetch(`/api/media/source-stats?${params}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || t('library_source_statistics_error'));
+    if (!data.sources?.length) {
+      container.textContent = t('library_source_statistics_empty');
+      return;
+    }
+    container.innerHTML = `<table class="source-stat-table"><thead><tr>
+      <th>${t('ov_source')}</th><th>${t('ov_media_count')}</th><th>${t('ov_last_added')}</th>
+    </tr></thead><tbody>${data.sources.map(source => `<tr>
+      <td>${escHtml(source.name || source.source_url)}</td>
+      <td>${Number(source.media_count || 0).toLocaleString()}</td>
+      <td>${formatOverviewDate(source.last_added_at)}</td>
+    </tr>`).join('')}</tbody></table>`;
+  } catch (error) {
+    container.textContent = `✗ ${error.message}`;
+  }
+}
+
+function toggleLibrarySourceStatistics(open) {
+  if (open) loadLibrarySourceStatistics();
+}
+window.toggleLibrarySourceStatistics = toggleLibrarySourceStatistics;
 
 
 function loadYearsFilter() {
