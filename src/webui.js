@@ -37,6 +37,8 @@ class WebUI {
     this.sourceProbeInterval = null;
     this.sourceProbeProcessing = null;
     this.maintenanceInProgress = false;
+    this.resolutionReprocessingInProgress = false;
+    this.resolutionReprocessingStatus = null;
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -200,6 +202,86 @@ class WebUI {
         error: error.message
       });
       throw error;
+    }
+  }
+
+  getResolutionReprocessingAnalysis() {
+    const releases = this.db.getReleasesForResolutionReprocessing();
+    const failedReleases = this.db.getFailedReleasesForResolutionReprocessing();
+    const rejected = releases.filter(release => !this.rssParser.filterByResolution(release.release_name));
+    const rejectedFailed = failedReleases.filter(release => !this.rssParser.filterByResolution(release.release_name));
+    const rejectedByMedia = new Map();
+    const totalByMedia = new Map();
+    for (const release of releases) {
+      totalByMedia.set(release.media_imdb_id, (totalByMedia.get(release.media_imdb_id) || 0) + 1);
+    }
+    for (const release of rejected) {
+      rejectedByMedia.set(release.media_imdb_id, (rejectedByMedia.get(release.media_imdb_id) || 0) + 1);
+    }
+    const mediaToRemove = [...rejectedByMedia].filter(([imdbId, count]) => count === totalByMedia.get(imdbId));
+    // Traitement SQLite local par lots, sans réseau : volontairement prudent.
+    const estimatedSeconds = Math.max(1, Math.ceil((releases.length + failedReleases.length + rejected.length + rejectedFailed.length) / 2500));
+    return {
+      minimum_resolution: this.db.getConfig('minimum_resolution') || '',
+      maximum_resolution: this.db.getConfig('maximum_resolution') || '',
+      releases_scanned: releases.length,
+      releases_to_remove: rejected.length,
+      failed_releases_scanned: failedReleases.length,
+      failed_releases_to_remove: rejectedFailed.length,
+      media_to_remove: mediaToRemove.length,
+      estimated_seconds: estimatedSeconds
+    };
+  }
+
+  async runResolutionReprocessing() {
+    const analysis = this.getResolutionReprocessingAnalysis();
+    const historyId = this.db.startMaintenanceHistory('resolution_reprocessing', { analysis });
+    let backupPath = null;
+    const startedAt = Date.now();
+    this.resolutionReprocessingStatus = { running: true, started_at: startedAt, analysis };
+    try {
+      backupPath = await this.db.createMaintenanceBackup('before-resolution-reprocessing');
+      const rejected = this.db.getReleasesForResolutionReprocessing()
+        .filter(release => !this.rssParser.filterByResolution(release.release_name));
+      const rejectedFailed = this.db.getFailedReleasesForResolutionReprocessing()
+        .filter(release => !this.rssParser.filterByResolution(release.release_name));
+      const mediaIds = [...new Set(rejected.map(release => release.media_imdb_id))];
+      let releasesRemoved = 0;
+      let failedReleasesRemoved = 0;
+      let mediaRemoved = 0;
+      const batchSize = 500;
+      for (let index = 0; index < rejected.length; index += batchSize) {
+        releasesRemoved += this.db.deleteReleasesByIds(rejected.slice(index, index + batchSize).map(release => release.id));
+        await new Promise(resolve => setImmediate(resolve));
+      }
+      for (let index = 0; index < rejectedFailed.length; index += batchSize) {
+        failedReleasesRemoved += this.db.deleteFailedReleasesByIds(rejectedFailed.slice(index, index + batchSize).map(release => release.id));
+        await new Promise(resolve => setImmediate(resolve));
+      }
+      // Une release valide arrivée pendant le retraitement protège le média :
+      // la requête ne supprime que les médias désormais sans aucune release.
+      for (let index = 0; index < mediaIds.length; index += batchSize) {
+        mediaRemoved += this.db.deleteMediaWithoutReleases(mediaIds.slice(index, index + batchSize));
+        await new Promise(resolve => setImmediate(resolve));
+      }
+      if (releasesRemoved || mediaRemoved) this.stremioAddon.clearCache();
+      const details = {
+        ...analysis,
+        releases_removed: releasesRemoved,
+        failed_releases_removed: failedReleasesRemoved,
+        media_removed: mediaRemoved,
+        duration_ms: Date.now() - startedAt
+      };
+      this.db.finishMaintenanceHistory(historyId, { status: 'completed', details, backupPath });
+      this.resolutionReprocessingStatus = { running: false, completed: true, ...details, backup_path: backupPath };
+    } catch (error) {
+      this.db.finishMaintenanceHistory(historyId, {
+        status: 'error', details: { analysis }, backupPath, error: error.message
+      });
+      this.resolutionReprocessingStatus = { running: false, error: error.message, analysis, backup_path: backupPath };
+      console.error('[Résolution] Retraitement échoué :', error);
+    } finally {
+      this.resolutionReprocessingInProgress = false;
     }
   }
 
@@ -2293,6 +2375,29 @@ class WebUI {
       } finally {
         this.maintenanceInProgress = false;
       }
+    });
+
+    this.app.get('/api/maintenance/resolution-reprocessing/analysis', this.authMiddleware.bind(this), (req, res) => {
+      try {
+        res.json({ ...this.getResolutionReprocessingAnalysis(), status: this.resolutionReprocessingStatus });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    this.app.get('/api/maintenance/resolution-reprocessing/status', this.authMiddleware.bind(this), (req, res) => {
+      res.json(this.resolutionReprocessingStatus || { running: false, idle: true });
+    });
+
+    this.app.post('/api/maintenance/resolution-reprocessing/apply', this.authMiddleware.bind(this), (req, res) => {
+      if (this.resolutionReprocessingInProgress) {
+        return res.status(409).json({ error: 'Un retraitement des résolutions est déjà en cours' });
+      }
+      this.resolutionReprocessingInProgress = true;
+      // La tâche est découplée de la collecte : les lots cèdent régulièrement
+      // l'exécution afin que les nouvelles releases restent indexables.
+      setImmediate(() => this.runResolutionReprocessing());
+      res.json({ success: true, message: 'Retraitement des résolutions démarré' });
     });
 
     // ─── Reclassifier tous les médias selon config flux actuelle ───────────

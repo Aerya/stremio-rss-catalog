@@ -3374,6 +3374,96 @@ async function loadMaintenanceHistory() {
 }
 window.loadMaintenanceHistory = loadMaintenanceHistory;
 
+function formatResolutionDuration(seconds) {
+  const value = Math.max(1, Number(seconds) || 1);
+  return value < 60 ? `~ ${value} s` : `~ ${Math.ceil(value / 60)} min`;
+}
+
+function formatI18n(key, values = {}) {
+  return t(key).replace(/\{(\w+)\}/g, (_, name) => values[name] ?? '');
+}
+
+function renderResolutionReprocessingAnalysis(data) {
+  const output = document.getElementById('resolutionReprocessAnalysis');
+  const panel = document.getElementById('resolutionReprocessApplyPanel');
+  if (!output || !panel) return;
+  const range = [data.minimum_resolution ? `${data.minimum_resolution}p` : null,
+    data.maximum_resolution ? `${data.maximum_resolution}p` : null].filter(Boolean).join(' → ') || t('config_resolution_unlimited');
+  output.textContent = formatI18n('resolution_reprocess_estimate', {
+    scanned: Number(data.releases_scanned || 0).toLocaleString(),
+    releases: Number(data.releases_to_remove || 0).toLocaleString(),
+    failed: Number(data.failed_releases_to_remove || 0).toLocaleString(),
+    media: Number(data.media_to_remove || 0).toLocaleString(),
+    duration: formatResolutionDuration(data.estimated_seconds), range
+  });
+  panel.style.display = 'block';
+}
+
+async function analyzeResolutionReprocessing() {
+  const btn = document.getElementById('resolutionReprocessAnalyzeBtn');
+  const output = document.getElementById('resolutionReprocessAnalysis');
+  btn.disabled = true;
+  output.textContent = t('resolution_reprocess_analyzing');
+  try {
+    const response = await fetch('/api/maintenance/resolution-reprocessing/analysis');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || t('resolution_reprocess_error'));
+    if (data.status?.running) {
+      output.textContent = t('resolution_reprocess_running');
+      return;
+    }
+    renderResolutionReprocessingAnalysis(data);
+  } catch (error) {
+    output.textContent = `✗ ${error.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+window.analyzeResolutionReprocessing = analyzeResolutionReprocessing;
+
+async function refreshResolutionReprocessingStatus() {
+  const output = document.getElementById('resolutionReprocessResult');
+  const applyBtn = document.getElementById('resolutionReprocessApplyBtn');
+  const response = await fetch('/api/maintenance/resolution-reprocessing/status');
+  const status = await response.json();
+  if (status.running) {
+    output.textContent = t('resolution_reprocess_running');
+    setTimeout(refreshResolutionReprocessingStatus, 1000);
+    return;
+  }
+  applyBtn.disabled = false;
+  if (status.completed) {
+    output.textContent = '✓ ' + formatI18n('resolution_reprocess_completed', {
+      releases: Number(status.releases_removed || 0).toLocaleString(),
+      failed: Number(status.failed_releases_removed || 0).toLocaleString(),
+      media: Number(status.media_removed || 0).toLocaleString()
+    });
+    await Promise.all([loadStats(), loadLibraryCounts(), loadMaintenanceHistory()]);
+  } else if (status.error) {
+    output.textContent = `✗ ${status.error}`;
+  }
+}
+
+async function applyResolutionReprocessing() {
+  const output = document.getElementById('resolutionReprocessResult');
+  const btn = document.getElementById('resolutionReprocessApplyBtn');
+  if (!await saveConfig()) return;
+  await analyzeResolutionReprocessing();
+  if (!confirm(t('resolution_reprocess_confirm'))) return;
+  btn.disabled = true;
+  output.textContent = t('resolution_reprocess_starting');
+  try {
+    const response = await fetch('/api/maintenance/resolution-reprocessing/apply', { method: 'POST' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || t('resolution_reprocess_error'));
+    await refreshResolutionReprocessingStatus();
+  } catch (error) {
+    output.textContent = `✗ ${error.message}`;
+    btn.disabled = false;
+  }
+}
+window.applyResolutionReprocessing = applyResolutionReprocessing;
+
 async function reclassifyAnimes() {
   const btn    = document.getElementById('reclassifyAnimesBtn');
   const result = document.getElementById('reclassifyAnimesResult');
@@ -3848,9 +3938,13 @@ async function loadConfig() {
 }
 
 async function saveConfig(e) {
-  e.preventDefault();
-  const msg = document.getElementById('configMsg');
-  msg.textContent = '';
+  e?.preventDefault();
+  const messages = ['configMsgTop', 'configMsg'].map(id => document.getElementById(id)).filter(Boolean);
+  const setMessage = (text, className = '') => messages.forEach(msg => {
+    msg.textContent = text;
+    msg.className = `config-msg ${className}`.trim();
+  });
+  setMessage('');
 
   const cfg = {};
   ['required_tags', 'minimum_resolution', 'maximum_resolution', 'tmdb_api_key', 'tvdb_api_key',
@@ -3880,17 +3974,17 @@ async function saveConfig(e) {
     });
     const d = await r.json();
     if (r.ok) {
-      msg.textContent = '✓ ' + t('config_saved_ok');
-      msg.className = 'config-msg ok';
+      setMessage('✓ ' + t('config_saved_ok'), 'ok');
     } else {
-      msg.textContent = '✗ ' + (d.error || t('config_saved_err'));
-      msg.className = 'config-msg err';
+      setMessage('✗ ' + (d.error || t('config_saved_err')), 'err');
+      return false;
     }
   } catch {
-    msg.textContent = '✗ Erreur réseau';
-    msg.className = 'config-msg err';
+    setMessage('✗ Erreur réseau', 'err');
+    return false;
   }
-  setTimeout(() => { msg.textContent = ''; }, 4000);
+  setTimeout(() => setMessage(''), 4000);
+  return true;
 }
 
 async function testPostersPlus() {

@@ -1716,6 +1716,31 @@ async function main() {
     });
     assert.equal(db.listMaintenanceHistory(1)[0].backup_path, backupPath);
     fs.unlinkSync(backupPath);
+    db.setConfig('minimum_resolution', '720');
+    db.addMedia({ imdb_id: 'tt0000997', type: 'movie', catalog_type: 'films', name: 'Basse résolution', release_name: 'Basse.Resolution.480p' });
+    db.addMedia({ imdb_id: 'tt0000998', type: 'movie', catalog_type: 'films', name: 'Deux résolutions', release_name: 'Deux.Resolutions.480p' });
+    db.addRelease({ media_imdb_id: 'tt0000997', release_name: 'Basse.Resolution.480p', indexer_rlz_id: 'resolution-low-only' });
+    db.addRelease({ media_imdb_id: 'tt0000998', release_name: 'Deux.Resolutions.480p', indexer_rlz_id: 'resolution-low-mixed' });
+    db.addRelease({ media_imdb_id: 'tt0000998', release_name: 'Deux.Resolutions.1080p', indexer_rlz_id: 'resolution-high-mixed' });
+    db.addFailedRelease({ release_name: 'Echec.Basse.Resolution.480p', indexer_rlz_id: 'resolution-failed-low' });
+    const resolutionRunner = Object.create(WebUI.prototype);
+    resolutionRunner.db = db;
+    resolutionRunner.stremioAddon = addon;
+    resolutionRunner.rssParser = rssParser;
+    resolutionRunner.resolutionReprocessingInProgress = true;
+    const resolutionAnalysis = resolutionRunner.getResolutionReprocessingAnalysis();
+    assert.ok(resolutionAnalysis.releases_to_remove >= 2);
+    assert.ok(resolutionAnalysis.media_to_remove >= 1);
+    assert.ok(resolutionAnalysis.failed_releases_to_remove >= 1);
+    await resolutionRunner.runResolutionReprocessing();
+    assert.equal(db.getMediaByImdbId('tt0000997'), undefined);
+    assert.ok(db.getMediaByImdbId('tt0000998'));
+    assert.ok(!db.getReleasesForResolutionReprocessing().some(item => item.indexer_rlz_id === 'resolution-low-mixed'));
+    assert.ok(db.getReleasesForResolutionReprocessing().some(item => item.indexer_rlz_id === 'resolution-high-mixed'));
+    assert.ok(!db.getFailedReleases().some(item => item.indexer_rlz_id === 'resolution-failed-low'));
+    assert.equal(resolutionRunner.resolutionReprocessingStatus.completed, true);
+    fs.unlinkSync(resolutionRunner.resolutionReprocessingStatus.backup_path);
+    console.log('✓ Retraitement local des résolutions avec sauvegarde et conservation des releases valides');
     db.addMedia({
       imdb_id: 'tt0000999',
       tmdb_id: '999',

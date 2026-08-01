@@ -294,6 +294,12 @@ sources basées sur des releases. Avec un minimum de `720p`, les releases reconn
 en 480p, 576p ou SD sont exclues et ne peuvent donc créer aucun média. Une release
 sans résolution explicite reste acceptée.
 
+La WebUI propose aussi un retraitement local des releases déjà enregistrées : elle
+affiche le volume et une estimation, crée une sauvegarde SQLite, retire les
+releases hors plage et ne retire un média que s’il ne lui reste aucune release
+admissible. Le traitement par lots ne suspend pas les collectes de nouvelles
+releases.
+
 ### Périmètre
 
 Ce projet reste volontairement un addon de **catalogues**, sans fonction de

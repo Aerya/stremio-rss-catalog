@@ -1053,6 +1053,10 @@
         <h2 data-i18n="nav_config">Configuration</h2>
       </div>
       <form id="configForm" class="card config-form" onsubmit="saveConfig(event)">
+        <div class="config-save-bar">
+          <button type="submit" class="btn-primary" data-i18n="config_save_btn">💾 Enregistrer la configuration</button>
+          <span id="configMsgTop" class="config-msg"></span>
+        </div>
 
         <div class="config-section">
           <h3 data-i18n="config_processing_title">Traitement des contenus</h3>
@@ -1083,6 +1087,18 @@
             </div>
           </div>
           <small data-i18n="config_resolution_help">Les releases dont la résolution explicitement indiquée est hors de cette plage sont rejetées avant matching et ne créent donc aucun média. Une résolution absente reste acceptée.</small>
+          <details class="resolution-reprocessing" style="margin-top:16px">
+            <summary data-i18n="resolution_reprocess_summary">Appliquer ces limites aux médias déjà indexés</summary>
+            <p class="text-muted" data-i18n="resolution_reprocess_help">Analyse les releases déjà enregistrées, sans relancer les sources ni TMDB. Les releases hors plage sont retirées ; un média n’est retiré que s’il ne conserve aucune release admissible.</p>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <button type="button" class="btn-sm" onclick="analyzeResolutionReprocessing()" id="resolutionReprocessAnalyzeBtn" data-i18n="resolution_reprocess_analyze">Estimer le retraitement</button>
+              <span id="resolutionReprocessAnalysis" class="text-muted"></span>
+            </div>
+            <div id="resolutionReprocessApplyPanel" style="display:none;margin-top:12px">
+              <button type="button" class="btn-danger" onclick="applyResolutionReprocessing()" id="resolutionReprocessApplyBtn" data-i18n="resolution_reprocess_apply">Sauvegarder puis retraiter</button>
+              <span id="resolutionReprocessResult" class="text-muted" style="margin-left:8px"></span>
+            </div>
+          </details>
         </div>
 
         <div class="config-section">
@@ -1185,7 +1201,8 @@
         </div>
 
         <div class="config-section">
-          <h3 data-i18n="config_rpdb_title">RPDB</h3>
+          <h3 data-i18n="config_artwork_title">Modifier les affiches</h3>
+          <h4 data-i18n="config_rpdb_title">Rating Poster DataBase aka RPDB</h4>
           <div class="toggle-row">
             <label class="toggle-switch">
               <input type="checkbox" id="rpdb_enabled" name="rpdb_enabled">
@@ -1205,13 +1222,10 @@
             <input type="text" id="rpdb_api_key" name="rpdb_api_key"
               data-i18n-placeholder="config_rpdb_placeholder" placeholder="Votre clé API RPDB">
           </div>
-        </div>
-
-        <div class="config-section">
-          <h3>
+          <h4 style="margin-top:24px">
             PostersPlus
             <a href="https://github.com/UmbraProjects/PostersPlus" target="_blank" class="label-link">GitHub ↗</a>
-          </h3>
+          </h4>
           <div class="toggle-row">
             <label class="toggle-switch">
               <input type="checkbox" id="postersplus_enabled" name="postersplus_enabled">
