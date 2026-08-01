@@ -336,6 +336,12 @@ angewandt. Mit einem Minimum von `720p` werden als 480p, 576p oder SD erkannte
 Releases ausgeschlossen und können daher keine Medien erzeugen. Releases ohne
 ausdrückliche Auflösung bleiben zulässig.
 
+Die WebUI bietet außerdem eine lokale Verarbeitung bereits gespeicherter Releases:
+Sie zeigt Umfang und Schätzung an, erstellt eine SQLite-Sicherung, entfernt
+Releases außerhalb des Bereichs und entfernt ein Medium nur, wenn keine zulässige
+Release mehr übrig ist. Die Stapelverarbeitung hält die Sammlung neuer Releases
+nicht an.
+
 ### Umfang
 
 Dieses Projekt bleibt bewusst ein **Katalog**-Addon und bietet keine

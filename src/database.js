@@ -2347,6 +2347,45 @@ class DatabaseManager {
     `).all();
   }
 
+  // ─── Retraitement local des releases selon la résolution ──────────────────
+
+  getReleasesForResolutionReprocessing() {
+    return this.db.prepare(`
+      SELECT id, media_imdb_id, release_name, indexer_rlz_id
+      FROM releases
+      ORDER BY id ASC
+    `).all();
+  }
+
+  deleteReleasesByIds(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return 0;
+    const statement = this.db.prepare(`DELETE FROM releases WHERE id = ?`);
+    const remove = this.db.transaction(rows => rows.reduce((count, id) => count + statement.run(id).changes, 0));
+    return remove(ids);
+  }
+
+  deleteMediaWithoutReleases(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return 0;
+    const statement = this.db.prepare(`
+      DELETE FROM media
+      WHERE imdb_id = ?
+        AND NOT EXISTS (SELECT 1 FROM releases WHERE media_imdb_id = media.imdb_id)
+    `);
+    const remove = this.db.transaction(rows => rows.reduce((count, id) => count + statement.run(id).changes, 0));
+    return remove(ids);
+  }
+
+  getFailedReleasesForResolutionReprocessing() {
+    return this.db.prepare(`SELECT id, release_name FROM failed_releases ORDER BY id ASC`).all();
+  }
+
+  deleteFailedReleasesByIds(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return 0;
+    const statement = this.db.prepare(`DELETE FROM failed_releases WHERE id = ?`);
+    const remove = this.db.transaction(rows => rows.reduce((count, id) => count + statement.run(id).changes, 0));
+    return remove(ids);
+  }
+
   close() {
     this.db.close();
   }

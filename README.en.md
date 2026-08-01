@@ -328,6 +328,11 @@ source. With a `720p` minimum, releases recognized as 480p, 576p, or SD are
 excluded and therefore cannot create media. A release without an explicit
 resolution remains accepted.
 
+The WebUI also provides local reprocessing for releases already stored: it shows
+the volume and an estimate, creates a SQLite backup, removes out-of-range
+releases, and removes a media item only when it has no eligible release left.
+Batch processing does not suspend new-release collection.
+
 ### Scope
 
 This project deliberately remains a **catalog** addon and does not provide

@@ -426,6 +426,20 @@ input:checked + .slider::before { transform: translateX(22px); }
 
 /* ─── Config ──────────────────────────────────────────────────────── */
 .config-form { display: flex; flex-direction: column; gap: 0; }
+.config-save-bar {
+  position: sticky;
+  top: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  margin: -8px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card) 94%, var(--bg));
+  box-shadow: 0 4px 12px color-mix(in srgb, #000 12%, transparent);
+}
 .config-section {
   padding: 24px 0;
   border-bottom: 1px solid var(--border);
@@ -483,6 +497,8 @@ input:checked + .slider::before { transform: translateX(22px); }
 .config-msg { font-size: 13px; }
 .config-msg.ok  { color: var(--success); }
 .config-msg.err { color: var(--danger); }
+.resolution-reprocessing summary { cursor: pointer; font-weight: 600; }
+.resolution-reprocessing p { margin: 10px 0 12px; font-size: 12px; }
 
 .maintenance-row {
   display: flex; align-items: flex-start; justify-content: space-between;
