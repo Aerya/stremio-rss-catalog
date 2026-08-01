@@ -3383,6 +3383,19 @@ function formatI18n(key, values = {}) {
   return t(key).replace(/\{(\w+)\}/g, (_, name) => values[name] ?? '');
 }
 
+async function fetchResolutionReprocessingJson(url, options) {
+  const response = await fetch(url, options);
+  const body = await response.text();
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    throw new Error(formatI18n('resolution_reprocess_invalid_response', { status: response.status }));
+  }
+  if (!response.ok) throw new Error(data.error || t('resolution_reprocess_error'));
+  return data;
+}
+
 function renderResolutionReprocessingAnalysis(data) {
   const output = document.getElementById('resolutionReprocessAnalysis');
   const panel = document.getElementById('resolutionReprocessApplyPanel');
@@ -3405,9 +3418,7 @@ async function analyzeResolutionReprocessing() {
   btn.disabled = true;
   output.textContent = t('resolution_reprocess_analyzing');
   try {
-    const response = await fetch('/api/maintenance/resolution-reprocessing/analysis');
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || t('resolution_reprocess_error'));
+    const data = await fetchResolutionReprocessingJson('/api/maintenance/resolution-reprocessing/analysis');
     if (data.status?.running) {
       output.textContent = t('resolution_reprocess_running');
       return;
@@ -3424,8 +3435,7 @@ window.analyzeResolutionReprocessing = analyzeResolutionReprocessing;
 async function refreshResolutionReprocessingStatus() {
   const output = document.getElementById('resolutionReprocessResult');
   const applyBtn = document.getElementById('resolutionReprocessApplyBtn');
-  const response = await fetch('/api/maintenance/resolution-reprocessing/status');
-  const status = await response.json();
+  const status = await fetchResolutionReprocessingJson('/api/maintenance/resolution-reprocessing/status');
   if (status.running) {
     output.textContent = t('resolution_reprocess_running');
     setTimeout(refreshResolutionReprocessingStatus, 1000);
@@ -3453,9 +3463,7 @@ async function applyResolutionReprocessing() {
   btn.disabled = true;
   output.textContent = t('resolution_reprocess_starting');
   try {
-    const response = await fetch('/api/maintenance/resolution-reprocessing/apply', { method: 'POST' });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || t('resolution_reprocess_error'));
+    await fetchResolutionReprocessingJson('/api/maintenance/resolution-reprocessing/apply', { method: 'POST' });
     await refreshResolutionReprocessingStatus();
   } catch (error) {
     output.textContent = `✗ ${error.message}`;
