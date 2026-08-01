@@ -1006,6 +1006,20 @@ class DatabaseManager {
     `).get(...params).total;
   }
 
+  getActiveCatalogOverview() {
+    const catalogs = this.listCustomCatalogs(false).map(catalog => ({
+      id: catalog.id,
+      name: catalog.name,
+      type: catalog.type,
+      count: this.countCustomCatalogMedia(catalog)
+    }));
+    return {
+      count: catalogs.length,
+      items: catalogs.reduce((sum, catalog) => sum + catalog.count, 0),
+      catalogs
+    };
+  }
+
   getCustomCatalogMedia(catalog, skip = 0, limit = 101, search = null) {
     const { conditions, params } = this._customCatalogConditions(catalog, search);
     const guideId = catalog.filters?.guide_id ? String(catalog.filters.guide_id) : null;

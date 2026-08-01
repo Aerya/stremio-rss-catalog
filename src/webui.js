@@ -39,6 +39,7 @@ class WebUI {
     this.maintenanceInProgress = false;
     this.resolutionReprocessingInProgress = false;
     this.resolutionReprocessingStatus = null;
+    this.resolutionReprocessingAnalysisData = null;
 
     this.setupMiddleware();
     this.setupRoutes();
@@ -233,18 +234,76 @@ class WebUI {
     };
   }
 
+  async getResolutionReprocessingAnalysisAsync(onProgress = null) {
+    const releases = this.db.getReleasesForResolutionReprocessing();
+    const failedReleases = this.db.getFailedReleasesForResolutionReprocessing();
+    const rejected = [];
+    const rejectedFailed = [];
+    const rejectedByMedia = new Map();
+    const totalByMedia = new Map();
+    const all = [...releases, ...failedReleases];
+    const batchSize = 1000;
+    for (let index = 0; index < releases.length; index += batchSize) {
+      for (const release of releases.slice(index, index + batchSize)) {
+        totalByMedia.set(release.media_imdb_id, (totalByMedia.get(release.media_imdb_id) || 0) + 1);
+        if (!this.rssParser.filterByResolution(release.release_name)) {
+          rejected.push(release);
+          rejectedByMedia.set(release.media_imdb_id, (rejectedByMedia.get(release.media_imdb_id) || 0) + 1);
+        }
+      }
+      onProgress?.(Math.min(index + batchSize, all.length), all.length);
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    for (let index = 0; index < failedReleases.length; index += batchSize) {
+      for (const release of failedReleases.slice(index, index + batchSize)) {
+        if (!this.rssParser.filterByResolution(release.release_name)) rejectedFailed.push(release);
+      }
+      onProgress?.(Math.min(releases.length + index + batchSize, all.length), all.length);
+      await new Promise(resolve => setImmediate(resolve));
+    }
+    const mediaToRemove = [...rejectedByMedia].filter(([imdbId, count]) => count === totalByMedia.get(imdbId));
+    const analysis = {
+      minimum_resolution: this.db.getConfig('minimum_resolution') || '',
+      maximum_resolution: this.db.getConfig('maximum_resolution') || '',
+      releases_scanned: releases.length,
+      releases_to_remove: rejected.length,
+      failed_releases_scanned: failedReleases.length,
+      failed_releases_to_remove: rejectedFailed.length,
+      media_to_remove: mediaToRemove.length,
+      estimated_seconds: Math.max(1, Math.ceil((all.length + rejected.length + rejectedFailed.length) / 2500))
+    };
+    return { analysis, rejected, rejectedFailed };
+  }
+
+  startResolutionReprocessingAnalysis() {
+    if (this.resolutionReprocessingStatus?.running) return;
+    this.resolutionReprocessingAnalysisData = null;
+    this.resolutionReprocessingStatus = { running: true, phase: 'analysis', progress: 0, total: 0 };
+    setImmediate(async () => {
+      try {
+        const data = await this.getResolutionReprocessingAnalysisAsync((progress, total) => {
+          this.resolutionReprocessingStatus = { running: true, phase: 'analysis', progress, total };
+        });
+        this.resolutionReprocessingAnalysisData = data;
+        this.resolutionReprocessingStatus = { running: false, analysis_ready: true, analysis: data.analysis };
+      } catch (error) {
+        this.resolutionReprocessingStatus = { running: false, error: error.message };
+        console.error('[Résolution] Analyse échouée :', error);
+      }
+    });
+  }
+
   async runResolutionReprocessing() {
-    const analysis = this.getResolutionReprocessingAnalysis();
+    const data = this.resolutionReprocessingAnalysisData || await this.getResolutionReprocessingAnalysisAsync((progress, total) => {
+      this.resolutionReprocessingStatus = { running: true, phase: 'analysis', progress, total };
+    });
+    const { analysis, rejected, rejectedFailed } = data;
     const historyId = this.db.startMaintenanceHistory('resolution_reprocessing', { analysis });
     let backupPath = null;
     const startedAt = Date.now();
-    this.resolutionReprocessingStatus = { running: true, started_at: startedAt, analysis };
+    this.resolutionReprocessingStatus = { running: true, phase: 'reprocessing', started_at: startedAt, analysis };
     try {
       backupPath = await this.db.createMaintenanceBackup('before-resolution-reprocessing');
-      const rejected = this.db.getReleasesForResolutionReprocessing()
-        .filter(release => !this.rssParser.filterByResolution(release.release_name));
-      const rejectedFailed = this.db.getFailedReleasesForResolutionReprocessing()
-        .filter(release => !this.rssParser.filterByResolution(release.release_name));
       const mediaIds = [...new Set(rejected.map(release => release.media_imdb_id))];
       let releasesRemoved = 0;
       let failedReleasesRemoved = 0;
@@ -282,6 +341,7 @@ class WebUI {
       console.error('[Résolution] Retraitement échoué :', error);
     } finally {
       this.resolutionReprocessingInProgress = false;
+      this.resolutionReprocessingAnalysisData = null;
     }
   }
 
@@ -2067,6 +2127,9 @@ class WebUI {
       const lastSync    = this.db.getLatestSync() || null;
       const failedCount = this.db.getFailedReleasesCount();
       const sources     = this.db.getSourceStats();
+      const activeCatalogs = this.db.getActiveCatalogOverview();
+      const requiredTags = String(this.db.getConfig('required_tags') || '')
+        .split(',').map(tag => tag.trim()).filter(Boolean);
       const recentByCat = {
         films:         this.db.getRecentCatalogAdditions('films', 10),
         documentaires: this.db.getRecentCatalogAdditions('documentaires', 10),
@@ -2083,6 +2146,12 @@ class WebUI {
         failedCount,
         sourcesCount: sources.length,
         recentByCat,
+        activeCatalogs,
+        releaseFiltering: {
+          requiredTags,
+          minimumResolution: this.db.getConfig('minimum_resolution') || '',
+          maximumResolution: this.db.getConfig('maximum_resolution') || ''
+        },
         rpdbEnabled,
         rpdbKey
       });
@@ -2378,11 +2447,12 @@ class WebUI {
     });
 
     this.app.get('/api/maintenance/resolution-reprocessing/analysis', this.authMiddleware.bind(this), (req, res) => {
-      try {
-        res.json({ ...this.getResolutionReprocessingAnalysis(), status: this.resolutionReprocessingStatus });
-      } catch (error) {
-        res.status(500).json({ error: error.message });
+      if (!this.resolutionReprocessingStatus?.running && !this.resolutionReprocessingStatus?.analysis_ready) {
+        this.startResolutionReprocessingAnalysis();
       }
+      const status = this.resolutionReprocessingStatus;
+      if (status?.analysis_ready) return res.json({ ...status.analysis, status });
+      res.status(202).json(status);
     });
 
     this.app.get('/api/maintenance/resolution-reprocessing/status', this.authMiddleware.bind(this), (req, res) => {
@@ -2390,10 +2460,11 @@ class WebUI {
     });
 
     this.app.post('/api/maintenance/resolution-reprocessing/apply', this.authMiddleware.bind(this), (req, res) => {
-      if (this.resolutionReprocessingInProgress) {
+      if (this.resolutionReprocessingInProgress || this.resolutionReprocessingStatus?.running) {
         return res.status(409).json({ error: 'Un retraitement des résolutions est déjà en cours' });
       }
       this.resolutionReprocessingInProgress = true;
+      this.resolutionReprocessingStatus = { running: true, phase: 'analysis', progress: 0, total: 0 };
       // La tâche est découplée de la collecte : les lots cèdent régulièrement
       // l'exécution afin que les nouvelles releases restent indexables.
       setImmediate(() => this.runResolutionReprocessing());
