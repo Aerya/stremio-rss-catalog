@@ -109,6 +109,7 @@ does not provide streams itself.
 | **Migration and repair** | Read-only analysis, grouped corrections, history, versioned migrations, and automatic SQLite backup before schema changes |
 | **Source management** | Tabs, search, collapsible groups, complete editing, and a schedule per source |
 | **Per-source status** | Last success, next collection, duration, fetched items, consecutive errors, and cap usage |
+| **Availability probe** | Configurable lightweight check between collections, without importing content or moving a cursor; alerts can arrive before the next collection |
 | **Indexer APIs** | Multiple renameable Newznab, Prowlarr, Jackett/Torznab, and NZBHydra2 sources with pagination, an incremental cursor, cap, and delay |
 | **WaStream/WaCustom** | Multiple renameable instances; paginated WASource content import with IMDb/TMDB IDs, resumable traversal, per-source frequency, pause, and cap |
 | **StreamFusion Reborn** | Multiple renameable instances; signed and encrypted private-cache import through the official Peer API, with pagination and an incremental cursor |
@@ -218,6 +219,15 @@ historical backfill is currently unavailable.
 CometNet pools are contributor trust filters. Creating a pool with the target
 peer does not force its existing cache to be replayed and therefore does not
 provide historical backfill.
+
+### Alerts and availability probe
+
+Alerts count consecutive failures for every collection. The optional **lightweight
+probe** also periodically verifies that a source URL responds, without reading its
+catalog, importing content, or moving its cursor. It can therefore report an outage
+before the next scheduled collection. Probe failures are stored separately from
+collection failures and use the same per-source threshold; CometNet is checked
+through its persistent connection state.
 
 > **In short:** CometNet can progressively supplement the library, but it is
 > not an exhaustive source. Prefer a paginated API, catalog manifest, RSS feed,

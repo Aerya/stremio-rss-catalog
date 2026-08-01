@@ -111,6 +111,7 @@ stellt selbst keine Streams bereit.
 | **Migration und Reparatur** | Schreibgeschützte Analyse, gruppierte Korrekturen, Verlauf, versionierte Migrationen und automatische SQLite-Sicherung vor Schemaänderungen |
 | **Quellenverwaltung** | Tabs, Suche, einklappbare Gruppen, vollständige Bearbeitung und eigener Zeitplan pro Quelle |
 | **Status pro Quelle** | Letzter Erfolg, nächste Sammlung, Dauer, gelesene Elemente, aufeinanderfolgende Fehler und Nutzung der Obergrenze |
+| **Verfügbarkeitsprüfung** | Konfigurierbare leichte Prüfung zwischen Sammlungen ohne Inhaltsimport oder Cursor-Verschiebung; Warnungen können vor der nächsten Sammlung eintreffen |
 | **Indexer-APIs** | Mehrere umbenennbare Newznab-, Prowlarr-, Jackett/Torznab- und NZBHydra2-Quellen mit Pagination, inkrementellem Cursor, Obergrenze und Verzögerung |
 | **WaStream/WaCustom** | Mehrere umbenennbare Instanzen; paginierter WASource-Import mit IMDb/TMDB, fortsetzbarer Erfassung, eigener Frequenz, Pause und Obergrenze |
 | **StreamFusion Reborn** | Mehrere umbenennbare Instanzen; signierter und verschlüsselter Import des privaten Caches über die offizielle Peer-API mit Pagination und inkrementellem Cursor |
@@ -221,6 +222,16 @@ implementiert; ein vollständiger historischer Import ist daher nicht möglich.
 CometNet-Pools sind Vertrauensfilter für Mitwirkende. Ein Pool mit dem Ziel-Peer
 erzwingt weder die erneute Übertragung seines vorhandenen Caches noch einen
 historischen Nachlauf.
+
+### Warnungen und Verfügbarkeitsprüfung
+
+Warnungen zählen aufeinanderfolgende Fehler jeder Sammlung. Die optionale
+**leichte Prüfung** kontrolliert zusätzlich regelmäßig, ob eine Quellen-URL
+antwortet, ohne den Katalog zu lesen, Inhalte zu importieren oder den Cursor zu
+verschieben. Dadurch kann ein Ausfall vor der nächsten geplanten Sammlung gemeldet
+werden. Fehler der Prüfung werden getrennt von Sammlungsfehlern gespeichert und
+nutzen denselben Schwellenwert pro Quelle; CometNet wird über den Zustand seiner
+dauerhaften Verbindung geprüft.
 
 > **Kurz gesagt:** CometNet kann die Mediathek nach und nach ergänzen, ist aber
 > keine vollständige Quelle. Für einen kompletten Erstimport sind eine

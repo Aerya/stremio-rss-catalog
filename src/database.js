@@ -579,6 +579,8 @@ class DatabaseManager {
       source_alerts_enabled: 'true',
       source_alert_default_threshold: '3',
       source_alert_thresholds: '{}',
+      source_probe_enabled: 'true',
+      source_probe_interval_minutes: '5',
       classification_migration_version: '0'
     };
 

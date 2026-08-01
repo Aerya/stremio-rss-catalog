@@ -335,8 +335,8 @@
       </details>
 
       <details class="card source-group" data-source-group="webdav">
-        <summary><span>WebDAV</span> <span class="source-group-count" id="webdavGroupCount"></span></summary>
-        <p class="text-muted" style="margin:8px 0 14px">
+        <summary><span data-i18n="sources_webdav_title">Dossiers WebDAV</span> <span class="source-group-count" id="webdavGroupCount"></span></summary>
+        <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_webdav_desc" data-i18n-html>
           Parcourt récursivement un dossier WebDAV et identifie les films ou séries à partir des noms de fichiers.
           La lecture reste assurée dans Stremio par un addon dédié comme
           <a href="https://github.com/arvida42/davio" target="_blank" rel="noopener noreferrer">Davio ↗</a>.
@@ -344,25 +344,25 @@
         <input id="webdavEditId" type="hidden">
         <div class="config-grid">
           <div class="field">
-            <label>Nom</label>
+            <label data-i18n="sources_name">Nom</label>
             <input id="webdavName" type="text" placeholder="Ma vidéothèque WebDAV">
           </div>
           <div class="field">
-            <label>URL du dossier racine</label>
+            <label data-i18n="sources_root_url">URL du dossier racine</label>
             <input id="webdavUrl" type="password" autocomplete="off" placeholder="https://dav.example.net/Films/">
           </div>
           <div class="field">
-            <label>Utilisateur</label>
+            <label data-i18n="sources_username">Utilisateur</label>
             <input id="webdavUsername" type="password" autocomplete="off">
           </div>
           <div class="field">
-            <label>Mot de passe</label>
+            <label data-i18n="sources_password">Mot de passe</label>
             <input id="webdavPassword" type="password" autocomplete="new-password">
           </div>
           <div class="field">
-            <label>Classement</label>
+            <label data-i18n="sources_classification">Classement</label>
             <select id="webdavForce">
-              <option value="auto">Détection automatique</option>
+              <option value="auto" data-i18n="sources_auto_detection">Détection automatique</option>
               <option value="films">Films</option><option value="series">Séries</option>
               <option value="documentaires">Documentaires</option>
               <option value="documentaires_series">Documentaires (séries)</option>
@@ -372,42 +372,42 @@
             </select>
           </div>
           <div class="field">
-            <label>Profondeur maximale</label>
+            <label data-i18n="sources_max_depth">Profondeur maximale</label>
             <input id="webdavMaxDepth" type="number" min="0" max="20" value="8">
           </div>
           <div class="field">
-            <label>Maximum de fichiers par collecte</label>
+            <label data-i18n="sources_max_files">Maximum de fichiers par collecte</label>
             <input id="webdavMaxItems" type="number" min="1" max="10000000" value="10000000">
           </div>
           <div class="field">
-            <label>Extensions vidéo</label>
+            <label data-i18n="sources_video_extensions">Extensions vidéo</label>
             <input id="webdavExtensions" type="text" value="mkv,mp4,avi,mov,m4v,webm,ts,m2ts,iso,strm">
           </div>
           <div class="field">
-            <label>Fréquence de collecte (min)</label>
+            <label data-i18n="sources_collect_frequency">Fréquence de collecte (min)</label>
             <input id="webdavInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale">
           </div>
           <div class="field">
-            <label><input id="webdavUseProxy" type="checkbox"> Utiliser le proxy global</label>
+            <label><input id="webdavUseProxy" type="checkbox"> <span data-i18n="sources_use_proxy">Utiliser le proxy global</span></label>
             <small>Désactivé par défaut pour les serveurs WebDAV locaux.</small>
           </div>
           <div class="field">
-            <label><input id="webdavClearCredentials" type="checkbox"> Supprimer les identifiants enregistrés</label>
+            <label><input id="webdavClearCredentials" type="checkbox"> <span data-i18n="sources_clear_credentials">Supprimer les identifiants enregistrés</span></label>
             <small>À utiliser si le WebDAV devient accessible sans authentification.</small>
           </div>
         </div>
         <div style="display:flex;gap:8px;margin-top:14px">
-          <button type="button" class="btn-sm" onclick="previewWebdavSource()">Tester le parcours</button>
-          <button type="button" class="btn-primary" id="webdavSubmit" onclick="saveWebdavSource()">Ajouter</button>
-          <button type="button" class="btn-sm" id="webdavCancel" onclick="resetWebdavForm()" hidden>Annuler</button>
+          <button type="button" class="btn-sm" onclick="previewWebdavSource()" data-i18n="sources_test_scan">Tester le parcours</button>
+          <button type="button" class="btn-primary" id="webdavSubmit" onclick="saveWebdavSource()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-sm" id="webdavCancel" onclick="resetWebdavForm()" hidden data-i18n="sources_cancel">Annuler</button>
         </div>
         <div id="webdavPreview" class="text-muted" style="margin-top:10px"></div>
         <div id="webdavList" style="margin-top:14px"></div>
       </details>
 
       <details class="card source-group" data-source-group="mediaserver">
-        <summary><span>Bibliothèques Plex/Jellyfin</span> <span class="source-group-count" id="mediaserverGroupCount"></span></summary>
-        <p class="text-muted" style="margin:8px 0 14px">
+        <summary><span data-i18n="sources_media_title">Bibliothèques Plex/Jellyfin</span> <span class="source-group-count" id="mediaserverGroupCount"></span></summary>
+        <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_media_desc" data-i18n-html>
           Importe directement les films et séries réellement présents dans des bibliothèques ou collections.
           <a href="https://www.plex.tv/" target="_blank" rel="noopener noreferrer">Plex ↗</a>
           · <a href="https://github.com/jellyfin/jellyfin" target="_blank" rel="noopener noreferrer">Jellyfin ↗</a>
@@ -422,19 +422,19 @@
             <select id="mediaServerKind"><option value="plex">Plex</option><option value="jellyfin">Jellyfin</option></select>
           </div>
           <div class="field">
-            <label>Nom</label>
+            <label data-i18n="sources_name">Nom</label>
             <input id="mediaServerName" type="text" placeholder="Serveur familial">
           </div>
           <div class="field">
-            <label>URL du serveur</label>
+            <label data-i18n="sources_instance_url">URL du serveur</label>
             <input id="mediaServerUrl" type="password" autocomplete="off" placeholder="http://plex:32400">
           </div>
           <div class="field">
-            <label>Jeton API</label>
+            <label data-i18n="sources_api_token">Jeton API</label>
             <input id="mediaServerApiKey" type="password" autocomplete="new-password">
           </div>
           <div class="field">
-            <label>Maximum par collecte</label>
+            <label data-i18n="sources_max_sync">Maximum par collecte</label>
             <input id="mediaServerMaxItems" type="number" min="1" max="10000000" value="10000000">
           </div>
           <div class="field">
@@ -442,19 +442,19 @@
             <input id="mediaServerPageSize" type="number" min="10" max="1000" value="500">
           </div>
           <div class="field">
-            <label>Fréquence de collecte (min)</label>
+            <label data-i18n="sources_collect_frequency">Fréquence de collecte (min)</label>
             <input id="mediaServerInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale">
           </div>
           <div class="field">
-            <label><input id="mediaServerUseProxy" type="checkbox"> Utiliser le proxy global</label>
+            <label><input id="mediaServerUseProxy" type="checkbox"> <span data-i18n="sources_use_proxy">Utiliser le proxy global</span></label>
             <small>Désactivé par défaut pour les serveurs locaux.</small>
           </div>
         </div>
         <div id="mediaServerTargets" class="catalog-source-choices" style="margin-top:12px"></div>
         <div style="display:flex;gap:8px;margin-top:14px">
-          <button type="button" class="btn-sm" onclick="previewMediaServerSource()">Détecter les bibliothèques</button>
-          <button type="button" class="btn-primary" id="mediaServerSubmit" onclick="saveMediaServerSource()">Ajouter</button>
-          <button type="button" class="btn-sm" id="mediaServerCancel" onclick="resetMediaServerForm()" hidden>Annuler</button>
+          <button type="button" class="btn-sm" onclick="previewMediaServerSource()" data-i18n="sources_detect_libraries">Détecter les bibliothèques</button>
+          <button type="button" class="btn-primary" id="mediaServerSubmit" onclick="saveMediaServerSource()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-sm" id="mediaServerCancel" onclick="resetMediaServerForm()" hidden data-i18n="sources_cancel">Annuler</button>
         </div>
         <div id="mediaServerPreview" class="text-muted" style="margin-top:10px"></div>
         <div id="mediaServerList" style="margin-top:14px"></div>
@@ -554,8 +554,8 @@
       </details>
 
       <details class="card source-group" data-source-group="wacustom">
-        <summary><span>Instances WaStream/WaCustom</span> <span class="source-group-count" id="wacustomGroupCount"></span></summary>
-        <p class="text-muted" style="margin:8px 0 14px">
+        <summary><span data-i18n="sources_wacustom_title">Instances WaStream/WaCustom</span> <span class="source-group-count" id="wacustomGroupCount"></span></summary>
+        <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_wacustom_desc">
           Indexe les contenus WASource d’une instance WaStream ou WaCustom via leur API administrateur paginée.
           Les liens de lecture ne sont pas copiés : seuls les identifiants, titres, types et années
           nécessaires aux catalogues sont importés.
@@ -568,31 +568,31 @@
         <input id="wacustomEditId" type="hidden">
         <div class="config-grid">
           <div class="field">
-            <label>Nom de l’instance</label>
+            <label data-i18n="sources_instance_name">Nom de l’instance</label>
             <input id="wacustomName" type="text" placeholder="Mon WaCustom">
           </div>
           <div class="field">
-            <label>URL de l’instance</label>
+            <label data-i18n="sources_instance_url">URL de l’instance</label>
             <input id="wacustomUrl" type="password" autocomplete="off" placeholder="https://wacustom.example.net">
           </div>
           <div class="field">
-            <label>Mot de passe administrateur</label>
+            <label data-i18n="sources_admin_password">Mot de passe administrateur</label>
             <input id="wacustomPassword" type="password" autocomplete="new-password">
           </div>
           <div class="field">
-            <label>Maximum par collecte</label>
+            <label data-i18n="sources_max_sync">Maximum par collecte</label>
             <input id="wacustomMaxItems" type="number" min="1" max="10000000" value="10000000">
           </div>
           <div class="field">
-            <label>Taille d’une page</label>
+            <label data-i18n="sources_page_size">Taille d’une page</label>
             <input id="wacustomPageSize" type="number" min="10" max="5000" value="1000">
           </div>
           <div class="field">
-            <label>Délai entre les pages (ms)</label>
+            <label data-i18n="sources_delay_pages">Délai entre les pages (ms)</label>
             <input id="wacustomDelay" type="number" min="0" max="10000" step="50" value="250">
           </div>
           <div class="field">
-            <label>Fréquence de collecte (min)</label>
+            <label data-i18n="sources_collect_frequency">Fréquence de collecte (min)</label>
             <input id="wacustomInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale">
           </div>
           <div class="field newznab-catalog-field">
@@ -605,17 +605,17 @@
           Ensuite, l’API est relue depuis les contenus les plus récents.
         </div>
         <div style="display:flex;gap:8px;margin-top:14px">
-          <button type="button" class="btn-sm" onclick="previewWaCustomSource()">Tester</button>
-          <button type="button" class="btn-primary" id="wacustomSubmit" onclick="saveWaCustomSource()">Ajouter</button>
-          <button type="button" class="btn-sm" id="wacustomCancel" onclick="resetWaCustomForm()" hidden>Annuler</button>
+          <button type="button" class="btn-sm" onclick="previewWaCustomSource()" data-i18n="sources_test">Tester</button>
+          <button type="button" class="btn-primary" id="wacustomSubmit" onclick="saveWaCustomSource()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-sm" id="wacustomCancel" onclick="resetWaCustomForm()" hidden data-i18n="sources_cancel">Annuler</button>
         </div>
         <div id="wacustomPreview" class="text-muted" style="margin-top:10px"></div>
         <div id="wacustomList" style="margin-top:14px"></div>
       </details>
 
       <details class="card source-group" data-source-group="streamfusion">
-        <summary><span>Instances StreamFusion</span> <span class="source-group-count" id="streamfusionGroupCount"></span></summary>
-        <p class="text-muted" style="margin:8px 0 14px">
+        <summary><span data-i18n="sources_streamfusion_title">Instances StreamFusion</span> <span class="source-group-count" id="streamfusionGroupCount"></span></summary>
+        <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_streamfusion_desc">
           Importe le cache privé par l’API Peer officielle. Seuls les torrents
           possédant déjà un identifiant IMDb ou TMDB alimentent
           les catalogues. Le cache public n’est pas énumérable par cette API.
@@ -627,15 +627,15 @@
         </p>
         <input id="streamFusionEditId" type="hidden">
         <div class="config-grid">
-          <div class="field"><label>Nom de l’instance</label><input id="streamFusionName" type="text" placeholder="Mon StreamFusion"></div>
-          <div class="field"><label>URL de l’instance</label><input id="streamFusionUrl" type="password" autocomplete="off" placeholder="https://streamfusion.example.net"></div>
+          <div class="field"><label data-i18n="sources_instance_name">Nom de l’instance</label><input id="streamFusionName" type="text" placeholder="Mon StreamFusion"></div>
+          <div class="field"><label data-i18n="sources_instance_url">URL de l’instance</label><input id="streamFusionUrl" type="password" autocomplete="off" placeholder="https://streamfusion.example.net"></div>
           <div class="field"><label>Peer Key ID</label><input id="streamFusionKeyId" type="password" autocomplete="new-password"></div>
           <div class="field"><label>Secret de la Peer Key</label><input id="streamFusionSecret" type="password" autocomplete="new-password"></div>
-          <div class="field"><label>Limite de sécurité par lot</label><input id="streamFusionMaxItems" type="number" min="1" max="10000000" value="10000000"></div>
-          <div class="field"><label>Taille d’une page</label><input id="streamFusionPageSize" type="number" min="1" max="2000" value="1000"></div>
-          <div class="field"><label>Délai entre les pages (ms)</label><input id="streamFusionDelay" type="number" min="0" max="10000" value="100"></div>
-          <div class="field"><label>Fréquence de collecte (min)</label><input id="streamFusionInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale"></div>
-          <div class="field"><label class="check-inline"><input id="streamFusionUseProxy" type="checkbox"> Utiliser le proxy global</label></div>
+          <div class="field"><label data-i18n="sources_batch_limit">Limite de sécurité par lot</label><input id="streamFusionMaxItems" type="number" min="1" max="10000000" value="10000000"></div>
+          <div class="field"><label data-i18n="sources_page_size">Taille d’une page</label><input id="streamFusionPageSize" type="number" min="1" max="2000" value="1000"></div>
+          <div class="field"><label data-i18n="sources_delay_pages">Délai entre les pages (ms)</label><input id="streamFusionDelay" type="number" min="0" max="10000" value="100"></div>
+          <div class="field"><label data-i18n="sources_collect_frequency">Fréquence de collecte (min)</label><input id="streamFusionInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale"></div>
+          <div class="field"><label class="check-inline"><input id="streamFusionUseProxy" type="checkbox"> <span data-i18n="sources_use_proxy">Utiliser le proxy global</span></label></div>
           <div class="field newznab-catalog-field">
             <label data-i18n="sources_newznab_catalogs">Catalogues à alimenter</label>
             <div id="streamFusionCatalogTypes" class="catalog-source-choices newznab-catalog-choices"></div>
@@ -646,17 +646,17 @@
           fournis par StreamFusion. Le curseur n’est validé qu’après le traitement réussi des médias.
         </div>
         <div style="display:flex;gap:8px;margin-top:14px">
-          <button type="button" class="btn-sm" onclick="previewStreamFusionSource()">Tester</button>
-          <button type="button" class="btn-primary" id="streamFusionSubmit" onclick="saveStreamFusionSource()">Ajouter</button>
-          <button type="button" class="btn-sm" id="streamFusionCancel" onclick="resetStreamFusionForm()" hidden>Annuler</button>
+          <button type="button" class="btn-sm" onclick="previewStreamFusionSource()" data-i18n="sources_test">Tester</button>
+          <button type="button" class="btn-primary" id="streamFusionSubmit" onclick="saveStreamFusionSource()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-sm" id="streamFusionCancel" onclick="resetStreamFusionForm()" hidden data-i18n="sources_cancel">Annuler</button>
         </div>
         <div id="streamFusionPreview" class="text-muted" style="margin-top:10px"></div>
         <div id="streamFusionList" style="margin-top:14px"></div>
       </details>
 
       <details class="card source-group" data-source-group="cometnet">
-        <summary><span>Pairs CometNet ciblés</span> <span class="source-group-count" id="cometnetGroupCount"></span></summary>
-        <p class="text-muted" style="margin:8px 0 14px">
+        <summary><span data-i18n="sources_cometnet_title">Pairs CometNet ciblés</span> <span class="source-group-count" id="cometnetGroupCount"></span></summary>
+        <p class="text-muted" style="margin:8px 0 14px" data-i18n="sources_cometnet_desc">
           Se connecte uniquement au pair indiqué et reçoit passivement ses nouvelles annonces.
           Aucune liste de pairs n’est demandée et aucune connexion vers les autres pairs n’est ouverte.
           La couverture est incrémentale et non exhaustive : elle dépend des annonces que le pair ciblé
@@ -670,13 +670,13 @@
         <div class="config-grid">
           <div class="field"><label>Nom du pair ciblé</label><input id="cometNetName" type="text" placeholder="Mon Comet local"></div>
           <div class="field"><label>URL WebSocket CometNet</label><input id="cometNetUrl" type="password" autocomplete="off" placeholder="wss://comet.example.net"></div>
-          <div class="field"><label>Limite de sécurité par lot</label><input id="cometNetMaxItems" type="number" min="1" max="10000000" value="10000000"></div>
+          <div class="field"><label data-i18n="sources_batch_limit">Limite de sécurité par lot</label><input id="cometNetMaxItems" type="number" min="1" max="10000000" value="10000000"></div>
           <div class="field newznab-catalog-field">
             <label data-i18n="sources_newznab_catalogs">Catalogues à alimenter</label>
             <div id="cometNetCatalogTypes" class="catalog-source-choices newznab-catalog-choices"></div>
           </div>
         </div>
-        <div class="integration-cat-hint" style="margin-top:12px">
+        <div class="integration-cat-hint" style="margin-top:12px" data-i18n="sources_cometnet_limit">
           <strong>Source d’appoint non exhaustive :</strong> CometNet ne remplace pas une API
           paginée, un flux RSS ou un export de cache.<br>
           L’identité cryptographique du pair est épinglée au premier test. Les annonces valides sont
@@ -688,9 +688,9 @@
           rattrapage historique.
         </div>
         <div style="display:flex;gap:8px;margin-top:14px">
-          <button type="button" class="btn-sm" onclick="previewCometNetSource()">Tester et identifier</button>
-          <button type="button" class="btn-primary" id="cometNetSubmit" onclick="saveCometNetSource()">Ajouter</button>
-          <button type="button" class="btn-sm" id="cometNetCancel" onclick="resetCometNetForm()" hidden>Annuler</button>
+          <button type="button" class="btn-sm" onclick="previewCometNetSource()" data-i18n="sources_test_identify">Tester et identifier</button>
+          <button type="button" class="btn-primary" id="cometNetSubmit" onclick="saveCometNetSource()" data-i18n="sources_add">Ajouter</button>
+          <button type="button" class="btn-sm" id="cometNetCancel" onclick="resetCometNetForm()" hidden data-i18n="sources_cancel">Annuler</button>
         </div>
         <div id="cometNetPreview" class="text-muted" style="margin-top:10px"></div>
         <div id="cometNetList" style="margin-top:14px"></div>
@@ -744,7 +744,16 @@
               <label for="sourceAlertDefaultThreshold" data-i18n="sources_alerts_default">Seuil par défaut</label>
               <input id="sourceAlertDefaultThreshold" type="number" min="1" max="100" value="3">
             </div>
+            <label class="toggle-row">
+              <input id="sourceProbeEnabled" type="checkbox">
+              <span data-i18n="sources_probe_enable">Sonde légère entre les collectes</span>
+            </label>
+            <div class="field">
+              <label for="sourceProbeInterval" data-i18n="sources_probe_interval">Fréquence de la sonde (min)</label>
+              <input id="sourceProbeInterval" type="number" min="1" max="1440" value="5">
+            </div>
           </div>
+          <p class="text-muted" data-i18n="sources_probe_help">La sonde vérifie que l’URL de chaque source répond, sans importer de contenus ni déplacer de curseur. Elle permet une alerte avant la prochaine collecte programmée.</p>
           <div id="sourceAlertThresholdList" style="margin-top:12px"></div>
           <button type="button" class="btn-primary" onclick="saveSourceAlerts()" style="margin-top:12px" data-i18n="sources_alerts_save">
             Enregistrer les seuils
@@ -755,19 +764,19 @@
       </details>
 
       <details class="card source-group" data-source-group="diagnostics">
-        <summary>Diagnostics détaillés des collectes</summary>
+        <summary data-i18n="sources_diagnostics">Diagnostics détaillés des collectes</summary>
         <div id="sourcesContainer"><p class="text-muted" data-i18n="sync_loading">Chargement...</p></div>
       </details>
 
       <details class="card source-group" data-source-group="all">
-        <summary>Export / import de la configuration</summary>
-        <p class="text-muted">Les secrets sont exclus par défaut. Leur export ou leur import exige une confirmation explicite.</p>
+        <summary data-i18n="sources_export_title">Export / import de la configuration</summary>
+        <p class="text-muted" data-i18n="sources_export_desc">Les secrets sont exclus par défaut. Leur export ou leur import exige une confirmation explicite.</p>
         <div class="source-export-actions">
-          <button class="btn-sm" onclick="exportConfiguration(false)">Exporter sans secrets</button>
-          <button class="btn-sm" onclick="exportConfiguration(true)">Exporter avec secrets…</button>
+          <button class="btn-sm" onclick="exportConfiguration(false)" data-i18n="sources_export_without">Exporter sans secrets</button>
+          <button class="btn-sm" onclick="exportConfiguration(true)" data-i18n="sources_export_with">Exporter avec secrets…</button>
           <input id="configImportFile" type="file" accept="application/json">
-          <label><input id="configImportSecrets" type="checkbox"> Autoriser l’import des secrets</label>
-          <button class="btn-primary" onclick="importConfiguration()">Analyser et importer</button>
+          <label><input id="configImportSecrets" type="checkbox"> <span data-i18n="sources_import_secrets">Autoriser l’import des secrets</span></label>
+          <button class="btn-primary" onclick="importConfiguration()" data-i18n="sources_import_analyze">Analyser et importer</button>
         </div>
         <div id="configImportStatus" class="text-muted"></div>
       </details>
@@ -787,8 +796,8 @@
       </div>
 
       <details class="card" style="margin-bottom:20px" open>
-        <summary>Guides externes</summary>
-        <p class="text-muted" style="margin:8px 0 14px">
+        <summary data-i18n="guides_title">Guides externes</summary>
+        <p class="text-muted" style="margin:8px 0 14px" data-i18n="guides_desc" data-i18n-html>
           Une liste sert de guide d’ordre et de sélection. Elle n’importe aucun média :
           seuls les contenus déjà indexés par Stremio RSS Catalog peuvent apparaître.
           <a href="https://mdblist.com/" target="_blank" rel="noopener noreferrer">MDBList ↗</a> ·
@@ -799,7 +808,7 @@
         <input id="mdblistEditId" type="hidden">
         <div class="config-grid">
           <div class="field">
-            <label>Type de guide</label>
+            <label data-i18n="guides_kind">Type de guide</label>
             <select id="guideKind" onchange="updateGuideFields()">
               <option value="mdblist">MDBList</option>
               <option value="listsync">ListSync</option>
@@ -808,45 +817,45 @@
             </select>
           </div>
           <div class="field">
-            <label>Nom du guide</label>
+            <label data-i18n="guides_name">Nom du guide</label>
             <input id="mdblistName" type="text" placeholder="Tendances cinéma France">
           </div>
           <div class="field">
-            <label id="guideUrlLabel">URL de la liste ou identifiant MDBList</label>
+            <label id="guideUrlLabel" data-i18n="guides_url">URL de la liste ou identifiant MDBList</label>
             <input id="mdblistUrl" type="url" placeholder="https://mdblist.com/lists/utilisateur/ma-liste">
           </div>
           <div class="field guide-field-apikey">
-            <label id="guideApiKeyLabel">Clé API MDBList</label>
+            <label id="guideApiKeyLabel" data-i18n="guides_api_key">Clé API MDBList</label>
             <input id="mdblistApiKey" type="password" autocomplete="new-password">
           </div>
           <div class="field guide-field-listsync" hidden>
-            <label>Type de liste ListSync</label>
+            <label data-i18n="guides_list_type">Type de liste ListSync</label>
             <input id="guideListType" type="text" placeholder="imdb, trakt, letterboxd…">
           </div>
           <div class="field guide-field-listsync" hidden>
-            <label>Identifiant de liste ListSync</label>
+            <label data-i18n="guides_list_id">Identifiant de liste ListSync</label>
             <input id="guideListId" type="text" list="guideCollectionChoices" placeholder="top ou identifiant configuré">
             <datalist id="guideCollectionChoices"></datalist>
           </div>
           <div class="field guide-field-agregarr" hidden>
-            <label>Collection Agregarr</label>
+            <label data-i18n="guides_collection">Collection Agregarr</label>
             <div style="display:flex;gap:8px">
               <select id="guideAgregarrCollection">
                 <option value="">Détectez les collections disponibles</option>
               </select>
-              <button type="button" class="btn-sm" onclick="detectAgregarrCollections()">Détecter</button>
+              <button type="button" class="btn-sm" onclick="detectAgregarrCollections()" data-i18n="guides_detect">Détecter</button>
             </div>
           </div>
           <div class="field guide-field-suggestarr" hidden>
-            <label>Identifiant SuggestArr</label>
+            <label data-i18n="guides_suggestarr_user">Identifiant SuggestArr</label>
             <input id="guideUsername" type="text" autocomplete="username">
           </div>
           <div class="field guide-field-suggestarr" hidden>
-            <label>Mot de passe SuggestArr</label>
+            <label data-i18n="guides_suggestarr_password">Mot de passe SuggestArr</label>
             <input id="guidePassword" type="password" autocomplete="new-password">
           </div>
           <div class="field guide-field-suggestarr" hidden>
-            <label>Statuts de recommandations</label>
+            <label data-i18n="guides_statuses">Statuts de recommandations</label>
             <select id="guideStatuses" multiple size="4">
               <option value="awaiting_approval" selected>En attente d’approbation</option>
               <option value="queued">En file</option>
@@ -855,18 +864,18 @@
             </select>
           </div>
           <div class="field">
-            <label>Maximum d’éléments</label>
+            <label data-i18n="guides_max_items">Maximum d’éléments</label>
             <input id="mdblistMaxItems" type="number" min="1" max="10000000" value="10000000">
           </div>
           <div class="field">
-            <label>Fréquence de mise à jour (min)</label>
+            <label data-i18n="guides_refresh">Fréquence de mise à jour (min)</label>
             <input id="mdblistInterval" type="number" min="5" max="43200" placeholder="Vide : fréquence globale">
           </div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <button type="button" class="btn-sm" onclick="previewMDBListGuide()">Tester</button>
-          <button type="button" class="btn-primary" id="mdblistSubmit" onclick="saveMDBListGuide()">Ajouter et synchroniser</button>
-          <button type="button" class="btn-sm" id="mdblistCancel" onclick="resetMDBListForm()" hidden>Annuler</button>
+          <button type="button" class="btn-sm" onclick="previewMDBListGuide()" data-i18n="sources_test">Tester</button>
+          <button type="button" class="btn-primary" id="mdblistSubmit" onclick="saveMDBListGuide()" data-i18n="guides_add_sync">Ajouter et synchroniser</button>
+          <button type="button" class="btn-sm" id="mdblistCancel" onclick="resetMDBListForm()" hidden data-i18n="sources_cancel">Annuler</button>
           <span id="mdblistPreview" class="text-muted"></span>
         </div>
         <div id="mdblistGuideList" style="margin-top:14px"></div>
@@ -897,11 +906,11 @@
             </small>
           </div>
           <div class="field">
-            <label>Guide de sélection et d’ordre</label>
+            <label data-i18n="catalogs_guide">Guide de sélection et d’ordre</label>
             <select id="catalogGuide">
-              <option value="">Aucun guide — filtres locaux uniquement</option>
+              <option value="" data-i18n="catalogs_no_guide">Aucun guide — filtres locaux uniquement</option>
             </select>
-            <small>Le catalogue sera l’intersection entre ce guide et les médias déjà indexés.</small>
+            <small data-i18n="catalogs_guide_hint">Le catalogue sera l’intersection entre ce guide et les médias déjà indexés.</small>
           </div>
           <div class="field">
             <label data-i18n="catalogs_year_filter">Filtre année</label>

@@ -1168,6 +1168,23 @@ async function main() {
     );
     console.log('✓ Alertes par source avec seuil consécutif et rétablissement');
 
+    const probeWebUi = Object.create(WebUI.prototype);
+    probeWebUi.db = db;
+    probeWebUi.rssParser = {
+      getAxiosConfig: () => ({}),
+      cometNetParser: { getSources: () => [], sourceKey: id => `cometnet:${id}`, getState: () => ({ status: 'disconnected' }) }
+    };
+    probeWebUi.getSourceProbeConfig = () => ({ enabled: true, intervalMinutes: 1 });
+    probeWebUi.getSourceProbeTargets = () => [{ sourceKey: 'test:probe-source', name: 'Sonde test', kind: 'test', url: `${baseUrl}/rss` }];
+    probeWebUi.processSourceHealthAlerts = async () => {};
+    await probeWebUi.runSourceProbes();
+    assert.equal(db.getSourceSyncState('probe:test:probe-source').consecutive_errors, 0);
+    db.deleteSourceSyncState('probe:test:probe-source');
+    probeWebUi.getSourceProbeTargets = () => [{ sourceKey: 'test:probe-source', name: 'Sonde test', kind: 'test', url: 'http://127.0.0.1:1/unavailable' }];
+    await probeWebUi.runSourceProbes();
+    assert.equal(db.getSourceSyncState('probe:test:probe-source').consecutive_errors, 1);
+    console.log('✓ Sonde légère indépendante des collectes et sans curseur');
+
     const cometPeer = cometNetIdentity();
     const cometContributor = cometNetIdentity();
     const cometServer = new WebSocketServer({ port: 0 });
