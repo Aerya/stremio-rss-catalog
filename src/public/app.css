@@ -1010,6 +1010,26 @@ input:checked + .slider::before { transform: translateX(22px); }
 .ov-info-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
 .ov-info-value { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1.1; }
 .ov-info-sub   { font-size: 11px; color: var(--text-muted); }
+.ov-row-link {
+  appearance: none; border: 0; padding: 0; background: none; color: inherit;
+  cursor: pointer; font: inherit; text-align: left;
+}
+.ov-row-link:hover { color: var(--primary); text-decoration: underline; }
+.ov-catalog-stat {
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg);
+  margin-bottom: 8px;
+}
+.ov-catalog-stat summary {
+  display: flex; align-items: center; gap: 9px; padding: 12px 14px; cursor: pointer;
+}
+.ov-catalog-stat-summary { margin-left: auto; color: var(--text-muted); font-size: 12px; }
+.ov-catalog-state { border-radius: 999px; padding: 2px 7px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+.ov-catalog-state.active { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.ov-catalog-state.inactive { color: var(--text-muted); background: var(--hover-bg); }
+.ov-catalog-stat-details { padding: 0 14px 14px; }
+.source-stat-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.source-stat-table th, .source-stat-table td { padding: 8px 6px; border-top: 1px solid var(--border); text-align: left; }
+.source-stat-table th { color: var(--text-muted); font-weight: 600; }
 
 /* ─── Overview recent — liste compacte par catégorie ─────────────── */
 .section-label { font-size: 13px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 10px; }

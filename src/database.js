@@ -1020,6 +1020,58 @@ class DatabaseManager {
     };
   }
 
+  getCatalogSourceStatistics(catalog) {
+    const { conditions, params } = this._customCatalogConditions(catalog);
+    const where = conditions.join(' AND ');
+    const summary = this.db.prepare(`
+      SELECT COUNT(DISTINCT m.imdb_id) AS media_count, MAX(m.first_seen_at) AS last_media_added_at
+      FROM media m WHERE ${where}
+    `).get(...params);
+    const sources = this.db.prepare(`
+      SELECT r.source_url,
+        COUNT(DISTINCT r.media_imdb_id) AS media_count,
+        COUNT(*) AS release_count,
+        MAX(r.added_at) AS last_added_at
+      FROM releases r
+      JOIN media m ON m.imdb_id = r.media_imdb_id
+      WHERE ${where} AND r.source_url IS NOT NULL AND r.source_url != ''
+      GROUP BY r.source_url
+      ORDER BY media_count DESC, last_added_at DESC
+    `).all(...params);
+    return { ...summary, sources };
+  }
+
+  getAllCatalogSourceStatistics() {
+    return this.listCustomCatalogs().map(catalog => ({
+      id: catalog.id,
+      name: catalog.name,
+      type: catalog.type,
+      enabled: catalog.enabled,
+      updates_enabled: catalog.updates_enabled,
+      ...this.getCatalogSourceStatistics(catalog)
+    }));
+  }
+
+  getMediaSourceStatistics(catalogType = null) {
+    const conditions = ["r.source_url IS NOT NULL", "r.source_url != ''"];
+    const params = [];
+    if (catalogType) {
+      conditions.push('m.catalog_type = ?');
+      params.push(String(catalogType));
+    }
+    return this.db.prepare(`
+      SELECT r.source_url,
+        COUNT(DISTINCT r.media_imdb_id) AS media_count,
+        COUNT(*) AS release_count,
+        MAX(r.added_at) AS last_added_at
+      FROM releases r
+      JOIN media m ON m.imdb_id = r.media_imdb_id
+      WHERE ${conditions.join(' AND ')}
+      GROUP BY r.source_url
+      ORDER BY media_count DESC, last_added_at DESC
+    `).all(...params);
+  }
+
   getCustomCatalogMedia(catalog, skip = 0, limit = 101, search = null) {
     const { conditions, params } = this._customCatalogConditions(catalog, search);
     const guideId = catalog.filters?.guide_id ? String(catalog.filters.guide_id) : null;
@@ -1640,13 +1692,14 @@ class DatabaseManager {
 
   // ─── WebUI Listing ────────────────────────────────────────────────────────
 
-  getMediaList({ catalog = null, search = '', page = 1, limit = 24, sort = 'date_desc', year = null, quality = null } = {}) {
+  getMediaList({ catalog = null, search = '', page = 1, limit = 24, sort = 'date_desc', year = null, quality = null, imdbId = null } = {}) {
     const offset = (Number(page) - 1) * Number(limit);
     const conditions = ["m.catalog_type <> 'youtube'"];
     const params = [];
 
     if (catalog) { conditions.push('m.catalog_type = ?'); params.push(catalog); }
     if (search)  { conditions.push('(m.name LIKE ? OR m.release_name LIKE ?)'); params.push(`%${search}%`, `%${search}%`); }
+    if (imdbId)  { conditions.push('m.imdb_id = ?'); params.push(String(imdbId)); }
 
     // Support plage d'années : "2010-2020" ou année seule "2024"
     if (year) {
