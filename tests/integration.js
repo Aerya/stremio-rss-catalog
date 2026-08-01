@@ -19,6 +19,7 @@ const CometNetParser = require('../src/cometnet-parser');
 const { signableBytes, publicKeyId } = require('../src/cometnet-parser');
 const { WebSocketServer } = require('ws');
 const { encode, decode } = require('@msgpack/msgpack');
+const { getPosterUrl } = require('../src/services/discordService');
 
 const header = 'CAT;TMDB;TITLE;SAISON;GROUPES;CAST;DIRECTOR;NETWORK;YEAR;GENRES;RES;URLS=https://alldebrid.com/f/';
 const movieRow = "film;123;Film Test;;[];[];[];[];2026;[28];['MULTI - 1080p'];['abc']";
@@ -1528,6 +1529,24 @@ async function main() {
     assert.equal(rssParser.filterByRequiredTags('Tutoriel.C++.2026'), true);
     db.setConfig('required_tags', '');
     assert.equal(rssParser.filterByRequiredTags('Film.2026.VO.1080p'), true);
+    db.setConfig('minimum_resolution', '720');
+    db.setConfig('maximum_resolution', '');
+    assert.equal(rssParser.filterByResolution('Film.2026.FRENCH.480p'), false);
+    assert.equal(rssParser.filterByResolution('Film.2026.FRENCH.720p'), true);
+    assert.equal(rssParser.filterByResolution('Film.2026.FRENCH.2160p'), true);
+    assert.equal(rssParser.filterByResolution('Film.2026.FRENCH'), true);
+    db.setConfig('maximum_resolution', '1080');
+    assert.equal(rssParser.filterByResolution('Film.2026.FRENCH.2160p'), false);
+    assert.equal(rssParser.filterRelease('Film.2026.FRENCH.480p'), false);
+    db.setConfig('minimum_resolution', '');
+    db.setConfig('maximum_resolution', '');
+    console.log('✓ Filtre de résolution avant matching et création de média');
+    const postersPlusPoster = getPosterUrl({ imdb_id: 'tt0000123', tmdb_id: '123', type: 'movie', poster: 'https://original/poster.jpg' }, {
+      postersPlusEnabled: true,
+      postersPlusTemplate: 'https://posters.example/poster?tmdb_id={tmdb_id}&imdb_id={imdb_id}&type={type}'
+    });
+    assert.equal(postersPlusPoster, 'https://posters.example/poster?tmdb_id=123&imdb_id=tt0000123&type=movie');
+    console.log('✓ Galeries Discord prioritaires PostersPlus');
     const apiMedia = db.getMediaList({ search: 'API Film One' }).items[0];
     assert.ok(apiMedia.source_urls.includes('newznab:newznab-test:movie'));
 

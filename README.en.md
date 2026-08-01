@@ -99,7 +99,7 @@ does not provide streams itself.
 | **Artwork cache** | Optional local image proxy/cache with configurable TTL, maximum size, refresh, and eviction |
 | **RPDB** | Rating posters (optional) |
 | **PostersPlus** | Direct support for AIOMetadata-compatible URL templates, with RPDB and original-art fallbacks |
-| **Discord notifs** | Enhanced notifications with poster gallery on each sync |
+| **Discord notifs** | Enhanced notifications with a poster gallery on each sync; PostersPlus first, then RPDB or the original poster |
 | **Apprise notifs** | Multi-service notifications via Apprise server (optional) |
 | **Notification language** | Discord/Apprise language configurable independently from the WebUI (FR/EN/DE) |
 | **Explicit auto sync** | Collect due sources on their own schedules → normalize and match → unfrozen catalogs → invalidate the Stremio cache |
@@ -118,6 +118,7 @@ does not provide streams itself.
 | **Proxy** | HTTP / HTTPS / SOCKS4 / SOCKS5 + built-in connection test |
 | **SQLite WAL** | Persistent data, concurrent reads, optimized indexes, foreign keys, and busy-write waiting |
 | **Tag filtering** | Configurable required tags from the WebUI (FRENCH, MULTi, 1080p…) |
+| **Resolution filtering** | Optional minimum and maximum limits before parsing: an explicitly out-of-range release creates no media |
 | **Docker** | Multi-arch image `linux/amd64` + `linux/arm64` |
 
 > Defaults to French-language content (FRENCH / MULTi / TRUEFRENCH / VOF / VFF / VFI / VFQ) — configurable from the WebUI
@@ -316,9 +317,16 @@ disable). The optional local artwork proxy/cache has its own TTL and size cap.
 ### Artwork and AIOMetadata
 
 Priority: **PostersPlus → RPDB → metadata artwork → placeholder**. When
-[AIOMetadata](https://github.com/cedya77/aiometadata) is also used, decide which
-addon is authoritative: AIOMetadata may retain or replace the poster already
-provided by this catalog.
+[AIOMetadata](https://github.com/cedya77/aiometadata) is also used, set its poster
+provider to `meta` to preserve the poster already provided by this catalog; TMDB,
+Fanart, and RPDB replace it. Discord galleries follow the same priority.
+
+### Resolution filter
+
+Resolution limits are applied before parsing and matching to every release-based
+source. With a `720p` minimum, releases recognized as 480p, 576p, or SD are
+excluded and therefore cannot create media. A release without an explicit
+resolution remains accepted.
 
 ### Scope
 

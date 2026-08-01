@@ -561,6 +561,8 @@ class DatabaseManager {
       availability_missing_scans: '3',
       availability_expiration_days: '0',
       required_tags: 'FRENCH,MULTi,TRUEFRENCH,VOF,VFF,VFI,VFQ',
+      minimum_resolution: '',
+      maximum_resolution: '',
       prowlarr_url: '',
       prowlarr_apikey: '',
       nzbhydra2_url: '',

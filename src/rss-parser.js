@@ -22,7 +22,7 @@ class RSSParser {
     this.pastebinParser = new PastebinParser(
       db,
       () => this.getAxiosConfig(),
-      title => this.filterByRequiredTags(title)
+      title => this.filterRelease(title)
     );
     this.stremioManifestParser = new StremioManifestParser(db, () => this.getAxiosConfig());
     this.newznabParser = new NewznabParser(
@@ -38,19 +38,19 @@ class RSSParser {
     this.waCustomParser = new WaCustomParser(
       db,
       () => this.getAxiosConfig(),
-      title => this.filterByRequiredTags(title)
+      title => this.filterRelease(title)
     );
     this.mdblistGuideParser = new MDBListGuideParser(db, () => this.getAxiosConfig());
     this.mediaServerParser = new MediaServerParser(db, () => this.getAxiosConfig());
     this.streamFusionParser = new StreamFusionParser(
       db,
       () => this.getAxiosConfig(),
-      title => this.filterByRequiredTags(title)
+      title => this.filterRelease(title)
     );
     this.cometNetParser = new CometNetParser(
       db,
       title => this.extractQuality(title),
-      title => this.filterByRequiredTags(title)
+      title => this.filterRelease(title)
     );
   }
 
@@ -335,6 +335,32 @@ class RSSParser {
     });
   }
 
+  resolutionRank(title) {
+    const value = String(title || '');
+    if (/\b(?:4320p|8k)\b/i.test(value)) return 4320;
+    if (/\b(?:2160p|4k|uhd)\b/i.test(value)) return 2160;
+    if (/\b1080p\b/i.test(value)) return 1080;
+    if (/\b720p\b/i.test(value)) return 720;
+    if (/\b(?:576p|540p|sd)\b/i.test(value)) return 576;
+    if (/\b480p\b/i.test(value)) return 480;
+    if (/\b(?:360p|240p)\b/i.test(value)) return 360;
+    return null;
+  }
+
+  filterByResolution(title) {
+    const resolution = this.resolutionRank(title);
+    // Une release sans résolution explicite reste acceptée : le filtre exclut
+    // uniquement les qualités connues qui sont hors de la plage demandée.
+    if (!resolution) return true;
+    const min = Number(this.db.getConfig('minimum_resolution')) || 0;
+    const max = Number(this.db.getConfig('maximum_resolution')) || 0;
+    return (!min || resolution >= min) && (!max || resolution <= max);
+  }
+
+  filterRelease(title) {
+    return this.filterByRequiredTags(title) && this.filterByResolution(title);
+  }
+
   applyForce(catalogType, type, force) {
     if (!force || force === 'auto') return { catalogType, type };
     if (force === 'films')         return { catalogType: 'films',         type: 'movie' };
@@ -358,12 +384,12 @@ class RSSParser {
       console.log(`[RSS] URL hint "${urlHint}" détecté automatiquement depuis : ${this.safeUrl(sourceUrl)}`);
     }
 
-    const acceptedItems = items.filter(item => item?.title && this.filterByRequiredTags(item.title));
+    const acceptedItems = items.filter(item => item?.title && this.filterRelease(item.title));
     const structuredResults = this.releaseParser.parseMany(acceptedItems.map(item => item.title));
     const parsed = [];
     for (let itemIndex = 0; itemIndex < acceptedItems.length; itemIndex++) {
       const item = acceptedItems[itemIndex];
-      if (!this.filterByRequiredTags(item.title)) continue;
+      if (!this.filterRelease(item.title)) continue;
       const info = this.parseReleaseName(item.title, structuredResults[itemIndex]);
       const releaseId = typeof item.guid === 'object' && item.guid._ ? item.guid._ : (item.guid || item.link);
       // Priorité titre : animé > concert > spectacle > doc > émission > série > film

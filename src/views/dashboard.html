@@ -1062,6 +1062,27 @@
               placeholder="FRENCH,MULTi,TRUEFRENCH,VOF,VFF,VFI,VFQ">
             <small data-i18n="config_required_tags_help">Filtre les contenus collectés depuis toutes les sources avant leur parsing et leur matching. Un titre doit contenir au moins un des tags séparés par des virgules (ex. FRENCH, MULTi, VO, GERMAN). Laissez vide pour tout accepter. Une source déclarée conforme, comme un Pastebin, contourne ce filtre titre par titre.</small>
           </div>
+          <div class="config-grid">
+            <div class="field">
+              <label for="minimum_resolution" data-i18n="config_minimum_resolution">Résolution minimale</label>
+              <select id="minimum_resolution" name="minimum_resolution">
+                <option value="" data-i18n="config_resolution_unlimited">Aucune</option>
+                <option value="480">480p</option><option value="576">576p / SD</option>
+                <option value="720">720p</option><option value="1080">1080p</option>
+                <option value="2160">2160p / 4K</option><option value="4320">4320p / 8K</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="maximum_resolution" data-i18n="config_maximum_resolution">Résolution maximale</label>
+              <select id="maximum_resolution" name="maximum_resolution">
+                <option value="" data-i18n="config_resolution_unlimited">Aucune</option>
+                <option value="480">480p</option><option value="576">576p / SD</option>
+                <option value="720">720p</option><option value="1080">1080p</option>
+                <option value="2160">2160p / 4K</option><option value="4320">4320p / 8K</option>
+              </select>
+            </div>
+          </div>
+          <small data-i18n="config_resolution_help">Les releases dont la résolution explicitement indiquée est hors de cette plage sont rejetées avant matching et ne créent donc aucun média. Une résolution absente reste acceptée.</small>
         </div>
 
         <div class="config-section">
