@@ -34,6 +34,8 @@ class WebUI {
     this.autoRefreshInterval = null;
     this.sourceAlertInterval = null;
     this.sourceAlertProcessing = null;
+    this.sourceProbeInterval = null;
+    this.sourceProbeProcessing = null;
     this.maintenanceInProgress = false;
 
     this.setupMiddleware();
@@ -44,11 +46,18 @@ class WebUI {
         this.startAutoRefresh(true);
         this.processSourceHealthAlerts()
           .catch(error => console.error('[Alertes sources] Traitement initial échoué :', error.message));
+        this.runSourceProbes()
+          .catch(error => console.error('[Sondes sources] Traitement initial échoué :', error.message));
         this.sourceAlertInterval = setInterval(() => {
           this.processSourceHealthAlerts()
             .catch(error => console.error('[Alertes sources] Traitement périodique échoué :', error.message));
         }, 60 * 1000);
         this.sourceAlertInterval.unref?.();
+        this.sourceProbeInterval = setInterval(() => {
+          this.runSourceProbes()
+            .catch(error => console.error('[Sondes sources] Traitement périodique échoué :', error.message));
+        }, 60 * 1000);
+        this.sourceProbeInterval.unref?.();
       });
   }
 
@@ -2086,6 +2095,8 @@ class WebUI {
       res.json({
         enabled: config.enabled,
         default_threshold: config.defaultThreshold,
+        probe_enabled: this.getSourceProbeConfig().enabled,
+        probe_interval_minutes: this.getSourceProbeConfig().intervalMinutes,
         sources: this.getSourceAlertSources().map(source => ({
           ...source,
           threshold: Math.min(Math.max(
@@ -2101,6 +2112,8 @@ class WebUI {
     this.app.put('/api/source-alerts/config', this.authMiddleware.bind(this), async (req, res) => {
       const enabled = req.body.enabled !== false;
       const defaultThreshold = Math.min(Math.max(Number(req.body.default_threshold) || 3, 1), 100);
+      const probeEnabled = req.body.probe_enabled !== false;
+      const probeIntervalMinutes = Math.min(Math.max(Number(req.body.probe_interval_minutes) || 5, 1), 1440);
       const knownKeys = new Set(this.getSourceAlertSources().map(source => source.source_key));
       const thresholds = {};
       for (const [sourceKey, rawThreshold] of Object.entries(req.body.thresholds || {})) {
@@ -2111,7 +2124,10 @@ class WebUI {
       this.db.setConfig('source_alerts_enabled', enabled ? 'true' : 'false');
       this.db.setConfig('source_alert_default_threshold', String(defaultThreshold));
       this.db.setConfig('source_alert_thresholds', JSON.stringify(thresholds));
+      this.db.setConfig('source_probe_enabled', probeEnabled ? 'true' : 'false');
+      this.db.setConfig('source_probe_interval_minutes', String(probeIntervalMinutes));
       await this.processSourceHealthAlerts();
+      await this.runSourceProbes();
       res.json({ success: true });
     });
 
@@ -2859,6 +2875,89 @@ class WebUI {
     };
   }
 
+  getSourceProbeConfig() {
+    return {
+      enabled: this.db.getConfig('source_probe_enabled') !== 'false',
+      intervalMinutes: Math.min(Math.max(
+        Number(this.db.getConfig('source_probe_interval_minutes')) || 5,
+        1
+      ), 1440)
+    };
+  }
+
+  getSourceProbeTargets() {
+    const targets = [];
+    const push = (sourceKey, name, kind, url, paused = false) => {
+      if (sourceKey && url && !paused) targets.push({ sourceKey, name: name || sourceKey, kind, url });
+    };
+    this.getRssSources().forEach(source => push(`rss:${source.id}`, source.name, 'rss', source.url, source.paused));
+    this.rssParser.pastebinParser.getSources().forEach(source => push(`pastebin:${source.id}`, source.name, 'pastebin', source.url, source.paused));
+    this.rssParser.stremioManifestParser.getSources().forEach(source => push(`stremio:${source.id}`, source.name, 'stremio', source.url, source.paused));
+    this.rssParser.newznabParser.getSources().forEach(source => push(this.rssParser.newznabParser.scheduleKey(source), source.name, source.kind || 'newznab', source.url, source.paused));
+    this.rssParser.webdavParser.getSources().forEach(source => push(this.rssParser.webdavParser.sourceKey(source.id), source.name, 'webdav', source.url, source.paused));
+    this.rssParser.waCustomParser.getSources().forEach(source => push(this.rssParser.waCustomParser.sourceKey(source.id), source.name, 'wacustom', source.url, source.paused));
+    this.rssParser.mediaServerParser.getSources().forEach(source => push(this.rssParser.mediaServerParser.sourceKey(source.id), source.name, source.kind, source.url, source.paused));
+    this.rssParser.streamFusionParser.getSources().forEach(source => push(this.rssParser.streamFusionParser.sourceKey(source.id), source.name, 'streamfusion', source.url, source.paused));
+    this.rssParser.mdblistGuideParser.getSources().forEach(source => push(this.rssParser.mdblistGuideParser.sourceKey(source.id), source.name, source.kind || 'mdblist', source.url, source.paused));
+    return targets;
+  }
+
+  async runSourceProbes() {
+    if (this.sourceProbeProcessing) return this.sourceProbeProcessing;
+    this.sourceProbeProcessing = this.runSourceProbesUnlocked();
+    try {
+      return await this.sourceProbeProcessing;
+    } finally {
+      this.sourceProbeProcessing = null;
+    }
+  }
+
+  async runSourceProbesUnlocked() {
+    const config = this.getSourceProbeConfig();
+    if (!config.enabled) return;
+    const axiosConfig = {
+      ...this.rssParser.getAxiosConfig(),
+      timeout: 10000,
+      maxRedirects: 3,
+      validateStatus: status => status < 500
+    };
+    for (const target of this.getSourceProbeTargets()) {
+      const stateKey = `probe:${target.sourceKey}`;
+      if (!this.db.isSourceDue(stateKey, config.intervalMinutes)) continue;
+      const startedAt = this.db.beginSourceSync(stateKey, 'probe');
+      try {
+        const response = await axios.head(target.url, axiosConfig);
+        this.db.finishSourceSync(stateKey, {
+          sourceKind: 'probe', startedAt, itemsFetched: 0,
+          httpStatus: response.status
+        });
+      } catch (error) {
+        this.db.failSourceSync(stateKey, {
+          sourceKind: 'probe', startedAt,
+          errorMessage: `Sonde ${target.kind} : ${error.message}`,
+          httpStatus: error.response?.status || null
+        });
+      }
+    }
+    // CometNet maintient une connexion persistante plutôt qu'une URL HTTP à sonder.
+    for (const source of this.rssParser.cometNetParser.getSources()) {
+      if (source.paused) continue;
+      const stateKey = `probe:${this.rssParser.cometNetParser.sourceKey(source.id)}`;
+      if (!this.db.isSourceDue(stateKey, config.intervalMinutes)) continue;
+      const startedAt = this.db.beginSourceSync(stateKey, 'probe');
+      const state = this.rssParser.cometNetParser.getState(source.id);
+      if (state.status === 'connected') {
+        this.db.finishSourceSync(stateKey, { sourceKind: 'probe', startedAt, itemsFetched: 0 });
+      } else {
+        this.db.failSourceSync(stateKey, {
+          sourceKind: 'probe', startedAt,
+          errorMessage: `Sonde CometNet : ${state.last_error || `pair ${state.status || 'déconnecté'}`}`
+        });
+      }
+    }
+    await this.processSourceHealthAlerts();
+  }
+
   async sendSourceHealthAlert(alert) {
     const channels = ['webui'];
     const discordEnabled = this.db.getConfig('discord_notifications_enabled') === 'true';
@@ -2911,12 +3010,13 @@ class WebUI {
       consecutive_errors: consecutiveErrors,
       error_message: errorMessage
     }) => {
-      const source = sourceMap.get(sourceKey);
+      const configuredKey = sourceKey.startsWith('probe:') ? sourceKey.slice('probe:'.length) : sourceKey;
+      const source = sourceMap.get(configuredKey);
       // Certains connecteurs conservent aussi des états techniques internes
       // (par exemple une catégorie Newznab). L'alerte reste rattachée à la
       // source configurable, afin d'éviter les doublons et des seuils invisibles.
       if (!source) return;
-      const threshold = Math.min(Math.max(Number(config.thresholds[sourceKey]) || config.defaultThreshold, 1), 100);
+      const threshold = Math.min(Math.max(Number(config.thresholds[configuredKey]) || config.defaultThreshold, 1), 100);
       const alertState = this.db.getSourceAlertState(sourceKey);
       if (Number(consecutiveErrors) < threshold || alertState.outage_notified) return;
       const alert = {
@@ -2934,11 +3034,12 @@ class WebUI {
       });
     };
     const processRecovery = async sourceKey => {
-      if (!sourceMap.has(sourceKey)) return;
+      const configuredKey = sourceKey.startsWith('probe:') ? sourceKey.slice('probe:'.length) : sourceKey;
+      if (!sourceMap.has(configuredKey)) return;
       const alertState = this.db.getSourceAlertState(sourceKey);
       if (!alertState.outage_notified) return;
-      const source = sourceMap.get(sourceKey);
-      const threshold = Math.min(Math.max(Number(config.thresholds[sourceKey]) || config.defaultThreshold, 1), 100);
+      const source = sourceMap.get(configuredKey);
+      const threshold = Math.min(Math.max(Number(config.thresholds[configuredKey]) || config.defaultThreshold, 1), 100);
       await this.sendSourceHealthAlert({
         sourceKey,
         sourceName: source?.name || sourceKey,

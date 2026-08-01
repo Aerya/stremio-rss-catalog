@@ -112,6 +112,7 @@ lecture, et ne fournit pas lui-même de streams.
 | **Migration et réparation** | Analyse en lecture seule, corrections groupées, historique, migrations versionnées et sauvegarde SQLite automatique avant changement de schéma |
 | **Gestion des sources** | Onglets, recherche, groupes repliables, modification complète et fréquence propre à chaque source |
 | **Suivi par source** | Dernier succès, prochaine collecte, durée, éléments du lot, rattrapage, erreurs consécutives et limite de sécurité |
+| **Sonde de disponibilité** | Vérification légère configurable entre les collectes, sans import de contenu ni déplacement du curseur ; les alertes peuvent arriver avant la prochaine collecte |
 | **API d’indexeurs** | Sources multiples et renommables Newznab, Prowlarr, Jackett/Torznab et NZBHydra2, avec pagination, curseur incrémental, limite de lot et délai configurables |
 | **WaStream/WaCustom** | Plusieurs instances renommables ; import paginé des contenus WASource avec IMDb/TMDB, reprise prioritaire du parcours, fréquence, pause et limite de lot propres |
 | **StreamFusion Reborn** | Plusieurs instances renommables ; import signé et chiffré du cache privé via l’API Peer officielle, pagination et curseur incrémental sans accès direct aux bases |
@@ -205,6 +206,15 @@ CometNet reçoit uniquement les nouvelles annonces que le fanout lui route.
 `sync_request` et `sync_response` ne sont pas implémentés par Comet : aucune
 pool ne garantit la copie du cache ni le rattrapage historique. Utilisez-le
 comme complément, pas comme inventaire exhaustif.
+
+### Alertes et sonde de disponibilité
+
+Les alertes comptent les échecs consécutifs de chaque collecte. La **sonde légère**
+optionnelle vérifie aussi périodiquement que l’URL d’une source répond, sans lire
+son catalogue, importer de contenu ou modifier son curseur. Elle permet donc
+d’être averti d’une panne avant la prochaine collecte prévue. Les erreurs de sonde
+sont conservées séparément des erreurs de collecte et reprennent le même seuil par
+source ; CometNet est vérifié par l’état de sa connexion persistante.
 
 La page **Sources** masque les URLs et clés sensibles dans les cartes. Leur
 révélation ou leur copie exige une action explicite. L’export de configuration

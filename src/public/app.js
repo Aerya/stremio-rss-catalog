@@ -929,6 +929,8 @@ async function loadSourceAlerts() {
 
     document.getElementById('sourceAlertsEnabled').checked = config.enabled !== false;
     document.getElementById('sourceAlertDefaultThreshold').value = config.default_threshold || 3;
+    document.getElementById('sourceProbeEnabled').checked = config.probe_enabled !== false;
+    document.getElementById('sourceProbeInterval').value = config.probe_interval_minutes || 5;
     thresholdList.innerHTML = config.sources.length
       ? `<div class="source-alert-threshold-grid">${config.sources.map(source => {
           const runtime = source.runtime || {};
@@ -982,6 +984,8 @@ async function saveSourceAlerts() {
     body: JSON.stringify({
       enabled: document.getElementById('sourceAlertsEnabled').checked,
       default_threshold: Number(document.getElementById('sourceAlertDefaultThreshold').value) || 3,
+      probe_enabled: document.getElementById('sourceProbeEnabled').checked,
+      probe_interval_minutes: Number(document.getElementById('sourceProbeInterval').value) || 5,
       thresholds
     })
   });
@@ -1182,7 +1186,7 @@ function renderRssSources() {
       </div>
       <div class="manager-row-actions">
         <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.url).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
-        <button class="btn-sm" onclick="editRssSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="editRssSource('${source.id}')">${t('sources_edit')}</button>
         ${sourceSecretActions('rss', source.id)}
         <button class="btn-sm" onclick="toggleRssSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
         <button class="btn-danger btn-sm" onclick="deleteRssSource('${source.id}')">${t('sources_delete')}</button>
@@ -1218,7 +1222,7 @@ async function editRssSource(id) {
   document.getElementById('rssSourceUrl').value = secrets.url || '';
   document.getElementById('rssSourceForce').value = source.force || 'auto';
   document.getElementById('rssSourceInterval').value = source.sync_interval_minutes || '';
-  document.getElementById('rssSourceSubmit').textContent = 'Enregistrer';
+  document.getElementById('rssSourceSubmit').textContent = t('catalogs_save');
   document.getElementById('rssSourceCancel').hidden = false;
 }
 window.editRssSource = editRssSource;
@@ -1229,7 +1233,7 @@ function resetRssSourceForm() {
   document.getElementById('rssSourceUrl').value = '';
   document.getElementById('rssSourceForce').value = 'auto';
   document.getElementById('rssSourceInterval').value = '';
-  document.getElementById('rssSourceSubmit').textContent = 'Ajouter';
+  document.getElementById('rssSourceSubmit').textContent = t('sources_add');
   document.getElementById('rssSourceCancel').hidden = true;
 }
 window.resetRssSourceForm = resetRssSourceForm;
@@ -1269,7 +1273,7 @@ function renderPastebins() {
       </div>
       <div class="manager-row-actions">
         <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.url).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
-        <button class="btn-sm" onclick="editPastebin('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="editPastebin('${source.id}')">${t('sources_edit')}</button>
         ${sourceSecretActions('pastebin', source.id)}
         <button class="btn-sm" onclick="togglePastebin('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
         <button class="btn-danger btn-sm" onclick="deletePastebin('${source.id}')">${t('sources_delete')}</button>
@@ -1367,7 +1371,7 @@ function renderMDBListGuides() {
       </div>
       <div class="manager-row-actions">
         <button class="btn-sm" onclick="syncMDBListGuide('${guide.id}')">Synchroniser</button>
-        <button class="btn-sm" onclick="editMDBListGuide('${guide.id}')">Modifier</button>
+        <button class="btn-sm" onclick="editMDBListGuide('${guide.id}')">${t('sources_edit')}</button>
         <button class="btn-sm" onclick="revealSourceSecret('guide','${guide.id}',this)">Révéler l’URL</button>
         ${guide.has_api_key ? `<button class="btn-sm" data-secret="api_key" onclick="revealSourceSecret('guide','${guide.id}',this,true)">Copier la clé</button>` : ''}
         ${guide.has_username ? `<button class="btn-sm" data-secret="username" onclick="revealSourceSecret('guide','${guide.id}',this,true)">Copier l’utilisateur</button>` : ''}
@@ -1479,7 +1483,7 @@ async function editMDBListGuide(id) {
   });
   document.getElementById('mdblistMaxItems').value = guide.max_items || 10000000;
   document.getElementById('mdblistInterval').value = guide.sync_interval_minutes || '';
-  document.getElementById('mdblistSubmit').textContent = 'Enregistrer';
+  document.getElementById('mdblistSubmit').textContent = t('catalogs_save');
   document.getElementById('mdblistCancel').hidden = false;
   updateGuideFields();
 }
@@ -1652,7 +1656,7 @@ async function editPastebin(id) {
   document.getElementById('pastebinMaxPages').value = source.maxPages || 1000;
   document.getElementById('pastebinInterval').value = source.sync_interval_minutes || '';
   document.getElementById('pastebinAssumeRequiredTags').checked = source.assume_required_tags !== false;
-  document.getElementById('pastebinSubmit').textContent = 'Enregistrer';
+  document.getElementById('pastebinSubmit').textContent = t('catalogs_save');
   document.getElementById('pastebinCancel').hidden = false;
 }
 window.editPastebin = editPastebin;
@@ -1667,7 +1671,7 @@ function resetPastebinForm() {
   document.getElementById('pastebinInterval').value = '';
   document.getElementById('pastebinAssumeRequiredTags').checked = true;
   document.getElementById('pastebinPreview').textContent = '';
-  document.getElementById('pastebinSubmit').textContent = 'Ajouter';
+  document.getElementById('pastebinSubmit').textContent = t('sources_add');
   document.getElementById('pastebinCancel').hidden = true;
 }
 window.resetPastebinForm = resetPastebinForm;
@@ -1727,7 +1731,7 @@ function renderWebdavSources() {
       </div>
       <div class="manager-row-actions">
         <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
-        <button class="btn-sm" onclick="editWebdavSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="editWebdavSource('${source.id}')">${t('sources_edit')}</button>
         <button class="btn-sm" onclick="revealSourceSecret('webdav','${source.id}',this)">Révéler l’URL</button>
         <button class="btn-sm" onclick="revealSourceSecret('webdav','${source.id}',this,true)">Copier l’URL</button>
         ${source.has_username ? `<button class="btn-sm" data-secret="username" onclick="revealSourceSecret('webdav','${source.id}',this,true)">Copier l’utilisateur</button>` : ''}
@@ -1786,7 +1790,7 @@ async function editWebdavSource(id) {
   document.getElementById('webdavInterval').value = source.sync_interval_minutes || '';
   document.getElementById('webdavUseProxy').checked = Boolean(source.use_proxy);
   document.getElementById('webdavClearCredentials').checked = false;
-  document.getElementById('webdavSubmit').textContent = 'Enregistrer';
+  document.getElementById('webdavSubmit').textContent = t('catalogs_save');
   document.getElementById('webdavCancel').hidden = false;
 }
 window.editWebdavSource = editWebdavSource;
@@ -1807,7 +1811,7 @@ function resetWebdavForm() {
   document.getElementById('webdavUseProxy').checked = false;
   document.getElementById('webdavClearCredentials').checked = false;
   document.getElementById('webdavPreview').textContent = '';
-  document.getElementById('webdavSubmit').textContent = 'Ajouter';
+  document.getElementById('webdavSubmit').textContent = t('sources_add');
   document.getElementById('webdavCancel').hidden = true;
 }
 window.resetWebdavForm = resetWebdavForm;
@@ -1882,7 +1886,7 @@ function renderMediaServerSources() {
       </div>
       <div class="manager-row-actions">
         <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
-        <button class="btn-sm" onclick="editMediaServerSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="editMediaServerSource('${source.id}')">${t('sources_edit')}</button>
         <button class="btn-sm" onclick="revealSourceSecret('media-server','${source.id}',this)">Révéler l’URL</button>
         <button class="btn-sm" data-secret="api_key" onclick="revealSourceSecret('media-server','${source.id}',this,true)">Copier le jeton</button>
         <button class="btn-sm" onclick="toggleMediaServerSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
@@ -1937,7 +1941,7 @@ async function editMediaServerSource(id) {
   document.getElementById('mediaServerInterval').value = source.sync_interval_minutes || '';
   document.getElementById('mediaServerUseProxy').checked = Boolean(source.use_proxy);
   renderMediaServerTargets(source.target_labels || [], source.targets || []);
-  document.getElementById('mediaServerSubmit').textContent = 'Enregistrer';
+  document.getElementById('mediaServerSubmit').textContent = t('catalogs_save');
   document.getElementById('mediaServerCancel').hidden = false;
 }
 window.editMediaServerSource = editMediaServerSource;
@@ -1955,7 +1959,7 @@ function resetMediaServerForm() {
   document.getElementById('mediaServerUseProxy').checked = false;
   document.getElementById('mediaServerPreview').textContent = '';
   renderMediaServerTargets([]);
-  document.getElementById('mediaServerSubmit').textContent = 'Ajouter';
+  document.getElementById('mediaServerSubmit').textContent = t('sources_add');
   document.getElementById('mediaServerCancel').hidden = true;
 }
 window.resetMediaServerForm = resetMediaServerForm;
@@ -2010,7 +2014,7 @@ function renderStreamFusionSources() {
       </div>
       <div class="manager-row-actions">
         <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key)}','${encodeURIComponent(source.name || '')}')">${t('sources_catalog_action')}</button>
-        <button class="btn-sm" onclick="editStreamFusionSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="editStreamFusionSource('${source.id}')">${t('sources_edit')}</button>
         <button class="btn-sm" onclick="revealSourceSecret('streamfusion','${source.id}',this)">Révéler l’URL</button>
         <button class="btn-sm" data-secret="key_id" onclick="revealSourceSecret('streamfusion','${source.id}',this,true)">Copier le Key ID</button>
         <button class="btn-sm" data-secret="secret" onclick="revealSourceSecret('streamfusion','${source.id}',this,true)">Copier le secret</button>
@@ -2065,7 +2069,7 @@ async function editStreamFusionSource(id) {
   document.getElementById('streamFusionInterval').value = source.sync_interval_minutes || '';
   document.getElementById('streamFusionUseProxy').checked = source.use_proxy;
   renderSourceCatalogSelector('streamFusionCatalogTypes', source.catalog_types);
-  document.getElementById('streamFusionSubmit').textContent = 'Enregistrer';
+  document.getElementById('streamFusionSubmit').textContent = t('catalogs_save');
   document.getElementById('streamFusionCancel').hidden = false;
 }
 window.editStreamFusionSource = editStreamFusionSource;
@@ -2085,7 +2089,7 @@ function resetStreamFusionForm() {
   document.getElementById('streamFusionUseProxy').checked = false;
   renderSourceCatalogSelector('streamFusionCatalogTypes');
   document.getElementById('streamFusionPreview').textContent = '';
-  document.getElementById('streamFusionSubmit').textContent = 'Ajouter';
+  document.getElementById('streamFusionSubmit').textContent = t('sources_add');
   document.getElementById('streamFusionCancel').hidden = true;
 }
 window.resetStreamFusionForm = resetStreamFusionForm;
@@ -2164,10 +2168,10 @@ function renderCometNetSources() {
       </div>
       <div class="manager-row-actions">
         <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key)}','${encodeURIComponent(source.name || '')}')">${t('sources_catalog_action')}</button>
-        <button class="btn-sm" onclick="editCometNetSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="editCometNetSource('${source.id}')">${t('sources_edit')}</button>
         ${sourceSecretActions('cometnet', source.id)}
-        <button class="btn-sm" onclick="toggleCometNetSource('${source.id}',${!source.paused})">${source.paused ? 'Reprendre' : 'Mettre en pause'}</button>
-        <button class="btn-danger btn-sm" onclick="deleteCometNetSource('${source.id}')">Supprimer</button>
+        <button class="btn-sm" onclick="toggleCometNetSource('${source.id}',${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
+        <button class="btn-danger btn-sm" onclick="deleteCometNetSource('${source.id}')">${t('sources_delete')}</button>
       </div>
     </div>`;
   }).join('');
@@ -2221,7 +2225,7 @@ async function editCometNetSource(id) {
   document.getElementById('cometNetUrl').value = secrets.url || '';
   document.getElementById('cometNetMaxItems').value = source.max_items_per_sync || 10000000;
   renderSourceCatalogSelector('cometNetCatalogTypes', source.catalog_types);
-  document.getElementById('cometNetSubmit').textContent = 'Enregistrer';
+  document.getElementById('cometNetSubmit').textContent = t('catalogs_save');
   document.getElementById('cometNetCancel').hidden = false;
 }
 window.editCometNetSource = editCometNetSource;
@@ -2233,7 +2237,7 @@ function resetCometNetForm() {
   document.getElementById('cometNetMaxItems').value = 10000000;
   renderSourceCatalogSelector('cometNetCatalogTypes');
   document.getElementById('cometNetPreview').textContent = '';
-  document.getElementById('cometNetSubmit').textContent = 'Ajouter';
+  document.getElementById('cometNetSubmit').textContent = t('sources_add');
   document.getElementById('cometNetCancel').hidden = true;
 }
 window.resetCometNetForm = resetCometNetForm;
@@ -2296,7 +2300,7 @@ function renderWaCustomSources() {
       </div>
       <div class="manager-row-actions">
         <button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(source.source_key).replace(/'/g, '%27')}','${encodeURIComponent(source.name || '').replace(/'/g, '%27')}')">${t('sources_catalog_action')}</button>
-        <button class="btn-sm" onclick="editWaCustomSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="editWaCustomSource('${source.id}')">${t('sources_edit')}</button>
         ${sourceSecretActions('wacustom', source.id)}
         ${source.has_admin_password ? `<button class="btn-sm" data-secret="admin_password" onclick="revealSourceSecret('wacustom','${source.id}',this,true)">Copier le mot de passe</button>` : ''}
         <button class="btn-sm" onclick="toggleWaCustomSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
@@ -2350,7 +2354,7 @@ async function editWaCustomSource(id) {
   document.getElementById('wacustomDelay').value = source.request_delay_ms ?? 250;
   document.getElementById('wacustomInterval').value = source.sync_interval_minutes || '';
   renderSourceCatalogSelector('wacustomCatalogTypes', source.catalog_types);
-  document.getElementById('wacustomSubmit').textContent = 'Enregistrer';
+  document.getElementById('wacustomSubmit').textContent = t('catalogs_save');
   document.getElementById('wacustomCancel').hidden = false;
 }
 window.editWaCustomSource = editWaCustomSource;
@@ -2367,7 +2371,7 @@ function resetWaCustomForm() {
   document.getElementById('wacustomInterval').value = '';
   renderSourceCatalogSelector('wacustomCatalogTypes');
   document.getElementById('wacustomPreview').textContent = '';
-  document.getElementById('wacustomSubmit').textContent = 'Ajouter';
+  document.getElementById('wacustomSubmit').textContent = t('sources_add');
   document.getElementById('wacustomCancel').hidden = true;
 }
 window.resetWaCustomForm = resetWaCustomForm;
@@ -2514,7 +2518,7 @@ function renderNewznabSources() {
         ${(source.catalogs || []).map(catalog =>
           `<button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(catalog.source_key).replace(/'/g, '%27')}','${encodeURIComponent(`${source.name} — ${catalog.name}`).replace(/'/g, '%27')}')">${t('sources_catalog_action')} ${escHtml(catalog.name)}</button>`
         ).join('')}
-        <button class="btn-sm" onclick="editNewznabSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="editNewznabSource('${source.id}')">${t('sources_edit')}</button>
         ${sourceSecretActions('indexer', source.id, source.has_api_key)}
         <button class="btn-sm" onclick="toggleNewznabSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
         <button class="btn-danger btn-sm" onclick="deleteNewznabSource('${source.id}')">${t('sources_delete')}</button>
@@ -2590,7 +2594,7 @@ async function editNewznabSource(id) {
   document.getElementById('newznabRequestDelay').value = source.request_delay_ms || 750;
   document.getElementById('newznabLookbackHours').value = source.lookback_hours || 24;
   document.getElementById('newznabInterval').value = source.sync_interval_minutes || '';
-  document.getElementById('newznabSubmit').textContent = 'Enregistrer';
+  document.getElementById('newznabSubmit').textContent = t('catalogs_save');
   document.getElementById('newznabCancel').hidden = false;
   updateIndexerHelp();
   updateNewznabCategoryMode();
@@ -2613,7 +2617,7 @@ function resetNewznabForm() {
   document.getElementById('newznabLookbackHours').value = 24;
   document.getElementById('newznabInterval').value = '';
   document.getElementById('newznabSourcePreview').textContent = '';
-  document.getElementById('newznabSubmit').textContent = 'Ajouter';
+  document.getElementById('newznabSubmit').textContent = t('sources_add');
   document.getElementById('newznabCancel').hidden = true;
   updateIndexerHelp();
   updateNewznabCategoryMode();
@@ -2669,7 +2673,7 @@ function renderStremioSources() {
         ${(source.catalogs || []).filter(catalog => catalog.enabled !== false && catalog.supported !== false).map(catalog =>
           `<button class="btn-sm" onclick="createCatalogForSource('${encodeURIComponent(catalog.source_key).replace(/'/g, '%27')}','${encodeURIComponent(`${source.name} — ${catalog.name}`).replace(/'/g, '%27')}','${catalog.type === 'movie' ? 'movie' : catalog.type === 'anime' ? 'anime' : 'series'}')">${t('sources_catalog_action')} ${escHtml(catalog.name)}</button>`
         ).join('')}
-        <button class="btn-sm" onclick="editStremioSource('${source.id}')">Modifier</button>
+        <button class="btn-sm" onclick="editStremioSource('${source.id}')">${t('sources_edit')}</button>
         ${sourceSecretActions('stremio', source.id)}
         <button class="btn-sm" onclick="toggleStremioSource('${source.id}', ${!source.paused})">${source.paused ? t('sources_resume') : t('sources_pause')}</button>
         <button class="btn-danger btn-sm" onclick="deleteStremioSource('${source.id}')">${t('sources_delete')}</button>
@@ -2743,7 +2747,7 @@ async function editStremioSource(id) {
   document.getElementById('stremioMaxItems').value = source.max_items_per_catalog || 10000000;
   document.getElementById('stremioInterval').value = source.sync_interval_minutes || '';
   renderEditableStremioCatalogs(source.catalogs || []);
-  document.getElementById('stremioSubmit').textContent = 'Enregistrer';
+  document.getElementById('stremioSubmit').textContent = t('catalogs_save');
   document.getElementById('stremioCancel').hidden = false;
 }
 window.editStremioSource = editStremioSource;
@@ -2756,7 +2760,7 @@ function resetStremioForm() {
   document.getElementById('stremioInterval').value = '';
   document.getElementById('stremioSourcePreview').textContent = '';
   renderEditableStremioCatalogs([]);
-  document.getElementById('stremioSubmit').textContent = 'Ajouter';
+  document.getElementById('stremioSubmit').textContent = t('sources_add');
   document.getElementById('stremioCancel').hidden = true;
 }
 window.resetStremioForm = resetStremioForm;
@@ -3698,7 +3702,7 @@ async function loadMetadataProviders() {
           <div class="manager-row-meta">${source.use_proxy ? 'proxy global' : 'connexion directe'}</div>
         </div>
         <div class="manager-row-actions">
-          <button type="button" class="btn-sm" onclick="editMetadataProvider('${source.id}')">Modifier</button>
+          <button type="button" class="btn-sm" onclick="editMetadataProvider('${source.id}')">${t('sources_edit')}</button>
           <button type="button" class="btn-sm" onclick="revealSourceSecret('metadata','${source.id}',this)">Révéler l’URL</button>
           <button type="button" class="btn-sm" onclick="testMetadataProvider('${source.id}')">Tester</button>
           <button type="button" class="btn-sm" onclick="toggleMetadataProvider('${source.id}',${!source.paused})">${source.paused ? 'Reprendre' : 'Mettre en pause'}</button>
@@ -3749,7 +3753,7 @@ async function editMetadataProvider(id) {
   document.getElementById('metadataProviderUrl').value = secrets.url || '';
   document.getElementById('metadataProviderPriority').value = source.priority || 100;
   document.getElementById('metadataProviderUseProxy').checked = source.use_proxy;
-  document.getElementById('metadataProviderSubmit').textContent = 'Enregistrer';
+  document.getElementById('metadataProviderSubmit').textContent = t('catalogs_save');
   document.getElementById('metadataProviderCancel').hidden = false;
 }
 window.editMetadataProvider = editMetadataProvider;
@@ -3761,7 +3765,7 @@ function resetMetadataProviderForm() {
   document.getElementById('metadataProviderPriority').value = 100;
   document.getElementById('metadataProviderUseProxy').checked = true;
   document.getElementById('metadataProviderPreview').textContent = '';
-  document.getElementById('metadataProviderSubmit').textContent = 'Ajouter';
+  document.getElementById('metadataProviderSubmit').textContent = t('sources_add');
   document.getElementById('metadataProviderCancel').hidden = true;
 }
 window.resetMetadataProviderForm = resetMetadataProviderForm;
