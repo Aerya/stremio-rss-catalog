@@ -437,3 +437,10 @@ The maintenance tools (manual reclassification, false positive correction) and t
 [GNU GPL v3](./LICENSE) — Please credit the source.
 
 **Happy streaming**
+
+
+## Catalog sorting and TMDB media without IMDb IDs
+
+Each catalog can choose its display order: **RSS date** (newest or oldest), **added date**, **year**, or **title**. RSS-date sorting uses the newest release publication date for each media item among the sources selected for that catalog; when a source does not provide one, the added date is used as fallback.
+
+Media available on **TMDB without an IMDb ID** can also be indexed. They use a dedicated `tmdb:movie:<id>` or `tmdb:tv:<id>` key and the addon serves their metadata to Stremio without changing the behavior of media that already have an IMDb ID.

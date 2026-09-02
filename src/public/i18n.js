@@ -5,6 +5,17 @@
 
 const translations = {
   fr: {
+    catalogs_sort_mode: "Ordre des médias",
+    catalogs_sort_rss_desc: "Date RSS — plus récents d’abord",
+    catalogs_sort_rss_asc: "Date RSS — plus anciens d’abord",
+    catalogs_sort_added_desc: "Ajout — plus récents d’abord",
+    catalogs_sort_added_asc: "Ajout — plus anciens d’abord",
+    catalogs_sort_year_desc: "Année — décroissante",
+    catalogs_sort_year_asc: "Année — croissante",
+    catalogs_sort_name_asc: "Titre — A à Z",
+    catalogs_sort_name_desc: "Titre — Z à A",
+    catalogs_sort_hint: "La date RSS utilise la release la plus récente du média parmi les sources sélectionnées. Si elle manque, la date d’ajout sert de repli.",
+
     // Login page
     login_subtitle: "Connexion à l'interface d'administration",
     login_username: "Nom d'utilisateur",
@@ -455,6 +466,17 @@ const translations = {
   },
 
   en: {
+    catalogs_sort_mode: "Media order",
+    catalogs_sort_rss_desc: "RSS date — newest first",
+    catalogs_sort_rss_asc: "RSS date — oldest first",
+    catalogs_sort_added_desc: "Added — newest first",
+    catalogs_sort_added_asc: "Added — oldest first",
+    catalogs_sort_year_desc: "Year — descending",
+    catalogs_sort_year_asc: "Year — ascending",
+    catalogs_sort_name_asc: "Title — A to Z",
+    catalogs_sort_name_desc: "Title — Z to A",
+    catalogs_sort_hint: "RSS date uses the newest release date for each media item among the catalog’s selected sources. If unavailable, the added date is used as fallback.",
+
     // Login page
     login_subtitle: "Login to the administration interface",
     login_username: "Username",
@@ -905,6 +927,17 @@ const translations = {
   },
 
   de: {
+    catalogs_sort_mode: "Reihenfolge der Medien",
+    catalogs_sort_rss_desc: "RSS-Datum — neueste zuerst",
+    catalogs_sort_rss_asc: "RSS-Datum — älteste zuerst",
+    catalogs_sort_added_desc: "Hinzugefügt — neueste zuerst",
+    catalogs_sort_added_asc: "Hinzugefügt — älteste zuerst",
+    catalogs_sort_year_desc: "Jahr — absteigend",
+    catalogs_sort_year_asc: "Jahr — aufsteigend",
+    catalogs_sort_name_asc: "Titel — A bis Z",
+    catalogs_sort_name_desc: "Titel — Z bis A",
+    catalogs_sort_hint: "Das RSS-Datum verwendet das neueste Veröffentlichungsdatum eines Mediums aus den für den Katalog ausgewählten Quellen. Fehlt es, wird das Hinzufügedatum verwendet.",
+
     // Login page
     login_subtitle: "Anmeldung zur Administrationsoberfläche",
     login_username: "Benutzername",

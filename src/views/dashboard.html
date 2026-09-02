@@ -935,6 +935,20 @@
             <small data-i18n="catalogs_guide_hint">Le catalogue sera l’intersection entre ce guide et les médias déjà indexés.</small>
           </div>
           <div class="field">
+            <label data-i18n="catalogs_sort_mode">Ordre des médias</label>
+            <select id="catalogSortMode">
+              <option value="rss_date_desc" data-i18n="catalogs_sort_rss_desc">Date RSS — plus récents d’abord</option>
+              <option value="rss_date_asc" data-i18n="catalogs_sort_rss_asc">Date RSS — plus anciens d’abord</option>
+              <option value="added_desc" data-i18n="catalogs_sort_added_desc">Ajout — plus récents d’abord</option>
+              <option value="added_asc" data-i18n="catalogs_sort_added_asc">Ajout — plus anciens d’abord</option>
+              <option value="year_desc" data-i18n="catalogs_sort_year_desc">Année — décroissante</option>
+              <option value="year_asc" data-i18n="catalogs_sort_year_asc">Année — croissante</option>
+              <option value="name_asc" data-i18n="catalogs_sort_name_asc">Titre — A à Z</option>
+              <option value="name_desc" data-i18n="catalogs_sort_name_desc">Titre — Z à A</option>
+            </select>
+            <small data-i18n="catalogs_sort_hint">La date RSS utilise la release la plus récente du média parmi les sources sélectionnées. Si elle manque, la date d’ajout sert de repli.</small>
+          </div>
+          <div class="field">
             <label data-i18n="catalogs_year_filter">Filtre année</label>
             <select id="catalogYearMode">
               <option value="include" data-i18n="catalogs_year_include">Uniquement les années</option>

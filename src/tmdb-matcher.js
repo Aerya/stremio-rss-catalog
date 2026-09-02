@@ -538,7 +538,9 @@ class TMDBMatcher {
       if (this.db.hasRelease(item.indexer_rlz_id)) {
         this.db.markReleaseSeenByIndexer(
           item.indexer_rlz_id,
-          item.availability_scan_token || null
+          item.availability_scan_token || null,
+          Date.now(),
+          item.published_at || null
         );
         alreadyInDb++;
         matched++;
@@ -548,7 +550,12 @@ class TMDBMatcher {
 
       // 1b. Dédup par hash (quand disponible) — même torrent depuis un feed différent
       if (item.hash && this.db.hasReleaseByHash(item.hash)) {
-        this.db.markReleaseSeenByHash(item.hash, item.availability_scan_token || null);
+        this.db.markReleaseSeenByHash(
+          item.hash,
+          item.availability_scan_token || null,
+          Date.now(),
+          item.published_at || null
+        );
         alreadyInDb++;
         matched++;
         console.log(`[TMDB] ↩ Doublon hash détecté : ${item.cleanName} (${item.hash})`);
@@ -572,6 +579,7 @@ class TMDBMatcher {
             source_url: item.source_url || null,
             quality: item.quality || null,
             hash: item.hash || null,
+            published_at: item.published_at || null,
             scan_token: item.availability_scan_token || null
           });
           alreadyInDb++;
@@ -604,6 +612,7 @@ class TMDBMatcher {
             source_url: item.source_url || null,
             quality: item.quality || null,
             hash: item.hash || null,
+            published_at: item.published_at || null,
             scan_token: item.availability_scan_token || null
           });
           this.linkDirectIdentities(item, existingDirect.imdb_id);
@@ -796,6 +805,7 @@ class TMDBMatcher {
             source_url: item.source_url || null,
             quality: item.quality || null,
             hash: item.hash || null,
+            published_at: item.published_at || null,
             scan_token: item.availability_scan_token || null
           });
           this.linkDirectIdentities(item, mediaId);
@@ -832,6 +842,7 @@ class TMDBMatcher {
               source_url: item.source_url || null,
               quality: item.quality || null,
               hash: item.hash || null,
+              published_at: item.published_at || null,
               scan_token: item.availability_scan_token || null
             });
             this.linkDirectIdentities(item, matchedMediaId);
@@ -876,6 +887,7 @@ class TMDBMatcher {
               source_url: item.source_url || null,
               quality: item.quality || null,
               hash: item.hash || null,
+              published_at: item.published_at || null,
               scan_token: item.availability_scan_token || null
             });
             matched++;
@@ -908,6 +920,7 @@ class TMDBMatcher {
                 source_url: item.source_url || null,
                 quality: item.quality || null,
                 hash: item.hash || null,
+                published_at: item.published_at || null,
                 scan_token: item.availability_scan_token || null
               });
               matched++;

@@ -383,3 +383,10 @@ changements de catégorie et outils de réparation permettent les corrections.
 [GNU GPL v3](./LICENSE) — Merci de citer la source.
 
 **Bon streaming**
+
+
+## Tri des catalogues et identifiants TMDB sans IMDb
+
+Chaque catalogue peut choisir son ordre d’affichage : **date RSS** (récent ou ancien), **date d’ajout**, **année** ou **titre**. Le tri par date RSS prend la date de publication de la release la plus récente du média parmi les sources sélectionnées pour ce catalogue ; lorsqu’une source ne fournit pas cette date, la date d’ajout sert de repli.
+
+Les médias présents sur **TMDB mais sans identifiant IMDb** peuvent également être indexés. Ils utilisent une clé dédiée `tmdb:movie:<id>` ou `tmdb:tv:<id>` et l’addon fournit leurs métadonnées à Stremio sans modifier le fonctionnement des médias possédant déjà un identifiant IMDb.

@@ -946,6 +946,7 @@ function catalogPayload() {
       genres_include: selectedValues('catalogGenresInclude'),
       genres_exclude: selectedValues('catalogGenresExclude'),
       guide_id: document.getElementById('catalogGuide').value || null,
+      sort_mode: document.getElementById('catalogSortMode').value || 'rss_date_desc',
       catalog_ids: [...document.querySelectorAll('#catalogCompositionChoices input:checked')]
         .map(input => input.value)
     }
@@ -1679,10 +1680,21 @@ function renderCatalogs() {
       anime: 'Anime'
     }[catalog.type] || catalog.type;
     const guide = catalogManagerData.guides.find(item => item.id === catalog.filters?.guide_id);
+    const sortMode = catalog.filters?.sort_mode || 'rss_date_desc';
+    const sortLabels = {
+      rss_date_desc: t('catalogs_sort_rss_desc'),
+      rss_date_asc: t('catalogs_sort_rss_asc'),
+      added_desc: t('catalogs_sort_added_desc'),
+      added_asc: t('catalogs_sort_added_asc'),
+      year_desc: t('catalogs_sort_year_desc'),
+      year_asc: t('catalogs_sort_year_asc'),
+      name_asc: t('catalogs_sort_name_asc'),
+      name_desc: t('catalogs_sort_name_desc')
+    };
     return `<div class="manager-row">
       <div class="manager-row-main">
         <div class="manager-row-title">${catalog.enabled ? '●' : '○'} ${escHtml(catalog.name)}</div>
-        <div class="manager-row-meta">${escHtml(typeLabel)} · ${escHtml(years)} · ${catalog.source_urls.length ? `${catalog.source_urls.length} ${t('catalogs_source_count')}` : t('catalogs_all_sources')}${guide ? ` · guide ${escHtml(guide.name)}` : ''}</div>
+        <div class="manager-row-meta">${escHtml(typeLabel)} · ${escHtml(years)} · ${catalog.source_urls.length ? `${catalog.source_urls.length} ${t('catalogs_source_count')}` : t('catalogs_all_sources')} · ${escHtml(sortLabels[sortMode] || sortLabels.rss_date_desc)}${guide ? ` · guide ${escHtml(guide.name)}` : ''}</div>
         <div class="manager-row-meta">
           ${catalog.updates_enabled ? '↻ Mises à jour actives' : `⏸ Contenu gelé${catalog.frozen_at ? ` depuis le ${new Date(catalog.frozen_at).toLocaleString()}` : ''}`}
           · ${catalog.enabled ? 'Visible dans le manifeste Stremio' : 'Masqué du manifeste Stremio'}
@@ -2952,6 +2964,7 @@ function editCatalog(id) {
   document.getElementById('catalogName').value = catalog.name;
   document.getElementById('catalogMediaType').value = catalog.type;
   renderCatalogCompositionChoices(catalog.filters?.catalog_ids || []);
+  document.getElementById('catalogSortMode').value = catalog.filters?.sort_mode || 'rss_date_desc';
   document.getElementById('catalogYearMode').value = catalog.filters?.year_mode || 'include';
   document.getElementById('catalogYears').value = (catalog.filters?.years || []).join(', ');
   document.getElementById('catalogYearMin').value = catalog.filters?.year_min || '';
@@ -3005,6 +3018,7 @@ function resetCatalogForm() {
   document.getElementById('catalogMediaType').value = 'movie';
   renderCatalogCompositionChoices([]);
   document.getElementById('catalogGuide').value = '';
+  document.getElementById('catalogSortMode').value = 'rss_date_desc';
   document.getElementById('catalogYearMode').value = 'include';
   for (const id of ['catalogGenresInclude', 'catalogGenresExclude']) {
     [...document.getElementById(id).options].forEach(option => { option.selected = false; });
