@@ -29,9 +29,12 @@ class StremioAddon {
       name: 'Stremio RSS Catalog',
       description: 'Catalogues Stremio depuis vos sources BitTorrent, Usenet et autres',
       logo: 'https://raw.githubusercontent.com/Aerya/stremio-rss-catalog/main/src/public/logo.png',
-      resources: ['catalog'],
+      resources: [
+        'catalog',
+        { name: 'meta', types: ['movie', 'series'], idPrefixes: ['tmdb'] }
+      ],
       types: ['movie', 'series'],
-      idPrefixes: ['tt', 'kitsu', 'mal', 'anilist', 'anidb'],
+      idPrefixes: ['tt', 'tmdb', 'kitsu', 'mal', 'anilist', 'anidb'],
       catalogs: [
         {
           type: 'movie',
@@ -228,6 +231,27 @@ class StremioAddon {
       console.error('Error in catalog handler:', error);
       return { metas: [] };
     }
+  }
+
+  handleMeta({ type, id, baseUrl = null }) {
+    const match = String(id || '').match(/^tmdb:(movie|tv):(\d+)$/);
+    if (!match) return { meta: null };
+
+    const expectedType = match[1] === 'tv' ? 'series' : 'movie';
+    if (type !== expectedType) return { meta: null };
+
+    const item = this.db.getMediaByImdbId(id);
+    if (!item || item.type !== expectedType) return { meta: null };
+
+    const meta = this.itemToMetaPreview(item);
+    if (
+      baseUrl
+      && meta.poster
+      && this.imageCache.isEnabled()
+    ) {
+      meta.poster = this.imageCache.register(meta.poster, baseUrl);
+    }
+    return { meta };
   }
 
   itemToMetaPreview(item) {
