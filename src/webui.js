@@ -2860,6 +2860,26 @@ class WebUI {
       await this.stremioAddon.imageCache.serve(req.params.key, res);
     });
 
+    this.app.get('/meta/:type/:id.json', (req, res) => {
+      try {
+        const protocol = String(req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+        const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+        const configuredBaseUrl = String(process.env.ADDON_BASE_URL || '').trim().replace(/\/+$/, '');
+        const requestBaseUrl = configuredBaseUrl || `${protocol}://${host}`;
+
+        const result = this.stremioAddon.handleMeta({
+          type: req.params.type,
+          id: req.params.id,
+          baseUrl: requestBaseUrl
+        });
+        res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+        res.json(result);
+      } catch (error) {
+        console.error('Meta error:', error);
+        res.status(500).json({ meta: null });
+      }
+    });
+
     this.app.get('/catalog/:type/:id.json', async (req, res) => {
       try {
         const startedAt = process.hrtime.bigint();

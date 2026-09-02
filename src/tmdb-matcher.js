@@ -831,7 +831,7 @@ class TMDBMatcher {
               scan_token: item.availability_scan_token || null
             });
             this.linkDirectIdentities(item, matchedMediaId);
-            if (match.tmdb_id) this.db.linkMediaIdentity(matchedMediaId, `tmdb:${match.tmdb_id}:${item.type}`);
+            if (match.tmdb_id) this.db.linkMediaIdentity(matchedMediaId, matchedMediaId);
             matched++;
             results.push(mediaData);
             console.log(`[TMDB] ✓ ${item.cleanName} → ${match.name} (${matchedMediaId})`);
@@ -1097,7 +1097,7 @@ class TMDBMatcher {
         source_url: failedRelease.source_url || null,
         quality: null, hash: null
       });
-      if (match.tmdb_id) this.db.linkMediaIdentity(mediaId, `tmdb:${match.tmdb_id}:${itemType}`);
+      if (match.tmdb_id) this.db.linkMediaIdentity(mediaId, mediaId);
     }
 
     this.db.deleteFailedRelease(failedRelease.id);
