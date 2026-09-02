@@ -138,6 +138,10 @@ class TMDBMatcher {
     const imdbId = String(match?.imdb_id || '').trim();
     if (/^tt\d+$/i.test(imdbId)) return imdbId;
 
+    // Préserver les identifiants natifs déjà pris en charge avant l'ajout
+    // du fallback TMDB. Ils sont notamment utilisés pour les animés sans IMDb.
+    if (/^(?:kitsu|mal|anilist|anidb):[^\s]+$/i.test(imdbId)) return imdbId;
+
     const tmdbId = String(match?.tmdb_id || '').trim();
     if (!tmdbId) return null;
 
