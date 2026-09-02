@@ -120,11 +120,15 @@ function verifyPublishedSchemaUpgrade() {
   const upgraded = new DatabaseManager(dbPath);
   try {
     const createdBackups = fs.readdirSync(backupDir).filter(name => !backupsBefore.has(name));
-    assert.ok(createdBackups.some(name => /before-schema-v0-to-v6\.db$/.test(name)));
-    assert.equal(upgraded.db.pragma('user_version', { simple: true }), 6);
+    assert.ok(createdBackups.some(name => /before-schema-v0-to-v7\.db$/.test(name)));
+    assert.equal(upgraded.db.pragma('user_version', { simple: true }), 7);
     assert.equal(upgraded.getConfig('tmdb_api_key'), 'legacy-key');
     assert.equal(upgraded.getMediaByImdbId('tt7654321').name, 'Média existant');
     assert.equal(upgraded.db.prepare('SELECT COUNT(*) AS total FROM releases').get().total, 1);
+    assert.ok(
+      upgraded.db.prepare("PRAGMA table_info(releases)").all()
+        .some(column => column.name === 'published_at')
+    );
     const sources = JSON.parse(upgraded.getConfig('newznab_sources'));
     assert.equal(sources.find(source => source.id === 'default-cap').maxItemsPerCategory, 10000000);
     assert.equal(sources.find(source => source.id === 'custom-cap').maxItemsPerCategory, 424242);
