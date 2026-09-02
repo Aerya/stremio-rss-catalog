@@ -31,7 +31,7 @@ class StremioAddon {
       logo: 'https://raw.githubusercontent.com/Aerya/stremio-rss-catalog/main/src/public/logo.png',
       resources: ['catalog'],
       types: ['movie', 'series'],
-      idPrefixes: ['tt', 'kitsu', 'mal', 'anilist', 'anidb'],
+      idPrefixes: ['tt', 'tmdb', 'kitsu', 'mal', 'anilist', 'anidb'],
       catalogs: [
         {
           type: 'movie',

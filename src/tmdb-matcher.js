@@ -134,6 +134,19 @@ class TMDBMatcher {
       || item.allowed_catalog_types.includes(catalogType);
   }
 
+  buildMediaId(match, fallbackType = 'movie') {
+    const imdbId = String(match?.imdb_id || '').trim();
+    if (/^tt\d+$/i.test(imdbId)) return imdbId;
+
+    const tmdbId = String(match?.tmdb_id || '').trim();
+    if (!tmdbId) return null;
+
+    const mediaType = match?.media_type === 'tv' || fallbackType === 'series'
+      ? 'tv'
+      : 'movie';
+    return `tmdb:${mediaType}:${tmdbId}`;
+  }
+
   getApiKey() {
     return this.db.getConfig('tmdb_api_key');
   }
@@ -338,7 +351,7 @@ class TMDBMatcher {
 
     for (let i = 0; i < attempts.length; i++) {
       const match = await attempts[i]();
-      if (match && match.imdb_id) {
+      if (match && (match.imdb_id || match.tmdb_id)) {
         if (i > 0) console.log(`[TMDB] Matched "${item.cleanName}" on attempt ${i + 1} → "${match.name}"`);
         return match;
       }
@@ -445,7 +458,7 @@ class TMDBMatcher {
         const fn = attempts[i];
         if (!fn) continue;
         const match = await fn();
-        if (match && match.imdb_id) {
+        if (match && (match.imdb_id || match.tmdb_id)) {
           if (i > 0) console.log(`[Anime→TMDB] Tentative ${i + 1} réussie : "${match.name}"`);
 
           // Enrichir score (MAL > AniList > TMDB)
@@ -617,7 +630,8 @@ class TMDBMatcher {
         console.error(`[TMDB] Erreur inattendue sur "${item.cleanName}":`, err.message);
       }
 
-      if (match && match.imdb_id) {
+      const matchedMediaId = this.buildMediaId(match, item.type);
+      if (match && matchedMediaId) {
         let catalogType = item.catalog_type;
         const resolvedType = match.media_type === 'tv'
           ? 'series'
@@ -739,11 +753,14 @@ class TMDBMatcher {
           }
         }
 
-        // Vérifier si ce média (imdb_id) est déjà en base
+        // Vérifier si ce média est déjà en base.
+        // Les médias historiques gardent leur IMDb comme clé ; ceux sans IMDb
+        // utilisent une clé interne tmdb:<type>:<id>.
         const externalIds = Array.isArray(item.direct_meta?.external_ids)
           ? item.direct_meta.external_ids
           : [];
-        const existingMedia = this.db.getMediaByImdbId(match.imdb_id)
+        const existingMedia = this.db.getMediaByImdbId(matchedMediaId)
+          || (match.tmdb_id ? this.db.getMediaByTmdbId(match.tmdb_id, item.type) : null)
           || externalIds.map(externalId => this.db.getMediaByExternalId(externalId)).find(Boolean);
         const finalCatalogType = existingMedia?.catalog_type || catalogType;
         if (!this.isCatalogAllowed(item, finalCatalogType)) {
@@ -784,7 +801,7 @@ class TMDBMatcher {
         } else {
           // Nouveau média
           const mediaData = {
-            imdb_id: match.imdb_id,
+            imdb_id: matchedMediaId,
             tmdb_id: match.tmdb_id ? match.tmdb_id.toString() : null,
             type: item.type,
             catalog_type: catalogType,
@@ -805,7 +822,7 @@ class TMDBMatcher {
           const mediaSaved = this.db.addMedia(mediaData);
           if (mediaSaved) {
             this.db.addRelease({
-              media_imdb_id: match.imdb_id,
+              media_imdb_id: matchedMediaId,
               release_name: item.release_name,
               indexer_rlz_id: item.indexer_rlz_id,
               source_url: item.source_url || null,
@@ -813,10 +830,11 @@ class TMDBMatcher {
               hash: item.hash || null,
               scan_token: item.availability_scan_token || null
             });
-            this.linkDirectIdentities(item, match.imdb_id);
+            this.linkDirectIdentities(item, matchedMediaId);
+            if (match.tmdb_id) this.db.linkMediaIdentity(matchedMediaId, `tmdb:${match.tmdb_id}:${item.type}`);
             matched++;
             results.push(mediaData);
-            console.log(`[TMDB] ✓ ${item.cleanName} → ${match.name} (${match.imdb_id})`);
+            console.log(`[TMDB] ✓ ${item.cleanName} → ${match.name} (${matchedMediaId})`);
           } else {
             failed++;
             console.log(`[TMDB] ✗ Échec sauvegarde : ${item.cleanName}`);
@@ -1041,12 +1059,14 @@ class TMDBMatcher {
       throw new Error('Type d\'identifiant inconnu : ' + idType);
     }
 
-    if (!match || !match.imdb_id) throw new Error('Aucun résultat trouvé pour cet identifiant');
+    const mediaId = this.buildMediaId(match, itemType);
+    if (!match || !mediaId) throw new Error('Aucun résultat trouvé pour cet identifiant');
 
-    const existingMedia = this.db.getMediaByImdbId(match.imdb_id);
+    const existingMedia = this.db.getMediaByImdbId(mediaId)
+      || (match.tmdb_id ? this.db.getMediaByTmdbId(match.tmdb_id, itemType) : null);
     if (existingMedia) {
       this.db.addRelease({
-        media_imdb_id: match.imdb_id,
+        media_imdb_id: existingMedia.imdb_id,
         release_name: failedRelease.release_name,
         indexer_rlz_id: failedRelease.indexer_rlz_id,
         source_url: failedRelease.source_url || null,
@@ -1054,7 +1074,7 @@ class TMDBMatcher {
       });
     } else {
       const mediaData = {
-        imdb_id: match.imdb_id,
+        imdb_id: mediaId,
         tmdb_id: match.tmdb_id ? match.tmdb_id.toString() : null,
         type: itemType,
         catalog_type: catalogType,
@@ -1071,17 +1091,23 @@ class TMDBMatcher {
       const saved = this.db.addMedia(mediaData);
       if (!saved) throw new Error('Erreur lors de la sauvegarde du média en base');
       this.db.addRelease({
-        media_imdb_id: match.imdb_id,
+        media_imdb_id: mediaId,
         release_name: failedRelease.release_name,
         indexer_rlz_id: failedRelease.indexer_rlz_id,
         source_url: failedRelease.source_url || null,
         quality: null, hash: null
       });
+      if (match.tmdb_id) this.db.linkMediaIdentity(mediaId, `tmdb:${match.tmdb_id}:${itemType}`);
     }
 
     this.db.deleteFailedRelease(failedRelease.id);
-    console.log(`[Override] ✓ ${failedRelease.release_name} → ${match.name} (${match.imdb_id})`);
-    return { imdb_id: match.imdb_id, name: match.name };
+    console.log(`[Override] ✓ ${failedRelease.release_name} → ${match.name} (${existingMedia?.imdb_id || mediaId})`);
+    return {
+      imdb_id: /^tt\d+$/i.test(existingMedia?.imdb_id || mediaId) ? (existingMedia?.imdb_id || mediaId) : null,
+      tmdb_id: match.tmdb_id ? String(match.tmdb_id) : null,
+      media_id: existingMedia?.imdb_id || mediaId,
+      name: match.name
+    };
   }
 
   // Retry des releases échouées — appelé depuis la WebUI
