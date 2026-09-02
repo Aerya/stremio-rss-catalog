@@ -446,3 +446,10 @@ Die Wartungswerkzeuge (manuelle Reklassifizierung, Korrektur von Falsch-Positive
 [GNU GPL v3](./LICENSE) — Bitte die Quelle angeben.
 
 **Viel Spaß beim Streamen**
+
+
+## Katalogsortierung und TMDB-Medien ohne IMDb-ID
+
+Für jeden Katalog kann die Anzeigereihenfolge gewählt werden: **RSS-Datum** (neueste oder älteste zuerst), **Hinzufügedatum**, **Jahr** oder **Titel**. Beim RSS-Datum wird für jedes Medium das neueste Veröffentlichungsdatum seiner Releases aus den für den Katalog ausgewählten Quellen verwendet; fehlt dieses Datum, dient das Hinzufügedatum als Fallback.
+
+Medien, die auf **TMDB vorhanden sind, aber keine IMDb-ID besitzen**, können ebenfalls indexiert werden. Sie verwenden einen eigenen Schlüssel `tmdb:movie:<id>` bzw. `tmdb:tv:<id>`, und das Addon liefert ihre Metadaten an Stremio, ohne das Verhalten bestehender IMDb-Medien zu ändern.

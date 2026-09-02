@@ -428,6 +428,9 @@ class RSSParser {
         catalog_type: detected.catalogType,
         type: detected.type,
         pubDate: item.pubDate,
+        published_at: Number.isFinite(Date.parse(String(item.pubDate || '')))
+          ? Date.parse(String(item.pubDate))
+          : null,
         source_url: sourceUrl,
         source_force: force,
         quality: [
