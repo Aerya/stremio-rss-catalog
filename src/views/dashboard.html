@@ -1075,6 +1075,15 @@
           <button class="btn-danger" onclick="clearFailed()" data-i18n="failed_clear_btn">🗑 Vider</button>
         </div>
       </div>
+      <details class="card rules-card" style="margin-bottom:16px">
+        <summary><strong data-i18n="rules_title">Règles d'identification</strong> <span id="rulesCount" class="text-muted"></span></summary>
+        <p class="text-muted" style="margin:10px 0 12px" data-i18n="rules_desc">Titres toujours rattachés au même média ou toujours ignorés lors des collectes.</p>
+        <input id="rulesSearch" class="search-input" type="search" data-i18n="rules_search" data-i18n-placeholder placeholder="Rechercher un titre ou un ID…" oninput="debouncedLoadMatchRules()" style="margin-bottom:12px;max-width:360px">
+        <div id="rulesContainer">
+          <p class="text-muted" data-i18n="sync_loading">Chargement...</p>
+        </div>
+        <div id="rulesPager" class="pager"></div>
+      </details>
       <div class="card">
         <p class="text-muted" id="failedCount" style="margin-bottom:12px"></p>
         <div id="failedContainer">

@@ -10,6 +10,8 @@ const { sendDiscordNotification, sendDiscordSourceAlert } = require('./services/
 const { sendAppriseNotification } = require('./services/appriseService');
 const { getStrings }              = require('./services/notifStrings');
 const crypto = require('crypto');
+const { matchRuleTitleKey, isSpecificRuleTitle } = require('./utils/match-rule-key');
+const ReleaseParser = require('./release-parser');
 const SUPPORTED_CATALOG_TYPES = ['movie', 'series', 'anime'];
 
 const MAINTENANCE_MIGRATIONS = [
@@ -2238,6 +2240,63 @@ class WebUI {
       res.json({ success: true });
     });
 
+    // ─── Correction d'identification et suppression ciblée ─────────────────
+    this.app.get('/api/media/:imdbId/rule-titles', this.authMiddleware.bind(this), (req, res) => {
+      if (!this.db.getMediaByImdbId(req.params.imdbId)) return res.status(404).json({ error: 'Média introuvable' });
+      res.json({ titles: this.getMediaRuleTitles(req.params.imdbId) });
+    });
+
+    this.app.post('/api/media/:imdbId/reidentify', this.authMiddleware.bind(this), async (req, res) => {
+      const { imdbId } = req.params;
+      const { id_type: idType, id_value: idValue, remember = true, titles: requestedTitles } = req.body || {};
+      if (!idType || !String(idValue || '').trim()) {
+        return res.status(400).json({ error: 'id_type et id_value sont requis' });
+      }
+      if (!this.db.getMediaByImdbId(imdbId)) return res.status(404).json({ error: 'Média introuvable' });
+      try {
+        const titles = remember ? this.selectMediaRuleTitles(imdbId, requestedTitles) : [];
+        const result = await this.tmdbMatcher.reidentifyMedia(imdbId, idType, String(idValue).trim(), { titles });
+        this.stremioAddon.clearCache();
+        res.json({ success: true, ...result });
+      } catch (err) {
+        console.error(`[Identification] Erreur pour ${imdbId}:`, err.message);
+        res.status(err.status || 400).json({ error: err.message });
+      }
+    });
+
+    this.app.delete('/api/media/:imdbId', this.authMiddleware.bind(this), (req, res) => {
+      const { imdbId } = req.params;
+      const media = this.db.getMediaByImdbId(imdbId);
+      if (!media) return res.status(404).json({ error: 'Média introuvable' });
+      const ignoreFuture = req.body?.ignore_future === true
+        || ['1', 'true'].includes(String(req.query.ignore_future || '').toLowerCase());
+      // Les titres sont lus avant la suppression, qui emporte les releases.
+      const titles = ignoreFuture ? this.selectMediaRuleTitles(imdbId, req.body?.titles) : [];
+      const removed = this.db.deleteMediaCompletely(imdbId);
+      let rules = 0;
+      for (const entry of titles) {
+        if (this.db.upsertMatchRule({
+          title: entry.title, year: entry.year, action: 'ignore', target_name: media.name
+        })) rules++;
+      }
+      this.stremioAddon.clearCache();
+      console.log(`[Suppression] ${imdbId} : ${removed.releases} release(s), ${rules} titre(s) ignoré(s)`);
+      res.json({ success: true, removed_releases: removed.releases, ignored_titles: rules });
+    });
+
+    this.app.get('/api/match-rules', this.authMiddleware.bind(this), (req, res) => {
+      const { search = '', page = 1, limit = 50 } = req.query;
+      res.json(this.db.getMatchRules({ search, page, limit }));
+    });
+
+    this.app.delete('/api/match-rules/:id', this.authMiddleware.bind(this), (req, res) => {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
+      const removed = this.db.deleteMatchRule(id);
+      if (!removed) return res.status(404).json({ error: 'Règle introuvable' });
+      res.json({ success: true });
+    });
+
     // ─── Sources ────────────────────────────────────────────────────────────
     this.app.get('/api/sources/stats', this.authMiddleware.bind(this), (req, res) => {
       const nameMap = this.getSourceNameMap();
@@ -2411,7 +2470,7 @@ class WebUI {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: 'ID invalide' });
 
-      const { id_type, id_value } = req.body;
+      const { id_type, id_value, remember = true } = req.body;
       if (!id_type || !id_value || !id_value.trim()) {
         return res.status(400).json({ error: 'id_type et id_value sont requis' });
       }
@@ -2420,7 +2479,7 @@ class WebUI {
       if (!failedRelease) return res.status(404).json({ error: 'Release introuvable' });
 
       try {
-        const result = await this.tmdbMatcher.applyOverride(failedRelease, id_type, id_value.trim());
+        const result = await this.tmdbMatcher.applyOverride(failedRelease, id_type, id_value.trim(), { remember: remember !== false });
         this.stremioAddon.clearCache();
         res.json({ success: true, imdb_id: result.imdb_id, name: result.name });
       } catch (err) {
@@ -2986,6 +3045,44 @@ class WebUI {
     this.db.setConfig('manifest_revision', String(next));
     this.db.recordManifestHistory({ revision: next, event, catalog, details });
     return next;
+  }
+
+  // Titres nettoyés (et années) sous lesquels les releases d'un média sont
+  // arrivées : ce sont eux qui serviront de clés aux règles d'identification.
+  // Seul le cache du parseur structuré est lu : relancer le parseur Python
+  // bloquerait le serveur sur les séries qui comptent des milliers de releases.
+  getMediaRuleTitles(mediaId, limit = 2000) {
+    const names = this.db.getReleasesByMedia(mediaId)
+      .slice(0, limit)
+      .map(release => release.release_name)
+      .filter(Boolean);
+    const cached = names.length
+      ? this.db.getReleaseParseCache(names, ReleaseParser.PARSER_VERSION)
+      : new Map();
+    const titles = new Map();
+    for (const name of names) {
+      const info = this.rssParser.parseReleaseName(name, cached.get(name) || null);
+      const title = String(info.cleanName || '').trim();
+      const titleKey = matchRuleTitleKey(title);
+      if (!titleKey) continue;
+      const year = /^\d{4}$/.test(String(info.year || '')) ? String(info.year) : '';
+      const key = `${titleKey}|${year}`;
+      const entry = titles.get(key) || { title, year, count: 0, suggested: isSpecificRuleTitle(titleKey) };
+      entry.count++;
+      titles.set(key, entry);
+    }
+    return [...titles.values()].sort((a, b) => b.count - a.count || a.title.localeCompare(b.title));
+  }
+
+  // Titres retenus pour une règle : ceux cochés par l'utilisateur, limités aux
+  // titres réellement portés par les releases du média ; à défaut, les titres
+  // suffisamment spécifiques.
+  selectMediaRuleTitles(mediaId, requested) {
+    const available = this.getMediaRuleTitles(mediaId);
+    if (!Array.isArray(requested)) return available.filter(entry => entry.suggested);
+    const wanted = new Set(requested.map(entry =>
+      `${matchRuleTitleKey(entry?.title)}|${/^\d{4}$/.test(String(entry?.year || '')) ? String(entry.year) : ''}`));
+    return available.filter(entry => wanted.has(`${matchRuleTitleKey(entry.title)}|${entry.year}`));
   }
 
   getSourceNameMap() {

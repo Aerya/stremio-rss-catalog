@@ -45,6 +45,20 @@ const EMISSION_KEYWORDS = new Set([
 const EMISSION_TV_TYPES = new Set(['news', 'reality', 'talk show']);
 const DOCUMENTARY_TV_TYPES = new Set(['documentary']);
 
+// Catalogues qui n'acceptent qu'un seul type Stremio.
+const MOVIE_ONLY_CATALOGS = new Set(['films', 'concerts', 'spectacles']);
+const SERIES_ONLY_CATALOGS = new Set(['series', 'emissions']);
+
+// Conserve la catégorie choisie (documentaires, animés…) tant qu'elle accepte
+// le type du média corrigé ; sinon repli sur Films ou Séries.
+function compatibleCatalogType(catalogType, itemType) {
+  const fallback = itemType === 'series' ? 'series' : 'films';
+  if (!catalogType) return fallback;
+  if (itemType === 'series' && MOVIE_ONLY_CATALOGS.has(catalogType)) return fallback;
+  if (itemType !== 'series' && SERIES_ONLY_CATALOGS.has(catalogType)) return fallback;
+  return catalogType;
+}
+
 function normalizeMatchTitle(value) {
   return String(value || '')
     .normalize('NFD')
@@ -563,6 +577,39 @@ class TMDBMatcher {
         continue;
       }
 
+      // 1b-bis. Règles d'identification manuelles : elles priment sur les
+      // identifiants fournis par la source et sur le matching automatique.
+      const rule = this.db.findMatchRule(item.cleanName, item.year);
+      if (rule) {
+        if (rule.action === 'ignore') {
+          console.log(`[Règles] ⊘ Titre ignoré : ${item.cleanName}`);
+          if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
+          continue;
+        }
+        const applied = await this.applyMatchRule(rule, item);
+        if (applied?.mediaId) {
+          matched++;
+          if (applied.created) results.push(applied.mediaData);
+          else alreadyInDb++;
+        } else if (!applied?.skipped) {
+          // Ne jamais retomber sur le matching automatique : il redonnerait
+          // l'identification que l'utilisateur a corrigée.
+          failed++;
+          this.db.addFailedRelease({
+            release_name: item.release_name,
+            clean_name: item.cleanName,
+            indexer_rlz_id: item.indexer_rlz_id,
+            source_url: item.source_url || null,
+            catalog_type: item.catalog_type,
+            type: item.type,
+            year: item.year || null,
+            fail_reason: 'match_rule_unresolved'
+          });
+        }
+        if (onProgress) onProgress({ current: i + 1, total: items.length, matched, failed, alreadyInDb });
+        continue;
+      }
+
       // 1c. Les API Newznab fournissent souvent directement un identifiant TMDB.
       // Si le média est déjà indexé, aucune requête TMDB supplémentaire n'est nécessaire.
       if (item.tmdb_id) {
@@ -1040,91 +1087,232 @@ class TMDBMatcher {
     }
   }
 
-  async applyOverride(failedRelease, idType, idValue) {
+  // Résout un identifiant saisi manuellement (IMDb, TMDB film/série, TVDB).
+  async resolveManualId(idType, idValue, fallbackType = 'movie') {
+    const value = String(idValue || '').trim();
     let match = null;
-    let itemType = failedRelease.type || 'movie';
-    let catalogType = failedRelease.catalog_type || 'films';
+    let itemType = fallbackType === 'series' ? 'series' : 'movie';
 
     if (idType === 'imdb') {
-      match = await this.fetchByImdbId(idValue);
-      if (match) {
-        itemType    = match.media_type === 'tv' ? 'series' : 'movie';
-        catalogType = itemType === 'series' ? 'series' : 'films';
+      if (!/^tt\d+$/i.test(value)) throw new Error('Identifiant IMDb invalide (format attendu : tt1234567)');
+      match = await this.fetchByImdbId(value.toLowerCase());
+      if (match) itemType = match.media_type === 'tv' ? 'series' : 'movie';
+    } else if (idType === 'tmdb_movie' || idType === 'tmdb_tv' || idType === 'tvdb') {
+      if (!/^\d+$/.test(value)) throw new Error('Identifiant numérique attendu');
+      if (idType === 'tmdb_movie') {
+        match = await this.fetchByTmdbId(value, 'movie');
+        itemType = 'movie';
+      } else if (idType === 'tmdb_tv') {
+        match = await this.fetchByTmdbId(value, 'tv');
+        itemType = 'series';
+      } else {
+        if (!this.tvdb.isConfigured()) throw new Error('TVDB non configuré');
+        const extended = await this.tvdb.getSeriesExtended(parseInt(value));
+        if (!extended) throw new Error('Série TVDB non trouvée');
+        const imdbId = this.tvdb.extractImdbId(extended);
+        if (!imdbId) throw new Error('Pas d\'IMDB ID disponible dans la réponse TVDB');
+        match = {
+          tmdb_id: `tvdb-${value}`,
+          imdb_id: imdbId,
+          name: extended.name || null,
+          year: extended.firstAired ? extended.firstAired.substring(0, 4) : null,
+          poster: null, background: null, description: null,
+          genres: [], vote_average: null, media_type: 'tv'
+        };
+        itemType = 'series';
       }
-    } else if (idType === 'tmdb_movie') {
-      match = await this.fetchByTmdbId(idValue, 'movie');
-      if (match) { itemType = 'movie'; catalogType = 'films'; }
-    } else if (idType === 'tmdb_tv') {
-      match = await this.fetchByTmdbId(idValue, 'tv');
-      if (match) { itemType = 'series'; catalogType = 'series'; }
-    } else if (idType === 'tvdb') {
-      if (!this.tvdb.isConfigured()) throw new Error('TVDB non configuré');
-      const extended = await this.tvdb.getSeriesExtended(parseInt(idValue));
-      if (!extended) throw new Error('Série TVDB non trouvée');
-      const imdbId = this.tvdb.extractImdbId(extended);
-      if (!imdbId) throw new Error('Pas d\'IMDB ID disponible dans la réponse TVDB');
-      match = {
-        tmdb_id: `tvdb-${idValue}`,
-        imdb_id: imdbId,
-        name: extended.name || failedRelease.clean_name,
-        year: extended.firstAired ? extended.firstAired.substring(0, 4) : null,
-        poster: null, background: null, description: null,
-        genres: [], vote_average: null, media_type: 'tv'
-      };
-      itemType = 'series'; catalogType = 'series';
     } else {
       throw new Error('Type d\'identifiant inconnu : ' + idType);
     }
 
     const mediaId = this.buildMediaId(match, itemType);
     if (!match || !mediaId) throw new Error('Aucun résultat trouvé pour cet identifiant');
+    return { match, itemType, mediaId };
+  }
 
-    const existingMedia = this.db.getMediaByImdbId(mediaId)
+  // Retourne le média correspondant à une identification manuelle, en le
+  // créant s'il n'existe pas encore.
+  ensureManualMedia({ match, itemType, catalogType, mediaId, releaseName = null, firstSeenAt = null }) {
+    const existing = this.db.getMediaByImdbId(mediaId)
       || (match.tmdb_id ? this.db.getMediaByTmdbId(match.tmdb_id, itemType) : null);
-    if (existingMedia) {
-      this.db.addRelease({
-        media_imdb_id: existingMedia.imdb_id,
-        release_name: failedRelease.release_name,
-        indexer_rlz_id: failedRelease.indexer_rlz_id,
-        source_url: failedRelease.source_url || null,
-        quality: null, hash: null
+    if (existing) return { mediaId: existing.imdb_id, created: false, mediaData: existing };
+
+    const mediaData = {
+      imdb_id: mediaId,
+      tmdb_id: match.tmdb_id ? match.tmdb_id.toString() : null,
+      type: itemType,
+      catalog_type: catalogType,
+      name: match.name || releaseName || mediaId,
+      year: match.year,
+      poster: match.poster || null,
+      background: match.background || null,
+      description: match.description || null,
+      genres: match.genres || [],
+      keywords: match.keywords || [],
+      vote_average: match.vote_average || null,
+      match_confidence: 1,
+      match_provider: 'manuel',
+      match_reasons: ['identification manuelle'],
+      release_name: releaseName,
+      first_seen_at: firstSeenAt || undefined
+    };
+    if (!this.db.addMedia(mediaData)) throw new Error('Erreur lors de la sauvegarde du média en base');
+    if (match.tmdb_id) this.db.linkMediaIdentity(mediaId, mediaId);
+    return { mediaId, created: true, mediaData };
+  }
+
+  async applyOverride(failedRelease, idType, idValue, { remember = true } = {}) {
+    const { match, itemType, mediaId } = await this.resolveManualId(idType, idValue, failedRelease.type || 'movie');
+    const catalogType = itemType === 'series' ? 'series' : 'films';
+    const target = this.ensureManualMedia({
+      match: { ...match, name: match.name || failedRelease.clean_name },
+      itemType,
+      catalogType,
+      mediaId,
+      releaseName: failedRelease.release_name
+    });
+
+    this.db.addRelease({
+      media_imdb_id: target.mediaId,
+      release_name: failedRelease.release_name,
+      indexer_rlz_id: failedRelease.indexer_rlz_id,
+      source_url: failedRelease.source_url || null,
+      quality: null, hash: null
+    });
+    this.db.deleteFailedRelease(failedRelease.id);
+
+    if (remember) {
+      this.db.upsertMatchRule({
+        title: failedRelease.clean_name || failedRelease.release_name,
+        year: failedRelease.year,
+        action: 'map',
+        media_id: target.mediaId,
+        id_type: idType,
+        id_value: String(idValue).trim(),
+        target_name: match.name || null
       });
-    } else {
-      const mediaData = {
-        imdb_id: mediaId,
-        tmdb_id: match.tmdb_id ? match.tmdb_id.toString() : null,
-        type: itemType,
-        catalog_type: catalogType,
-        name: match.name,
-        year: match.year,
-        poster: match.poster || null,
-        background: match.background || null,
-        description: match.description || null,
-        genres: match.genres || [],
-        keywords: match.keywords || [],
-        vote_average: match.vote_average || null,
-        release_name: failedRelease.release_name
-      };
-      const saved = this.db.addMedia(mediaData);
-      if (!saved) throw new Error('Erreur lors de la sauvegarde du média en base');
-      this.db.addRelease({
-        media_imdb_id: mediaId,
-        release_name: failedRelease.release_name,
-        indexer_rlz_id: failedRelease.indexer_rlz_id,
-        source_url: failedRelease.source_url || null,
-        quality: null, hash: null
-      });
-      if (match.tmdb_id) this.db.linkMediaIdentity(mediaId, mediaId);
     }
 
-    this.db.deleteFailedRelease(failedRelease.id);
-    console.log(`[Override] ✓ ${failedRelease.release_name} → ${match.name} (${existingMedia?.imdb_id || mediaId})`);
+    console.log(`[Override] ✓ ${failedRelease.release_name} → ${match.name} (${target.mediaId})`);
     return {
-      imdb_id: /^tt\d+$/i.test(existingMedia?.imdb_id || mediaId) ? (existingMedia?.imdb_id || mediaId) : null,
+      imdb_id: /^tt\d+$/i.test(target.mediaId) ? target.mediaId : null,
       tmdb_id: match.tmdb_id ? String(match.tmdb_id) : null,
-      media_id: existingMedia?.imdb_id || mediaId,
+      media_id: target.mediaId,
       name: match.name
     };
+  }
+
+  // Corrige l'identification d'un média déjà en base : ses releases sont
+  // rattachées au bon média et, si demandé, les titres concernés sont
+  // mémorisés pour les prochaines collectes.
+  async reidentifyMedia(sourceMediaId, idType, idValue, { titles = [] } = {}) {
+    const source = this.db.getMediaByImdbId(sourceMediaId);
+    if (!source) {
+      const error = new Error('Média introuvable');
+      error.status = 404;
+      throw error;
+    }
+
+    const { match, itemType, mediaId } = await this.resolveManualId(idType, idValue, source.type);
+    const catalogType = compatibleCatalogType(source.catalog_type, itemType);
+    let targetId = source.imdb_id;
+    let moved = 0;
+
+    const sameMedia = mediaId === source.imdb_id
+      || (match.tmdb_id && String(match.tmdb_id) === String(source.tmdb_id || '') && itemType === source.type);
+    if (sameMedia) {
+      // Même contenu : on rafraîchit seulement les métadonnées.
+      this.db.addMedia({
+        ...source,
+        name: match.name || source.name,
+        poster: match.poster || source.poster,
+        background: match.background || source.background,
+        description: match.description || source.description,
+        genres: match.genres?.length ? match.genres : source.genres,
+        keywords: match.keywords?.length ? match.keywords : source.keywords,
+        vote_average: match.vote_average || source.vote_average,
+        match_confidence: 1,
+        match_provider: 'manuel',
+        match_reasons: ['identification manuelle']
+      });
+    } else {
+      const target = this.ensureManualMedia({
+        match,
+        itemType,
+        catalogType,
+        mediaId,
+        releaseName: source.release_name,
+        firstSeenAt: source.first_seen_at
+      });
+      targetId = target.mediaId;
+      moved = this.db.reassignMediaReleases(source.imdb_id, targetId);
+    }
+
+    let rules = 0;
+    for (const entry of titles) {
+      const rule = this.db.upsertMatchRule({
+        title: entry.title,
+        year: entry.year,
+        action: 'map',
+        media_id: targetId,
+        id_type: idType,
+        id_value: String(idValue).trim(),
+        target_name: match.name || null
+      });
+      if (rule) rules++;
+    }
+
+    console.log(`[Identification] ✓ ${source.name} (${source.imdb_id}) → ${match.name} (${targetId}), ${moved} release(s), ${rules} règle(s)`);
+    return {
+      previous_id: source.imdb_id,
+      media_id: targetId,
+      imdb_id: /^tt\d+$/i.test(targetId) ? targetId : null,
+      name: match.name,
+      catalog_type: this.db.getMediaByImdbId(targetId)?.catalog_type || catalogType,
+      moved_releases: moved,
+      rules
+    };
+  }
+
+  // Applique une règle « titre → média » à une release entrante.
+  async applyMatchRule(rule, item) {
+    try {
+      let target = rule.media_id ? this.db.getMediaByImdbId(rule.media_id) : null;
+      let created = null;
+      if (!target) {
+        // Le média cible a été retiré entre-temps : on le recrée depuis
+        // l'identifiant mémorisé avec la règle.
+        if (!rule.id_type || !rule.id_value) return null;
+        const { match, itemType, mediaId } = await this.resolveManualId(rule.id_type, rule.id_value, item.type);
+        const result = this.ensureManualMedia({
+          match,
+          itemType,
+          catalogType: compatibleCatalogType(item.catalog_type, itemType),
+          mediaId,
+          releaseName: item.release_name
+        });
+        target = this.db.getMediaByImdbId(result.mediaId);
+        if (result.created) created = result.mediaData;
+      }
+      if (!target) return null;
+      if (!this.isCatalogAllowed(item, target.catalog_type)) return { skipped: true };
+
+      this.db.addRelease({
+        media_imdb_id: target.imdb_id,
+        release_name: item.release_name,
+        indexer_rlz_id: item.indexer_rlz_id,
+        source_url: item.source_url || null,
+        quality: item.quality || null,
+        hash: item.hash || null,
+        published_at: item.published_at || null,
+        scan_token: item.availability_scan_token || null
+      });
+      console.log(`[Règles] ↩ ${item.cleanName} → ${target.name} (${target.imdb_id})`);
+      return { mediaId: target.imdb_id, created: !!created, mediaData: created };
+    } catch (err) {
+      console.error(`[Règles] Erreur pour "${item.cleanName}":`, err.message);
+      return null;
+    }
   }
 
   // Retry des releases échouées — appelé depuis la WebUI
@@ -1157,3 +1345,4 @@ class TMDBMatcher {
 }
 
 module.exports = TMDBMatcher;
+module.exports.compatibleCatalogType = compatibleCatalogType;

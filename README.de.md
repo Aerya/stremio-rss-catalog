@@ -92,7 +92,10 @@ stellt selbst keine Streams bereit.
 | **Falsch-Positiv-Schutz** | Widersprüchliche Genres deaktivieren Dokumentarfilm- (Action, SF, Fantasy, Horror), Sendungs- (SF, Fantasy, Animation) und Konzert-Erkennung (Drama, Komödie, Romance) |
 | **Spezifitätshierarchie** | Automatische Reklassifizierung kann eine spezifischere Kategorie nie herabstufen — Anime (4) > Dokus/Sendungen/Konzerte/Aufführungen (3) > Serien (2) > Filme (1) |
 | **Manuelle Kategorieänderung** | Aus dem Medien-Detailbereich in der Mediathek |
-| **Manuelles Release-Override** | IMDB-/TMDB-/TVDB-ID einer fehlgeschlagenen Release direkt in der WebUI erzwingen |
+| **Manuelles Release-Override** | IMDB-/TMDB-/TVDB-ID einer fehlgeschlagenen Release direkt in der WebUI erzwingen, optional für diesen Titel gespeichert |
+| **Identifizierung korrigieren** | Im Detailbereich eines Mediums: richtige IMDb-/TMDB-/TVDB-ID eingeben, alle Releases verschieben und die Regel für künftige Abrufe speichern |
+| **Gezieltes Löschen** | Ein Medium und seine Releases löschen, optional mit Ignorieren seiner Titel bei künftigen Abrufen |
+| **Identifizierungsregeln** | Unter „Fehler“ einsehbar und löschbar; sie haben Vorrang vor dem automatischen Abgleich und vor von Quellen gelieferten IDs |
 | **Deduplizierung** | Per IMDB-ID (Medien) + per RSS-GUID + per Torrent-Hash wenn verfügbar (Releases) |
 | **Hashes** | Automatische Infohash-Extraktion aus Magnet-/Torrent-Links |
 | **Retry** | Nicht gematchte Releases gespeichert und wiederholbar |
@@ -303,6 +306,23 @@ Infohash. Quellenregeln, URLs, Titel und Metadaten bestimmen die Kategorie;
 widersprüchliche Genres begrenzen Fehlklassifizierungen. Fehlschläge bleiben
 wiederholbar und Treffer können manuell korrigiert werden.
 
+### Identifizierung korrigieren
+
+Öffnen Sie in der Mediathek das falsch erkannte Medium und wählen Sie
+**Identifizierung korrigieren**: Geben Sie die richtige IMDb-, TMDB- (Film oder
+Serie) oder TVDB-ID ein. Alle Releases werden dem richtigen Medium zugeordnet;
+die Kategorie bleibt erhalten, sofern sie den neuen Typ akzeptiert. Die
+angehakten Titel (mit Jahr, falls vorhanden) werden zu **Regeln**: Bei jedem
+Abruf wird eine Release mit diesem Titel vor jedem automatischen Abgleich
+direkt diesem Medium zugeordnet. Zu allgemeine Titel wie „The“ sind
+standardmäßig nicht angehakt.
+
+**Dieses Medium löschen** entfernt das Medium und alle Releases. Mit **Diesen
+Titel nicht mehr importieren** werden seine Titel zu Ausschlussregeln; ohne
+diese Option kann es beim nächsten Abruf zurückkommen. Regeln lassen sich unter
+**Fehler → Identifizierungsregeln** einsehen und löschen. Auch die Korrektur
+einer fehlgeschlagenen Release kann gespeichert werden.
+
 MAL, AniList und Kitsu normalisieren Anime. TMDB, TVDB und OMDb identifizieren
 und klassifizieren Filme, Serien, Dokumentationen, Sendungen, Konzerte und
 Aufführungen. Konfigurierte Stremio-Metadaten-Addons dienen als Fallbacks.
@@ -313,6 +333,7 @@ Aufführungen. Konfigurierte Stremio-Metadaten-Addons dienen als Fallbacks.
 media           → 1 Zeile pro Film/Serie (Schlüssel: imdb_id)
 releases        → N Releases pro Medium (Qualität, Hash, Quelle, Datum)
 failed_releases → nicht gematchte Releases (für Retry)
+match_rules     → Titel (+ Jahr) immer einem Medium zugeordnet oder ignoriert
 ```
 
 SQLite verwendet WAL, damit Kataloge während Schreibvorgängen lesbar bleiben.
@@ -320,6 +341,11 @@ Katalogantworten werden komprimiert, gecacht und nach Änderungen vorgewärmt.
 `CATALOG_HTTP_CACHE_SECONDS` steuert den HTTP-Cache (`30` standardmäßig, `0`
 zum Deaktivieren). Der optionale lokale Poster-Proxy/-Cache hat eigene TTL- und
 Größenlimits.
+
+Bei einer großen Mediathek (Datenbank mit mehreren hundert MB) sollten dem
+Container mindestens 512 MB bis 1 GB Arbeitsspeicher zur Verfügung stehen. Ein
+zu niedriges Limit (`mem_limit`) verhindert, dass SQLite seine Seiten im Cache
+hält: WebUI und Kataloge können dann Minuten bis zur Antwort brauchen.
 
 ### Poster und AIOMetadata
 
