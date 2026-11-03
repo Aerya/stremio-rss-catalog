@@ -7,13 +7,13 @@
   <strong>Erstellen Sie Stremio-Kataloge aus Inhalten, die in Ihren eigenen Quellen tatsächlich verfügbar sind</strong>
 </p>
 
-> 🇫🇷 [Français](./README.md) · 🇬🇧 [English](./README.en.md)
+> 🇫🇷 [Français](./README.md) · 🇬🇧 [English](./README.en.md) · 🇭🇺 [Magyar](./README.hu.md)
 
 <p align="center">
   <img src="https://img.shields.io/github/actions/workflow/status/Aerya/stremio-rss-catalog/ghcr.yml?branch=main&label=build&style=flat-square" alt="Build">
   <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker">
   <img src="https://img.shields.io/badge/multi--arch-amd64%20%7C%20arm64-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Multi-arch">
-  <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE-orange?style=flat-square" alt="i18n">
+  <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE%20%7C%20HU-orange?style=flat-square" alt="i18n">
 </p>
 
 <p align="center">
@@ -106,9 +106,9 @@ stellt selbst keine Streams bereit.
 | **PostersPlus** | Direkte Unterstützung für AIOMetadata-kompatible URL-Templates mit RPDB- und Originalbild-Fallback |
 | **Discord-Benachrichtigungen** | Erweiterte Benachrichtigungen mit Poster-Galerie bei jeder Sync; PostersPlus zuerst, danach RPDB oder das Originalposter |
 | **Apprise-Benachrichtigungen** | Multi-Service-Benachrichtigungen via Apprise-Server (optional) |
-| **Benachrichtigungssprache** | Discord/Apprise-Sprache unabhängig von der WebUI konfigurierbar (FR/EN/DE) |
+| **Benachrichtigungssprache** | Discord/Apprise-Sprache unabhängig von der WebUI konfigurierbar (FR/EN/DE/HU) |
 | **Erklärte Auto-Sync** | Fällige Quellen nach eigenem Zeitplan sammeln → normalisieren und abgleichen → nicht eingefrorene Kataloge → Stremio-Cache leeren |
-| **Moderne WebUI** | Sidebar, Hell-/Dunkel-Theme, mehrsprachig FR/EN/DE |
+| **Moderne WebUI** | Sidebar, Hell-/Dunkel-Theme, mehrsprachig FR/EN/DE/HU |
 | **Mediathek** | Neugestaltung: Poster-/Listenansicht, Sortierung, Jahresfilter (Schnellauswahl + freie Eingabe/Bereich), Releases inline, RPDB-Poster, persistente Paginierung |
 | **Übersicht** | Neueste Hinzufügungen in ausklappbaren Kategorie-Akkordeons (Titel + Jahr + IMDB-Link) |
 | **Migration und Reparatur** | Schreibgeschützte Analyse, gruppierte Korrekturen, Verlauf, versionierte Migrationen und automatische SQLite-Sicherung vor Schemaänderungen |

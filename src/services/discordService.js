@@ -103,7 +103,7 @@ async function sendGallery(webhookUrl, items, artworkConfig, title, color, filen
  * Envoie la notification Discord de fin de sync.
  * @param {string} webhookUrl
  * @param {object} syncStats
- * @param {string} [lang='fr']  Langue des textes ('fr'|'en'|'de')
+ * @param {string} [lang='fr']  Langue des textes ('fr'|'en'|'de'|'hu')
  */
 async function sendDiscordNotification(webhookUrl, syncStats, lang = 'fr') {
   if (!webhookUrl) return;

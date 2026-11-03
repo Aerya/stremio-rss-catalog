@@ -7,13 +7,13 @@
   <strong>Créez des catalogues Stremio à partir des contenus réellement disponibles dans vos propres sources</strong>
 </p>
 
-> 🇬🇧 [English](./README.en.md) · 🇩🇪 [Deutsch](./README.de.md)
+> 🇬🇧 [English](./README.en.md) · 🇩🇪 [Deutsch](./README.de.md) · 🇭🇺 [Magyar](./README.hu.md)
 
 <p align="center">
   <img src="https://img.shields.io/github/actions/workflow/status/Aerya/stremio-rss-catalog/ghcr.yml?branch=main&label=build&style=flat-square" alt="Build">
   <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker">
   <img src="https://img.shields.io/badge/multi--arch-amd64%20%7C%20arm64-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Multi-arch">
-  <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE-orange?style=flat-square" alt="i18n">
+  <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE%20%7C%20HU-orange?style=flat-square" alt="i18n">
 </p>
 
 <p align="center">
@@ -107,9 +107,9 @@ lecture, et ne fournit pas lui-même de streams.
 | **PostersPlus** | Template d’affiche compatible AIOMetadata, rempli directement avec les identifiants IMDb/TMDB ; repli RPDB puis affiche d’origine |
 | **Notifs Discord** | Notifications enrichies avec galerie d'affiches à chaque sync ; PostersPlus prioritaire, puis RPDB ou l’affiche d’origine |
 | **Notifs Apprise** | Notifications multi-services via serveur Apprise (optionnel) |
-| **Langue des notifs** | Langue Discord/Apprise configurable indépendamment de la WebUI (FR/EN/DE) |
+| **Langue des notifs** | Langue Discord/Apprise configurable indépendamment de la WebUI (FR/EN/DE/HU) |
 | **Sync auto explicite** | Collecte des sources dues selon leur fréquence → normalisation et matching → catalogues non gelés → cache Stremio invalidé |
-| **WebUI moderne** | Sidebar, thème sombre/clair, multilingue FR/EN/DE |
+| **WebUI moderne** | Sidebar, thème sombre/clair, multilingue FR/EN/DE/HU |
 | **Médiathèque** | Refonte : vue affiches/liste, tri, filtre année (raccourcis + saisie libre/plage), releases inline, affiches RPDB, pagination persistante |
 | **Vue d'ensemble** | Derniers ajouts en tiroirs dépliables par catégorie (titre + année + lien IMDB) |
 | **Migration et réparation** | Analyse en lecture seule, corrections groupées, historique, migrations versionnées et sauvegarde SQLite automatique avant changement de schéma |
