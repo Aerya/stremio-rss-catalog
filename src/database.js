@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const { matchRuleTitleKey, matchRuleYear } = require('./utils/match-rule-key');
 
 const SCHEMA_VERSION = 7;
 const SCHEMA_BACKUP_RETENTION = 10;
@@ -197,6 +198,27 @@ class DatabaseManager {
         media_imdb_id TEXT NOT NULL REFERENCES media(imdb_id) ON DELETE CASCADE,
         created_at INTEGER NOT NULL,
         PRIMARY KEY(namespace, external_id)
+      )
+    `);
+
+    // Règles d'identification manuelles : un titre nettoyé (et éventuellement
+    // une année) est toujours rattaché au même média, ou toujours ignoré.
+    // Table additive : aucune montée de schema_version, donc aucune copie
+    // complète de la base au démarrage.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS match_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title_key TEXT NOT NULL,
+        year TEXT NOT NULL DEFAULT '',
+        action TEXT NOT NULL CHECK(action IN ('map', 'ignore')),
+        media_id TEXT,
+        id_type TEXT,
+        id_value TEXT,
+        label TEXT,
+        target_name TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(title_key, year)
       )
     `);
 
@@ -2487,6 +2509,103 @@ class DatabaseManager {
     `);
     const remove = this.db.transaction(rows => rows.reduce((count, id) => count + statement.run(id).changes, 0));
     return remove(ids);
+  }
+
+  // ─── Règles d'identification manuelles ────────────────────────────────────
+
+  upsertMatchRule({ title, year = '', action, media_id = null, id_type = null, id_value = null, target_name = null }) {
+    const titleKey = matchRuleTitleKey(title);
+    if (!titleKey || !['map', 'ignore'].includes(action)) return null;
+    const ruleYear = matchRuleYear(year);
+    const now = Date.now();
+    this.db.prepare(`
+      INSERT INTO match_rules
+        (title_key, year, action, media_id, id_type, id_value, label, target_name, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(title_key, year) DO UPDATE SET
+        action      = excluded.action,
+        media_id    = excluded.media_id,
+        id_type     = excluded.id_type,
+        id_value    = excluded.id_value,
+        label       = excluded.label,
+        target_name = excluded.target_name,
+        updated_at  = excluded.updated_at
+    `).run(
+      titleKey,
+      ruleYear,
+      action,
+      action === 'map' ? media_id : null,
+      action === 'map' ? id_type : null,
+      action === 'map' ? id_value : null,
+      String(title).trim().slice(0, 300),
+      target_name || null,
+      now,
+      now
+    );
+    return this.db.prepare('SELECT * FROM match_rules WHERE title_key = ? AND year = ?').get(titleKey, ruleYear);
+  }
+
+  // Une règle datée prime sur une règle valable pour toutes les années.
+  findMatchRule(title, year = '') {
+    const titleKey = matchRuleTitleKey(title);
+    if (!titleKey) return null;
+    const ruleYear = matchRuleYear(year);
+    return this.db.prepare(`
+      SELECT * FROM match_rules
+      WHERE title_key = ? AND year IN (?, '')
+      ORDER BY year DESC
+      LIMIT 1
+    `).get(titleKey, ruleYear) || null;
+  }
+
+  getMatchRules({ search = '', page = 1, limit = 50 } = {}) {
+    const safeLimit = Math.min(Math.max(parseInt(limit) || 50, 1), 200);
+    const safePage = Math.max(parseInt(page) || 1, 1);
+    const term = String(search || '').trim();
+    const where = term
+      ? `WHERE title_key LIKE ? OR label LIKE ? OR media_id LIKE ? OR target_name LIKE ?`
+      : '';
+    const params = term ? Array(4).fill(`%${term}%`) : [];
+    const total = this.db.prepare(`SELECT COUNT(*) AS n FROM match_rules ${where}`).get(...params).n;
+    const items = this.db.prepare(`
+      SELECT * FROM match_rules ${where}
+      ORDER BY updated_at DESC, id DESC
+      LIMIT ? OFFSET ?
+    `).all(...params, safeLimit, (safePage - 1) * safeLimit);
+    return { items, total, page: safePage, pages: Math.max(1, Math.ceil(total / safeLimit)) };
+  }
+
+  deleteMatchRule(id) {
+    return this.db.prepare('DELETE FROM match_rules WHERE id = ?').run(id).changes;
+  }
+
+  // Déplace toutes les releases d'un média mal identifié vers le bon média,
+  // puis supprime l'ancien. Les identités externes de l'ancien média
+  // pointaient vers le mauvais contenu : elles disparaissent avec lui.
+  reassignMediaReleases(fromMediaId, toMediaId) {
+    if (!fromMediaId || !toMediaId || fromMediaId === toMediaId) return 0;
+    const move = this.db.transaction(() => {
+      const moved = this.db.prepare('UPDATE releases SET media_imdb_id = ? WHERE media_imdb_id = ?')
+        .run(toMediaId, fromMediaId).changes;
+      this.db.prepare('DELETE FROM media_identities WHERE media_imdb_id = ?').run(fromMediaId);
+      this.db.prepare(`DELETE FROM match_rules WHERE action = 'map' AND media_id = ?`).run(fromMediaId);
+      this.db.prepare('DELETE FROM media WHERE imdb_id = ?').run(fromMediaId);
+      return moved;
+    });
+    return move();
+  }
+
+  // Suppression ciblée d'un média et de tout ce qui le rattache. Les règles
+  // qui y renvoyaient sont retirées pour qu'il ne soit pas recréé en silence.
+  deleteMediaCompletely(mediaId) {
+    const remove = this.db.transaction(() => {
+      const releases = this.db.prepare('DELETE FROM releases WHERE media_imdb_id = ?').run(mediaId).changes;
+      this.db.prepare('DELETE FROM media_identities WHERE media_imdb_id = ?').run(mediaId);
+      this.db.prepare(`DELETE FROM match_rules WHERE action = 'map' AND media_id = ?`).run(mediaId);
+      const media = this.db.prepare('DELETE FROM media WHERE imdb_id = ?').run(mediaId).changes;
+      return { media, releases };
+    });
+    return remove();
   }
 
   getFailedReleasesForResolutionReprocessing() {

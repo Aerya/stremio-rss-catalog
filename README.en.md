@@ -90,7 +90,10 @@ does not provide streams itself.
 | **False positive protection** | Contradicting genres disable documentary detection (Action, Sci-Fi, Fantasy, Horror), TV show detection (Sci-Fi, Fantasy, Animation) and concert detection (Drama, Comedy, Romance) |
 | **Specificity hierarchy** | Auto-reclassification can never downgrade a more specific category — anime (4) > docs/shows/concerts/live (3) > series (2) > movies (1) |
 | **Manual category change** | From the media detail panel in the library |
-| **Manual release override** | Force IMDB/TMDB/TVDB ID on a failed release directly from the WebUI |
+| **Manual release override** | Force IMDB/TMDB/TVDB ID on a failed release directly from the WebUI, optionally remembered for that title |
+| **Identification fix** | From a media's detail panel: enter the correct IMDb/TMDB/TVDB ID, move all its releases, and remember the rule for future fetches |
+| **Targeted deletion** | Delete a media and its releases, optionally ignoring its titles on future fetches |
+| **Identification rules** | Listed and removable under "Failures"; they take precedence over automatic matching and over IDs supplied by sources |
 | **Deduplication** | By IMDB ID (media) + by RSS GUID + by torrent hash when available (releases) |
 | **Hashes** | Automatic infohash extraction from magnet/torrent links |
 | **Retry** | Unmatched releases stored and retriable |
@@ -297,6 +300,22 @@ Source rules, URLs, titles, and metadata determine the category; contradicting
 genres reduce false positives. Failures remain retriable and matches can be
 corrected manually.
 
+### Fixing an identification
+
+In the media library, open the misidentified media, then **Fix
+identification**: enter the correct IMDb, TMDB (movie or series), or TVDB ID.
+All its releases are moved to the right media, and the category is kept if it
+accepts the new type. The checked titles (with their year, when there is one)
+become **rules**: on every fetch, a release with that title is linked directly
+to this media, before any automatic matching. Overly generic titles, such as
+"The", are not checked by default.
+
+**Delete this media** removes the media and all its releases. With **Never
+import this title again**, its titles become exclusion rules; without it, the
+media may come back on the next fetch. Rules can be reviewed and removed under
+**Failures → Identification rules**. Fixing a failed release can also be
+remembered.
+
 MAL, AniList, and Kitsu normalize anime. TMDB, TVDB, and OMDb identify and
 reclassify movies, series, documentaries, TV shows, concerts, and live shows.
 Configured Stremio metadata addons are ordered fallbacks.
@@ -307,12 +326,18 @@ Configured Stremio metadata addons are ordered fallbacks.
 media           → 1 row per movie/show (key: imdb_id)
 releases        → N releases per media (quality, hash, source, date)
 failed_releases → unmatched releases (for retry)
+match_rules     → title (+ year) always linked to a media, or ignored
 ```
 
 SQLite uses WAL so catalogs remain readable during writes. Catalog responses
 are compressed, cached, and pre-warmed after changes.
 `CATALOG_HTTP_CACHE_SECONDS` controls HTTP caching (`30` by default, `0` to
 disable). The optional local artwork proxy/cache has its own TTL and size cap.
+
+With a large library (a database of several hundred MB), give the container at
+least 512 MB to 1 GB of memory. A memory limit that is too low (`mem_limit`)
+prevents SQLite from caching its pages: the WebUI and catalogs may then take
+minutes to respond.
 
 ### Artwork and AIOMetadata
 

@@ -1092,3 +1092,20 @@ input:checked + .slider::before { transform: translateX(22px); }
   .grid-2 { grid-template-columns: 1fr; }
   .search-input { width: 180px; }
 }
+
+/* ─── Correction d'identification / suppression (tiroir média) ─── */
+.drawer-tool {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.drawer-tool > summary { cursor: pointer; font-weight: 600; }
+.drawer-tool .override-form { margin-top: 8px; padding: 0; flex-wrap: wrap; }
+.drawer-tool-hint { margin: 6px 0; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+.drawer-tool-check { display: inline-flex; align-items: center; gap: 6px; margin: 8px 8px 8px 0; font-size: 12px; }
+.drawer-tool-msg { margin-top: 6px; font-size: 12px; }
+.rule-title-option { display: flex; margin: 4px 0; }
+.drawer-tool .override-select, .drawer-tool .override-input { width: auto; flex: 0 1 auto; }
+.rules-card > summary { cursor: pointer; }

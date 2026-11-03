@@ -23,7 +23,7 @@ function navigate(sectionId) {
   if (sectionId === 'sources')  loadSourceManager();
   if (sectionId === 'catalogs') loadCatalogManager();
   if (sectionId === 'sync')     { loadAutoRefreshStatus(); loadSyncHistory(); refreshSyncStatus(); }
-  if (sectionId === 'failures') loadFailed();
+  if (sectionId === 'failures') { loadFailed(); loadMatchRules(); }
   if (sectionId === 'config')   { loadConfig(); loadMaintenanceHistory(); }
   if (sectionId === 'overview') { loadStats(); loadOverview(); }
 }
@@ -708,6 +708,7 @@ function renderReleasesList(data, pager) {
 // ═══════════════════════════ DRAWER ════════════════════════════════════
 
 function openDrawer(imdbId, media) {
+  drawerRuleTitles = { mediaId: null, titles: [] };
   const drawer   = document.getElementById('releasesDrawer');
   const backdrop = document.getElementById('drawerBackdrop');
   const info     = document.getElementById('drawerInfo');
@@ -741,6 +742,30 @@ function openDrawer(imdbId, media) {
       <button class="btn-sm" onclick="changeCatalog('${escHtml(imdbId)}')" style="font-size:12px">Appliquer</button>
       <span id="drawerCatalogMsg" style="font-size:12px"></span>
     </div>
+    <details class="drawer-tool" ontoggle="if (this.open) loadRuleTitlesPreview('${escHtml(imdbId)}')">
+      <summary>${t('media_fix_title')}</summary>
+      <p class="text-muted drawer-tool-hint">${t('media_fix_hint')}</p>
+      <div class="override-form">
+        <input id="drawerFixInput" class="override-input" placeholder="tt1234567 / 12345">
+        <select id="drawerFixType" class="override-select">
+          <option value="imdb">IMDb ID</option>
+          <option value="tmdb_movie">${t('id_type_tmdb_movie')}</option>
+          <option value="tmdb_tv">${t('id_type_tmdb_tv')}</option>
+          <option value="tvdb">TVDB ID</option>
+        </select>
+        <button class="btn-sm btn-primary" onclick="submitMediaFix('${escHtml(imdbId)}')">${t('media_fix_apply')}</button>
+      </div>
+      <label class="drawer-tool-check"><input type="checkbox" id="drawerFixRemember" checked> ${t('media_fix_remember')}</label>
+      <div id="drawerRuleTitles" class="drawer-tool-hint"></div>
+      <div id="drawerFixMsg" class="drawer-tool-msg"></div>
+    </details>
+    <details class="drawer-tool" ontoggle="if (this.open) loadRuleTitlesPreview('${escHtml(imdbId)}')">
+      <summary>${t('media_delete_title')}</summary>
+      <label class="drawer-tool-check"><input type="checkbox" id="drawerDeleteIgnore" checked> ${t('media_delete_ignore')}</label>
+      <div id="drawerDeleteTitles" class="drawer-tool-hint"></div>
+      <button class="btn-sm btn-danger" onclick="deleteMediaFromDrawer('${escHtml(imdbId)}')">${t('media_delete_btn')}</button>
+      <div id="drawerDeleteMsg" class="drawer-tool-msg"></div>
+    </details>
   `;
 
   body.innerHTML = '<p class="text-muted">' + t('sync_loading') + '</p>';
@@ -826,6 +851,176 @@ async function changeCatalog(imdbId) {
   }
 }
 window.changeCatalog = changeCatalog;
+
+// ─── Correction d'identification et suppression ciblée ────────────────────
+
+function setDrawerToolMessage(id, text, ok) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = ok === true ? 'var(--success)' : ok === false ? 'var(--danger)' : 'var(--text-muted)';
+}
+
+let drawerRuleTitles = { mediaId: null, titles: [] };
+
+function renderRuleTitleChecklist(containerId, prefix) {
+  const box = document.getElementById(containerId);
+  if (!box) return;
+  const titles = drawerRuleTitles.titles;
+  if (!titles.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div>${t('media_fix_titles')}</div>` + titles.map((entry, index) => `
+    <label class="drawer-tool-check rule-title-option">
+      <input type="checkbox" data-rule-title="${prefix}" data-index="${index}"${entry.suggested ? ' checked' : ''}>
+      ${escHtml(entry.title)}${entry.year ? ` (${escHtml(entry.year)})` : ''}
+      <span class="text-muted">· ${entry.count} rlz</span>
+    </label>`).join('');
+}
+
+function selectedRuleTitles(prefix) {
+  return [...document.querySelectorAll(`input[data-rule-title="${prefix}"]:checked`)]
+    .map(input => drawerRuleTitles.titles[Number(input.dataset.index)])
+    .filter(Boolean)
+    .map(entry => ({ title: entry.title, year: entry.year }));
+}
+
+async function loadRuleTitlesPreview(imdbId) {
+  if (drawerRuleTitles.mediaId !== imdbId) {
+    drawerRuleTitles = { mediaId: imdbId, titles: [] };
+    try {
+      const r = await fetch('/api/media/' + encodeURIComponent(imdbId) + '/rule-titles');
+      const d = await r.json();
+      drawerRuleTitles.titles = (d.titles || []).slice(0, 30);
+    } catch (e) { drawerRuleTitles.titles = []; }
+  }
+  if (!document.querySelector('input[data-rule-title="fix"]')) renderRuleTitleChecklist('drawerRuleTitles', 'fix');
+  if (!document.querySelector('input[data-rule-title="delete"]')) renderRuleTitleChecklist('drawerDeleteTitles', 'delete');
+}
+window.loadRuleTitlesPreview = loadRuleTitlesPreview;
+
+function refreshLibraryAfterMediaChange() {
+  loadStats();
+  loadLibraryCounts();
+  setTimeout(() => loadLibrary(), 300);
+}
+
+async function submitMediaFix(imdbId) {
+  const idValue = document.getElementById('drawerFixInput')?.value?.trim();
+  const idType = document.getElementById('drawerFixType')?.value;
+  const remember = !!document.getElementById('drawerFixRemember')?.checked;
+  if (!idValue) { setDrawerToolMessage('drawerFixMsg', t('media_fix_missing'), false); return; }
+  setDrawerToolMessage('drawerFixMsg', t('media_fix_searching'));
+  try {
+    const r = await fetch('/api/media/' + encodeURIComponent(imdbId) + '/reidentify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_type: idType, id_value: idValue, remember, titles: selectedRuleTitles('fix') })
+    });
+    const d = await r.json();
+    if (!r.ok) { setDrawerToolMessage('drawerFixMsg', '✗ ' + (d.error || 'Erreur'), false); return; }
+    setDrawerToolMessage('drawerFixMsg', t('media_fix_done')
+      .replace('{name}', d.name || d.media_id)
+      .replace('{releases}', d.moved_releases)
+      .replace('{rules}', d.rules), true);
+    refreshLibraryAfterMediaChange();
+  } catch (e) {
+    setDrawerToolMessage('drawerFixMsg', '✗ ' + t('media_network_error'), false);
+  }
+}
+window.submitMediaFix = submitMediaFix;
+
+async function deleteMediaFromDrawer(imdbId) {
+  const ignore = !!document.getElementById('drawerDeleteIgnore')?.checked;
+  if (!confirm(ignore ? t('media_delete_confirm_ignore') : t('media_delete_confirm'))) return;
+  try {
+    const r = await fetch('/api/media/' + encodeURIComponent(imdbId), {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ignore_future: ignore, titles: selectedRuleTitles('delete') })
+    });
+    const d = await r.json();
+    if (!r.ok) { setDrawerToolMessage('drawerDeleteMsg', '✗ ' + (d.error || 'Erreur'), false); return; }
+    closeDrawer();
+    refreshLibraryAfterMediaChange();
+  } catch (e) {
+    setDrawerToolMessage('drawerDeleteMsg', '✗ ' + t('media_network_error'), false);
+  }
+}
+window.deleteMediaFromDrawer = deleteMediaFromDrawer;
+
+let rulesPage = 1;
+let rulesSearchTimer = null;
+
+function debouncedLoadMatchRules() {
+  clearTimeout(rulesSearchTimer);
+  rulesSearchTimer = setTimeout(() => { rulesPage = 1; loadMatchRules(); }, 300);
+}
+window.debouncedLoadMatchRules = debouncedLoadMatchRules;
+
+async function loadMatchRules() {
+  const container = document.getElementById('rulesContainer');
+  const pager = document.getElementById('rulesPager');
+  if (!container) return;
+  const params = new URLSearchParams({ page: rulesPage, limit: 50 });
+  const search = document.getElementById('rulesSearch')?.value?.trim();
+  if (search) params.append('search', search);
+  try {
+    const r = await fetch('/api/match-rules?' + params);
+    const d = await r.json();
+    const countEl = document.getElementById('rulesCount');
+    if (countEl && !search) countEl.textContent = `(${d.total.toLocaleString()})`;
+    if (!d.items?.length) {
+      container.innerHTML = '<p class="text-muted">' + t('rules_none') + '</p>';
+      if (pager) pager.innerHTML = '';
+      return;
+    }
+    container.innerHTML = `<div style="overflow-x:auto">
+      <table class="failed-table">
+        <thead><tr>
+          <th>${t('rules_col_title')}</th><th>${t('rules_col_year')}</th><th>${t('rules_col_action')}</th><th>${t('rules_col_date')}</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${d.items.map(rule => `<tr id="rule-${rule.id}">
+            <td style="font-size:12px"><strong>${escHtml(rule.label || rule.title_key)}</strong></td>
+            <td style="font-size:12px">${rule.year ? escHtml(rule.year) : t('rules_any_year')}</td>
+            <td style="font-size:12px">${rule.action === 'ignore'
+              ? `<span class="text-muted">${t('rules_ignored')}${rule.target_name ? ` — ${escHtml(rule.target_name)}` : ''}</span>`
+              : `→ ${escHtml(rule.target_name || rule.media_id || '')} <span class="text-muted">(${escHtml(rule.media_id || '')})</span>`}</td>
+            <td class="mlt-date">${fmtDate(rule.updated_at)}</td>
+            <td><button class="btn-sm btn-danger" onclick="deleteMatchRule(${rule.id})" title="${escHtml(t('rules_delete'))}">✕</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+    if (pager) {
+      pager.innerHTML = '';
+      const info = document.createElement('span');
+      info.className = 'pager-info';
+      info.textContent = `${d.total.toLocaleString()} · ${d.page} / ${d.pages}`;
+      pager.appendChild(info);
+      if (d.pages > 1) {
+        for (const [label, target, disabled] of [['←', d.page - 1, d.page <= 1], ['→', d.page + 1, d.page >= d.pages]]) {
+          const button = document.createElement('button');
+          button.className = 'pager-btn';
+          button.textContent = label;
+          button.disabled = disabled;
+          button.onclick = () => { rulesPage = target; loadMatchRules(); };
+          pager.appendChild(button);
+        }
+      }
+    }
+  } catch (e) {
+    container.innerHTML = '<p class="text-muted">Erreur de chargement</p>';
+    console.error('loadMatchRules', e);
+  }
+}
+window.loadMatchRules = loadMatchRules;
+
+async function deleteMatchRule(id) {
+  if (!confirm(t('rules_delete_confirm'))) return;
+  const r = await fetch('/api/match-rules/' + id, { method: 'DELETE' });
+  if (r.ok) document.getElementById('rule-' + id)?.remove();
+}
+window.deleteMatchRule = deleteMatchRule;
 
 // ═══════════════════════════ SOURCES ═══════════════════════════════════
 
@@ -3214,6 +3409,7 @@ async function loadFailed() {
                   <option value="tvdb">TVDB ID</option>
                 </select>
                 <button class="btn-sm btn-primary" onclick="submitOverride(${f.id})">Appliquer</button>
+                <label class="drawer-tool-check"><input type="checkbox" id="override-remember-${f.id}" checked> ${t('media_fix_remember')}</label>
                 <span id="override-status-${f.id}" class="override-status"></span>
               </div>
             </td>
@@ -3277,7 +3473,11 @@ async function submitOverride(id) {
     const r = await fetch('/api/failed/' + id + '/override', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_type: idType, id_value: idValue })
+      body: JSON.stringify({
+        id_type: idType,
+        id_value: idValue,
+        remember: document.getElementById('override-remember-' + id)?.checked !== false
+      })
     });
     const d = await r.json();
     if (!r.ok) {

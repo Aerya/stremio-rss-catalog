@@ -204,8 +204,139 @@ function signedCometNetTorrent(identity, fields) {
   return torrent;
 }
 
+async function verifyManualIdentification() {
+  const dbPath = path.join(os.tmpdir(), `stremio-rss-manual-id-${process.pid}.db`);
+  for (const suffix of ['', '-shm', '-wal']) {
+    try { fs.unlinkSync(dbPath + suffix); } catch {}
+  }
+  const db = new DatabaseManager(dbPath);
+  try {
+    const movies = {
+      tt0000001: { name: 'Dune', year: '1984', tmdb_id: 841 },
+      tt0000002: { name: 'Dune: Part One', year: '2021', tmdb_id: 438631 }
+    };
+    const matcher = new TMDBMatcher(db);
+    matcher.getApiKey = () => 'test';
+    matcher.fetchByImdbId = async imdbId => movies[imdbId]
+      ? { ...movies[imdbId], imdb_id: imdbId, media_type: 'movie', genres: [878], poster: null }
+      : null;
+    let automaticCalls = 0;
+    matcher.matchItem = async () => {
+      automaticCalls++;
+      return { ...movies.tt0000001, imdb_id: 'tt0000001', media_type: 'movie', genres: [878] };
+    };
+    matcher.stremioMetadata.search = async () => null;
+    const item = (id, cleanName, year) => ({
+      release_name: `${cleanName.replace(/\s+/g, '.')}.${year}.MULTi.1080p.WEB-DL-GRP`,
+      indexer_rlz_id: id,
+      cleanName,
+      year,
+      catalog_type: 'films',
+      type: 'movie',
+      source_url: 'https://rss.invalid/feed'
+    });
+
+    // Identification automatique erronée, puis correction depuis la médiathèque.
+    await matcher.matchBatch([item('manual-1', 'Dune', '2021')]);
+    assert.equal(db.getReleasesByMedia('tt0000001').length, 1);
+    const firstSeen = db.getMediaByImdbId('tt0000001').first_seen_at;
+
+    const webui = Object.create(WebUI.prototype);
+    webui.db = db;
+    webui.rssParser = new RSSParser({}, db);
+    webui.rssParser.releaseParser.parseMany = () => { throw new Error('le parseur Python ne doit pas être relancé'); };
+    assert.deepEqual(webui.getMediaRuleTitles('tt0000001'), [{ title: 'Dune', year: '2021', count: 1, suggested: true }]);
+    // Un nom de release tronqué ne doit pas produire de règle générique.
+    db.addRelease({ media_imdb_id: 'tt0000001', release_name: 'The.1080p.WEB', indexer_rlz_id: 'manual-generic' });
+    assert.equal(webui.getMediaRuleTitles('tt0000001').find(entry => entry.title === 'The').suggested, false);
+    const titles = webui.selectMediaRuleTitles('tt0000001');
+    assert.deepEqual(titles.map(entry => entry.title), ['Dune']);
+    assert.deepEqual(webui.selectMediaRuleTitles('tt0000001', [{ title: 'The' }, { title: 'Inconnu' }])
+      .map(entry => entry.title), ['The']);
+    db.db.prepare("DELETE FROM releases WHERE indexer_rlz_id = 'manual-generic'").run();
+
+    await assert.rejects(() => matcher.reidentifyMedia('tt0000001', 'imdb', 'not-an-id', { titles }), /IMDb invalide/);
+    const fixed = await matcher.reidentifyMedia('tt0000001', 'imdb', 'tt0000002', { titles });
+    assert.equal(fixed.media_id, 'tt0000002');
+    assert.equal(fixed.moved_releases, 1);
+    assert.equal(fixed.rules, 1);
+    assert.equal(db.getMediaByImdbId('tt0000001'), undefined);
+    const corrected = db.getMediaByImdbId('tt0000002');
+    assert.equal(corrected.catalog_type, 'films');
+    assert.equal(corrected.match_provider, 'manuel');
+    assert.equal(corrected.first_seen_at, firstSeen);
+    assert.equal(db.getReleasesByMedia('tt0000002')[0].indexer_rlz_id, 'manual-1');
+
+    // La règle s'applique aux prochaines releases, sans matching automatique,
+    // quelles que soient la casse et la ponctuation du titre.
+    assert.equal(db.findMatchRule('DUNE!', '2021').media_id, 'tt0000002');
+    automaticCalls = 0;
+    await matcher.matchBatch([item('manual-2', 'dune', '2021')]);
+    assert.equal(automaticCalls, 0);
+    assert.equal(db.getReleasesByMedia('tt0000002').length, 2);
+
+    // Une règle datée ne s'applique pas à une autre année.
+    await matcher.matchBatch([item('manual-3', 'Dune', '1984')]);
+    assert.equal(automaticCalls, 1);
+    assert.equal(db.getReleasesByMedia('tt0000001').length, 1);
+
+    // Suppression ciblée avec blocage des réimports.
+    const removed = db.deleteMediaCompletely('tt0000001');
+    assert.deepEqual(removed, { media: 1, releases: 1 });
+    db.upsertMatchRule({ title: 'Dune', year: '1984', action: 'ignore' });
+    await matcher.matchBatch([item('manual-3', 'Dune', '1984')]);
+    assert.equal(db.getMediaByImdbId('tt0000001'), undefined);
+    assert.equal(db.hasRelease('manual-3'), false);
+
+    // Supprimer le média cible retire aussi les règles qui le recréeraient.
+    db.deleteMediaCompletely('tt0000002');
+    assert.equal(db.findMatchRule('Dune', '2021'), null);
+    assert.equal(db.findMatchRule('Dune', '1984').action, 'ignore');
+
+    // Une règle dont le média a disparu le recrée depuis l'ID mémorisé.
+    db.upsertMatchRule({
+      title: 'Arrival', year: '', action: 'map', media_id: 'tt0000002', id_type: 'imdb', id_value: 'tt0000002'
+    });
+    automaticCalls = 0;
+    const recreated = await matcher.matchBatch([item('manual-4', 'Arrival', '2016')]);
+    assert.equal(automaticCalls, 0);
+    assert.equal(recreated.results.length, 1);
+    assert.equal(db.getReleasesByMedia('tt0000002')[0].indexer_rlz_id, 'manual-4');
+
+    // Une règle impossible à résoudre ne retombe jamais sur le matching automatique.
+    db.upsertMatchRule({
+      title: 'Introuvable', action: 'map', media_id: 'tt0009999', id_type: 'imdb', id_value: 'tt0009999'
+    });
+    await matcher.matchBatch([item('manual-5', 'Introuvable', '2020')]);
+    assert.equal(automaticCalls, 0);
+    assert.equal(db.getFailedReleases().find(row => row.indexer_rlz_id === 'manual-5').fail_reason, 'match_rule_unresolved');
+
+    // Le correctif d'une release échouée est lui aussi mémorisé.
+    db.addFailedRelease({
+      release_name: 'Obscure.Title.2020.1080p', clean_name: 'Obscure Title', indexer_rlz_id: 'manual-6',
+      catalog_type: 'films', type: 'movie', year: '2020', fail_reason: 'no_tmdb_match'
+    });
+    const failed = db.getFailedReleases().find(row => row.indexer_rlz_id === 'manual-6');
+    await matcher.applyOverride(failed, 'imdb', 'tt0000002');
+    assert.equal(db.findMatchRule('obscure title', '2020').media_id, 'tt0000002');
+    assert.equal(db.getMatchRules({ search: 'obscure' }).total, 1);
+
+    assert.equal(TMDBMatcher.compatibleCatalogType('documentaires', 'series'), 'documentaires');
+    assert.equal(TMDBMatcher.compatibleCatalogType('films', 'series'), 'series');
+    assert.equal(TMDBMatcher.compatibleCatalogType('emissions', 'movie'), 'films');
+    assert.equal(TMDBMatcher.compatibleCatalogType('concerts', 'movie'), 'concerts');
+    console.log('✓ Correction d’identification, règles mémorisées et suppression ciblée');
+  } finally {
+    db.close();
+    for (const suffix of ['', '-shm', '-wal']) {
+      try { fs.unlinkSync(dbPath + suffix); } catch {}
+    }
+  }
+}
+
 async function main() {
   verifyPublishedSchemaUpgrade();
+  await verifyManualIdentification();
     console.log('✓ Mise à niveau du schéma publié sans perte de données ni de configuration');
   let baseUrl;
   let catalogRequestKeptSecret = false;
