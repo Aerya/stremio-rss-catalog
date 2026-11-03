@@ -124,6 +124,44 @@ const STRINGS = {
 
     appriseAdded:     'Hinzugefügt',
     appriseTestBody:  'Apprise ist korrekt konfiguriert und verbunden!'
+  },
+
+  hu: {
+    syncSuccess:      'Szinkronizálás befejezve',
+    syncError:        'Sikertelen szinkronizálás',
+    syncTest:         'Teszt — Stremio RSS Catalog',
+
+    fieldAdded:       'Hozzáadva',
+    fieldTotals:      'Összesen',
+    fieldDetails:     'Részletek',
+    fieldError:       'Hiba',
+    fieldWebUI:       'WebUI',
+    fieldWebUILink:   'WebUI megnyitása',
+
+    duration:         'Időtartam',
+    matched:          'Azonosítva',
+    failed:           'Feldolgozatlan',
+    seconds:          'mp',
+    noneAdded:        'Nem került hozzá új média',
+
+    films:            'Filmek',
+    documentaires:    'Dokumentumfilmek',
+    series:           'Sorozatok',
+    emissions:        'Tévéműsorok',
+    animes:           'Anime',
+    concerts:         'Koncertek',
+    spectacles:       'Élő előadások',
+
+    galleryFilms:         'Legutóbb hozzáadott filmek',
+    galleryDocs:          'Legutóbb hozzáadott dokumentumfilmek',
+    gallerySeries:        'Legutóbb hozzáadott sorozatok',
+    galleryEmissions:     'Legutóbb hozzáadott tévéműsorok',
+    galleryAnimes:        'Legutóbb hozzáadott animék',
+    galleryConcerts:      'Legutóbb hozzáadott koncertek',
+    gallerySpectacles:    'Legutóbb hozzáadott élő előadások',
+
+    appriseAdded:     'Hozzáadva',
+    appriseTestBody:  'Az Apprise megfelelően be van állítva és csatlakozik!'
   }
 };
 

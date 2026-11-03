@@ -7,13 +7,13 @@
   <strong>Build Stremio catalogs from content actually available in your own sources</strong>
 </p>
 
-> 🇫🇷 [Français](./README.md) · 🇩🇪 [Deutsch](./README.de.md)
+> 🇫🇷 [Français](./README.md) · 🇩🇪 [Deutsch](./README.de.md) · 🇭🇺 [Magyar](./README.hu.md)
 
 <p align="center">
   <img src="https://img.shields.io/github/actions/workflow/status/Aerya/stremio-rss-catalog/ghcr.yml?branch=main&label=build&style=flat-square" alt="Build">
   <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker">
   <img src="https://img.shields.io/badge/multi--arch-amd64%20%7C%20arm64-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Multi-arch">
-  <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE-orange?style=flat-square" alt="i18n">
+  <img src="https://img.shields.io/badge/i18n-FR%20%7C%20EN%20%7C%20DE%20%7C%20HU-orange?style=flat-square" alt="i18n">
 </p>
 
 <p align="center">
@@ -104,9 +104,9 @@ does not provide streams itself.
 | **PostersPlus** | Direct support for AIOMetadata-compatible URL templates, with RPDB and original-art fallbacks |
 | **Discord notifs** | Enhanced notifications with a poster gallery on each sync; PostersPlus first, then RPDB or the original poster |
 | **Apprise notifs** | Multi-service notifications via Apprise server (optional) |
-| **Notification language** | Discord/Apprise language configurable independently from the WebUI (FR/EN/DE) |
+| **Notification language** | Discord/Apprise language configurable independently from the WebUI (FR/EN/DE/HU) |
 | **Explicit auto sync** | Collect due sources on their own schedules → normalize and match → unfrozen catalogs → invalidate the Stremio cache |
-| **Modern WebUI** | Sidebar, dark/light theme, multilingual FR/EN/DE |
+| **Modern WebUI** | Sidebar, dark/light theme, multilingual FR/EN/DE/HU |
 | **Media Library** | Redesign: poster/list view, sort, year filter (shortcuts + free input/range), inline releases, RPDB posters, persistent pagination |
 | **Overview** | Latest additions in collapsible per-category accordions (title + year + IMDB link) |
 | **Migration and repair** | Read-only analysis, grouped corrections, history, versioned migrations, and automatic SQLite backup before schema changes |
