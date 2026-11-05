@@ -554,7 +554,8 @@ class TMDBMatcher {
           item.indexer_rlz_id,
           item.availability_scan_token || null,
           Date.now(),
-          item.published_at || null
+          item.published_at || null,
+          item.source_url || null
         );
         alreadyInDb++;
         matched++;
@@ -568,7 +569,8 @@ class TMDBMatcher {
           item.hash,
           item.availability_scan_token || null,
           Date.now(),
-          item.published_at || null
+          item.published_at || null,
+          item.source_url || null
         );
         alreadyInDb++;
         matched++;
