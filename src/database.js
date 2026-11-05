@@ -385,6 +385,7 @@ class DatabaseManager {
     this._migrateAvailability();
     this._migrateMatchAudit();
     this._migrateReleasePublishedAt();
+    this._migrateReleaseSources();
 
     this.initDefaultConfig();
     this.seedManagedCatalogs();
@@ -429,6 +430,47 @@ class DatabaseManager {
       this.db.prepare('ALTER TABLE releases ADD COLUMN published_at INTEGER').run();
       console.log('[DB] Migration releases : date de publication ajoutée');
     }
+  }
+
+  _migrateReleaseSources() {
+    // Une même release (GUID ou hash) peut être publiée par plusieurs sources.
+    // releases.source_url ne garde que la première : cette table conserve
+    // toutes les sources pour que les catalogues filtrés par source les voient.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS release_sources (
+        release_id INTEGER NOT NULL REFERENCES releases(id) ON DELETE CASCADE,
+        source_url TEXT NOT NULL,
+        first_seen_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        published_at INTEGER,
+        PRIMARY KEY(release_id, source_url)
+      );
+      CREATE INDEX IF NOT EXISTS idx_release_sources_source
+        ON release_sources(source_url, release_id);
+    `);
+    const backfilled = this.db.prepare(`
+      INSERT OR IGNORE INTO release_sources (release_id, source_url, first_seen_at, last_seen_at, published_at)
+      SELECT id, source_url, added_at, COALESCE(last_seen_at, added_at), published_at
+      FROM releases
+      WHERE source_url IS NOT NULL AND source_url != ''
+        AND NOT EXISTS (
+          SELECT 1 FROM release_sources rs
+          WHERE rs.release_id = releases.id AND rs.source_url = releases.source_url
+        )
+    `).run().changes;
+    if (backfilled > 0) console.log(`[DB] Migration sources de releases : ${backfilled} association(s) ajoutée(s)`);
+  }
+
+  _recordReleaseSource(releaseId, sourceUrl, seenAt = Date.now(), publishedAt = null) {
+    if (!releaseId || !sourceUrl) return;
+    const published = Number.isFinite(Number(publishedAt)) && publishedAt !== null ? Number(publishedAt) : null;
+    this.db.prepare(`
+      INSERT INTO release_sources (release_id, source_url, first_seen_at, last_seen_at, published_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(release_id, source_url) DO UPDATE SET
+        last_seen_at = MAX(release_sources.last_seen_at, excluded.last_seen_at),
+        published_at = COALESCE(excluded.published_at, release_sources.published_at)
+    `).run(releaseId, String(sourceUrl), seenAt, seenAt, published);
   }
 
   _migrateAvailability() {
@@ -929,9 +971,10 @@ class DatabaseManager {
     if (catalog.source_urls?.length) {
       selectorConditions.push(`EXISTS (
         SELECT 1 FROM releases r
+        JOIN release_sources rs ON rs.release_id = r.id
         WHERE r.media_imdb_id = m.imdb_id
-          AND r.source_url IN (${catalog.source_urls.map(() => '?').join(',')})
-          ${frozenAt ? 'AND r.added_at <= ?' : ''}
+          AND rs.source_url IN (${catalog.source_urls.map(() => '?').join(',')})
+          ${frozenAt ? 'AND rs.first_seen_at <= ?' : ''}
       )`);
       selectorParams.push(...catalog.source_urls);
       if (frozenAt) selectorParams.push(frozenAt);
@@ -1060,14 +1103,15 @@ class DatabaseManager {
       FROM media m WHERE ${where}
     `).get(...params);
     const sources = this.db.prepare(`
-      SELECT r.source_url,
+      SELECT rs.source_url,
         COUNT(DISTINCT r.media_imdb_id) AS media_count,
         COUNT(*) AS release_count,
-        MAX(r.added_at) AS last_added_at
-      FROM releases r
+        MAX(rs.first_seen_at) AS last_added_at
+      FROM release_sources rs
+      JOIN releases r ON r.id = rs.release_id
       JOIN media m ON m.imdb_id = r.media_imdb_id
-      WHERE ${where} AND r.source_url IS NOT NULL AND r.source_url != ''
-      GROUP BY r.source_url
+      WHERE ${where}
+      GROUP BY rs.source_url
       ORDER BY media_count DESC, last_added_at DESC
     `).all(...params);
     return { ...summary, sources };
@@ -1085,21 +1129,22 @@ class DatabaseManager {
   }
 
   getMediaSourceStatistics(catalogType = null) {
-    const conditions = ["r.source_url IS NOT NULL", "r.source_url != ''"];
+    const conditions = ['1 = 1'];
     const params = [];
     if (catalogType) {
       conditions.push('m.catalog_type = ?');
       params.push(String(catalogType));
     }
     return this.db.prepare(`
-      SELECT r.source_url,
+      SELECT rs.source_url,
         COUNT(DISTINCT r.media_imdb_id) AS media_count,
         COUNT(*) AS release_count,
-        MAX(r.added_at) AS last_added_at
-      FROM releases r
+        MAX(rs.first_seen_at) AS last_added_at
+      FROM release_sources rs
+      JOIN releases r ON r.id = rs.release_id
       JOIN media m ON m.imdb_id = r.media_imdb_id
       WHERE ${conditions.join(' AND ')}
-      GROUP BY r.source_url
+      GROUP BY rs.source_url
       ORDER BY media_count DESC, last_added_at DESC
     `).all(...params);
   }
@@ -1133,14 +1178,19 @@ class DatabaseManager {
     const selectedSources = Array.isArray(catalog.source_urls)
       ? catalog.source_urls.map(String).filter(Boolean)
       : [];
-    const sourceFilter = selectedSources.length
-      ? ` AND r.source_url IN (${selectedSources.map(() => '?').join(',')})`
-      : '';
-    const rssDateOrder = `COALESCE((
-      SELECT MAX(COALESCE(r.published_at, r.added_at))
-      FROM releases r
-      WHERE r.media_imdb_id = m.imdb_id${sourceFilter}
-    ), m.first_seen_at, 0)`;
+    const rssDateOrder = selectedSources.length
+      ? `COALESCE((
+          SELECT MAX(COALESCE(rs.published_at, r.published_at, rs.first_seen_at))
+          FROM releases r
+          JOIN release_sources rs ON rs.release_id = r.id
+          WHERE r.media_imdb_id = m.imdb_id
+            AND rs.source_url IN (${selectedSources.map(() => '?').join(',')})
+        ), m.first_seen_at, 0)`
+      : `COALESCE((
+          SELECT MAX(COALESCE(r.published_at, r.added_at))
+          FROM releases r
+          WHERE r.media_imdb_id = m.imdb_id
+        ), m.first_seen_at, 0)`;
 
     const sortOrder = {
       rss_date_desc: `${rssDateOrder} DESC`,
@@ -1491,6 +1541,11 @@ class DatabaseManager {
         now,
         release.scan_token || null
       );
+      if (release.source_url) {
+        const stored = this.db.prepare('SELECT id FROM releases WHERE indexer_rlz_id = ?')
+          .get(release.indexer_rlz_id);
+        this._recordReleaseSource(stored?.id, release.source_url, now, release.published_at ?? null);
+      }
       this.db.prepare(`
         UPDATE media
         SET last_seen_at = MAX(COALESCE(last_seen_at, 0), ?),
@@ -1514,11 +1569,12 @@ class DatabaseManager {
     return !!this.db.prepare('SELECT id FROM releases WHERE hash = ?').get(hash);
   }
 
-  markReleaseSeenByIndexer(indexerRlzId, scanToken = null, seenAt = Date.now(), publishedAt = null) {
+  markReleaseSeenByIndexer(indexerRlzId, scanToken = null, seenAt = Date.now(), publishedAt = null, sourceUrl = null) {
     const row = this.db.prepare(
-      'SELECT media_imdb_id FROM releases WHERE indexer_rlz_id = ?'
+      'SELECT id, media_imdb_id FROM releases WHERE indexer_rlz_id = ?'
     ).get(indexerRlzId);
     if (!row) return false;
+    this._recordReleaseSource(row.id, sourceUrl, seenAt, publishedAt);
     this.db.prepare(`
       UPDATE releases
       SET published_at = COALESCE(?, published_at), last_seen_at = ?, last_scan_token = COALESCE(?, last_scan_token),
@@ -1533,8 +1589,13 @@ class DatabaseManager {
     return true;
   }
 
-  markReleaseSeenByHash(hash, scanToken = null, seenAt = Date.now(), publishedAt = null) {
+  markReleaseSeenByHash(hash, scanToken = null, seenAt = Date.now(), publishedAt = null, sourceUrl = null) {
     if (!hash) return false;
+    if (sourceUrl) {
+      for (const release of this.db.prepare('SELECT id FROM releases WHERE hash = ?').all(hash)) {
+        this._recordReleaseSource(release.id, sourceUrl, seenAt, publishedAt);
+      }
+    }
     const rows = this.db.prepare(
       'SELECT DISTINCT media_imdb_id FROM releases WHERE hash = ?'
     ).all(hash);
@@ -1803,9 +1864,10 @@ class DatabaseManager {
         (SELECT GROUP_CONCAT(release_name, '|||')
          FROM (SELECT release_name FROM releases WHERE media_imdb_id = m.imdb_id ORDER BY added_at DESC LIMIT 3)
         ) as release_names_raw,
-        (SELECT json_group_array(DISTINCT source_url)
-         FROM releases
-         WHERE media_imdb_id = m.imdb_id AND source_url IS NOT NULL AND source_url != ''
+        (SELECT json_group_array(DISTINCT rs.source_url)
+         FROM release_sources rs
+         JOIN releases sr ON sr.id = rs.release_id
+         WHERE sr.media_imdb_id = m.imdb_id
         ) as source_urls_raw
       FROM media m LEFT JOIN releases r ON r.media_imdb_id = m.imdb_id
       ${where}
@@ -2290,11 +2352,11 @@ class DatabaseManager {
     // Stats principales avec breakdown par catégorie
     const rows = this.db.prepare(`
       SELECT
-        r.source_url,
+        rs.source_url,
         COUNT(*)                      AS release_count,
         COUNT(DISTINCT r.media_imdb_id) AS media_count,
-        MIN(r.added_at)               AS first_seen,
-        MAX(r.added_at)               AS last_seen,
+        MIN(rs.first_seen_at)         AS first_seen,
+        MAX(rs.first_seen_at)         AS last_seen,
         SUM(CASE WHEN m.catalog_type = 'films'         THEN 1 ELSE 0 END) AS films_count,
         SUM(CASE WHEN m.catalog_type = 'documentaires' THEN 1 ELSE 0 END) AS documentaires_count,
         SUM(CASE WHEN m.catalog_type = 'series'        THEN 1 ELSE 0 END) AS series_count,
@@ -2302,10 +2364,10 @@ class DatabaseManager {
         SUM(CASE WHEN m.catalog_type = 'animés'        THEN 1 ELSE 0 END) AS animes_count,
         SUM(CASE WHEN m.catalog_type = 'concerts'      THEN 1 ELSE 0 END) AS concerts_count,
         SUM(CASE WHEN m.catalog_type = 'spectacles'    THEN 1 ELSE 0 END) AS spectacles_count
-      FROM releases r
+      FROM release_sources rs
+      JOIN releases r ON r.id = rs.release_id
       LEFT JOIN media m ON r.media_imdb_id = m.imdb_id
-      WHERE r.source_url IS NOT NULL AND r.source_url != ''
-      GROUP BY r.source_url
+      GROUP BY rs.source_url
       ORDER BY release_count DESC
     `).all();
 
@@ -2343,7 +2405,7 @@ class DatabaseManager {
         error_msg      AS last_error_msg,
         http_status    AS last_http_status
       FROM feed_fetch_errors
-      WHERE source_url NOT IN (SELECT DISTINCT source_url FROM releases WHERE source_url IS NOT NULL)
+      WHERE source_url NOT IN (SELECT DISTINCT source_url FROM release_sources)
       GROUP BY source_url
       ORDER BY last_error_at DESC
     `).all();

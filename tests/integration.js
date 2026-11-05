@@ -334,10 +334,77 @@ async function verifyManualIdentification() {
   }
 }
 
+async function verifySharedReleaseSources() {
+  const dbPath = path.join(os.tmpdir(), `stremio-rss-shared-sources-${process.pid}.db`);
+  for (const suffix of ['', '-shm', '-wal']) {
+    try { fs.unlinkSync(dbPath + suffix); } catch {}
+  }
+  const db = new DatabaseManager(dbPath);
+  try {
+    const matcher = new TMDBMatcher(db);
+    matcher.getApiKey = () => 'test';
+    matcher.stremioMetadata.search = async () => null;
+    matcher.matchItem = async item => ({
+      imdb_id: item.indexer_rlz_id.includes('hash') ? 'tt0000902' : 'tt0000901',
+      tmdb_id: item.indexer_rlz_id.includes('hash') ? 902 : 901,
+      name: item.cleanName,
+      year: '2026',
+      media_type: 'tv',
+      genres: [18],
+      poster: null
+    });
+    const item = (id, sourceUrl, hash = null) => ({
+      release_name: `Shared.Show.S01E01.MULTi.1080p.WEB-DL-GRP`,
+      indexer_rlz_id: id,
+      cleanName: id.includes('hash') ? 'Hash Show' : 'Shared Show',
+      year: '2026',
+      catalog_type: 'series',
+      type: 'series',
+      hash,
+      source_url: sourceUrl
+    });
+
+    // La même release (GUID puis hash) est d'abord vue par un autre flux.
+    await matcher.matchBatch([
+      item('shared-guid', 'https://first.invalid/rss'),
+      item('shared-hash-a', 'https://first.invalid/rss', 'abcdef0123456789')
+    ]);
+    await matcher.matchBatch([
+      item('shared-guid', 'https://second.invalid/rss'),
+      item('shared-hash-b', 'https://second.invalid/rss', 'abcdef0123456789')
+    ]);
+
+    const catalog = db.saveCustomCatalog({
+      id: 'custom_second_feed',
+      name: 'Second flux',
+      type: 'series',
+      source_urls: ['https://second.invalid/rss'],
+      filters: {}
+    });
+    assert.deepEqual(
+      db.getCustomCatalogMedia(catalog).map(media => media.imdb_id).sort(),
+      ['tt0000901', 'tt0000902'],
+      'un catalogue filtré par source doit inclure les releases partagées avec un autre flux'
+    );
+    assert.equal(db.countCustomCatalogMedia(catalog), 2);
+    const sourceStats = db.getMediaSourceStatistics().map(row => row.source_url).sort();
+    assert.deepEqual(sourceStats, ['https://first.invalid/rss', 'https://second.invalid/rss']);
+    const listed = db.getMediaList({ search: 'Shared Show' }).items[0];
+    assert.ok(listed.source_urls.includes('https://second.invalid/rss'));
+  } finally {
+    db.close();
+    for (const suffix of ['', '-shm', '-wal']) {
+      try { fs.unlinkSync(dbPath + suffix); } catch {}
+    }
+  }
+}
+
 async function main() {
   verifyPublishedSchemaUpgrade();
   await verifyManualIdentification();
+  await verifySharedReleaseSources();
     console.log('✓ Mise à niveau du schéma publié sans perte de données ni de configuration');
+    console.log('✓ Releases partagées entre plusieurs sources visibles dans chaque catalogue filtré');
   let baseUrl;
   let catalogRequestKeptSecret = false;
   let newznabKeyReceived = false;
