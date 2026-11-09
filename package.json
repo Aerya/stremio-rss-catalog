@@ -21,7 +21,7 @@
     "form-data": "^4.0.5",
     "sharp": "^0.35.5",
     "socks-proxy-agent": "^10.0.0",
-    "ws": "^8.22.0",
+    "ws": "^8.22.1",
     "xml2js": "^0.6.2"
   },
   "devDependencies": {
