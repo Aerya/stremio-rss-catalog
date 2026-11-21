@@ -108,6 +108,7 @@ lecture, et ne fournit pas lui-même de streams.
 | **Notifs Discord** | Notifications enrichies avec galerie d'affiches à chaque sync ; PostersPlus prioritaire, puis RPDB ou l’affiche d’origine |
 | **Notifs Apprise** | Notifications multi-services via serveur Apprise (optionnel) |
 | **Langue des notifs** | Langue Discord/Apprise configurable indépendamment de la WebUI (FR/EN/DE/HU) |
+| **Langue des métadonnées TMDB** | Locale des requêtes TMDB configurable dans la WebUI (fr-FR par défaut, ex. sv-SE) |
 | **Sync auto explicite** | Collecte des sources dues selon leur fréquence → normalisation et matching → catalogues non gelés → cache Stremio invalidé |
 | **WebUI moderne** | Sidebar, thème sombre/clair, multilingue FR/EN/DE/HU |
 | **Médiathèque** | Refonte : vue affiches/liste, tri, filtre année (raccourcis + saisie libre/plage), releases inline, affiches RPDB, pagination persistante |

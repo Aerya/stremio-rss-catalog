@@ -107,6 +107,7 @@ stellt selbst keine Streams bereit.
 | **Discord-Benachrichtigungen** | Erweiterte Benachrichtigungen mit Poster-Galerie bei jeder Sync; PostersPlus zuerst, danach RPDB oder das Originalposter |
 | **Apprise-Benachrichtigungen** | Multi-Service-Benachrichtigungen via Apprise-Server (optional) |
 | **Benachrichtigungssprache** | Discord/Apprise-Sprache unabhängig von der WebUI konfigurierbar (FR/EN/DE/HU) |
+| **TMDB-Metadatensprache** | In der WebUI konfigurierbare Locale für TMDB-Anfragen (Standard: fr-FR, z. B. sv-SE) |
 | **Erklärte Auto-Sync** | Fällige Quellen nach eigenem Zeitplan sammeln → normalisieren und abgleichen → nicht eingefrorene Kataloge → Stremio-Cache leeren |
 | **Moderne WebUI** | Sidebar, Hell-/Dunkel-Theme, mehrsprachig FR/EN/DE/HU |
 | **Mediathek** | Neugestaltung: Poster-/Listenansicht, Sortierung, Jahresfilter (Schnellauswahl + freie Eingabe/Bereich), Releases inline, RPDB-Poster, persistente Paginierung |

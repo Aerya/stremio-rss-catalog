@@ -417,6 +417,8 @@ async function main() {
   let rateLimitedRssRequests = 0;
   let newznabRateLimitAfterOffset = null;
   let newznabRateLimitHits = 0;
+  let lastTmdbSearchLanguage = null;
+  let lastTmdbDetailLanguage = null;
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     if (req.method === 'PROPFIND' && (req.url === '/dav/' || req.url === '/dav/Films/')) {
@@ -844,6 +846,7 @@ async function main() {
     }
 
     if (req.url.startsWith('/3/search/movie')) {
+      lastTmdbSearchLanguage = new URL(req.url, baseUrl).searchParams.get('language');
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify({
         results: [
@@ -859,6 +862,7 @@ async function main() {
       }));
     }
     if (req.url.startsWith('/3/search/tv')) {
+      lastTmdbSearchLanguage = new URL(req.url, baseUrl).searchParams.get('language');
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify({
         results: [{
@@ -868,6 +872,7 @@ async function main() {
       }));
     }
     if (req.url.startsWith('/3/movie/9902')) {
+      lastTmdbDetailLanguage = new URL(req.url, baseUrl).searchParams.get('language');
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify({
         id: 9902, imdb_id: 'tt0999902', title: 'Spectacle Test', release_date: '2026-04-01',
@@ -878,6 +883,7 @@ async function main() {
       }));
     }
     if (req.url.startsWith('/3/tv/9903')) {
+      lastTmdbDetailLanguage = new URL(req.url, baseUrl).searchParams.get('language');
       res.setHeader('Content-Type', 'application/json');
       return res.end(JSON.stringify({
         id: 9903, name: 'Le Talk Test', first_air_date: '2026-02-01', type: 'Talk Show',
@@ -944,6 +950,7 @@ async function main() {
   const db = new DatabaseManager(dbPath);
   try {
     db.setConfig('tmdb_api_key', 'test-key');
+    assert.equal(db.getConfig('tmdb_language'), 'fr-FR');
     const parser = new PastebinParser(db);
     const discovery = await parser.discover(`${baseUrl}/pointer`);
     assert.equal(discovery.visited, 4);
@@ -1001,9 +1008,32 @@ async function main() {
     assert.equal(rankedMovie.imdb_id, 'tt0999902');
     assert.ok(rankedMovie.match_confidence >= 90);
     assert.deepEqual(rankedMovie.keywords, ['stand-up comedy']);
+    assert.equal(lastTmdbSearchLanguage, 'fr-FR');
+    assert.equal(lastTmdbDetailLanguage, 'fr-FR');
     const rankedTv = await matcher.searchTVShow('Le Talk Test', '2026');
     assert.equal(rankedTv.tv_type, 'Talk Show');
     assert.deepEqual(rankedTv.keywords, ['talk show']);
+
+    db.setConfig('tmdb_language', 'sv-se');
+    await matcher.searchMovie('Spectacle Test', '2026');
+    assert.equal(lastTmdbSearchLanguage, 'sv-SE');
+    assert.equal(lastTmdbDetailLanguage, 'sv-SE');
+
+    db.setConfig('tmdb_language', 'en-US');
+    await matcher.searchTVShow('Le Talk Test', '2026');
+    assert.equal(lastTmdbSearchLanguage, 'en-US');
+    assert.equal(lastTmdbDetailLanguage, 'en-US');
+
+    db.setConfig('tmdb_language', 'SV');
+    await matcher.searchMovie('Spectacle Test', '2026');
+    assert.equal(lastTmdbSearchLanguage, 'sv');
+    assert.equal(lastTmdbDetailLanguage, 'sv');
+
+    db.setConfig('tmdb_language', 'not-a-locale');
+    await matcher.searchMovie('Spectacle Test', '2026');
+    assert.equal(lastTmdbSearchLanguage, 'fr-FR');
+    assert.equal(lastTmdbDetailLanguage, 'fr-FR');
+    db.setConfig('tmdb_language', 'fr-FR');
     assert.equal(
       matcher.scoreCandidate(
         { title: 'Sans rapport', release_date: '1990-01-01' },

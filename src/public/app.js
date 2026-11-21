@@ -4236,14 +4236,14 @@ async function loadConfig() {
     const r = await fetch('/api/config');
     const cfg = await r.json();
 
-    ['required_tags', 'minimum_resolution', 'maximum_resolution', 'tmdb_api_key', 'tvdb_api_key',
-     'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
+    ['required_tags', 'minimum_resolution', 'maximum_resolution', 'tmdb_api_key', 'tmdb_language',
+     'tvdb_api_key', 'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
      'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
      'proxy_password', 'refresh_interval', 'image_cache_ttl_hours', 'image_cache_max_mb',
      'availability_missing_scans', 'availability_expiration_days', 'discord_webhook_url',
      'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
       const el = document.getElementById(k);
-      if (el) el.value = cfg[k] || '';
+      if (el) el.value = cfg[k] || (k === 'tmdb_language' ? 'fr-FR' : '');
     });
 
     ['rpdb_enabled', 'postersplus_enabled', 'image_cache_enabled', 'proxy_enabled', 'auto_refresh_enabled',
@@ -4269,14 +4269,14 @@ async function saveConfig(e) {
   setMessage('');
 
   const cfg = {};
-  ['required_tags', 'minimum_resolution', 'maximum_resolution', 'tmdb_api_key', 'tvdb_api_key',
-   'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
+  ['required_tags', 'minimum_resolution', 'maximum_resolution', 'tmdb_api_key', 'tmdb_language',
+   'tvdb_api_key', 'mal_client_id', 'rpdb_api_key', 'postersplus_url_template', 'omdb_api_key',
    'proxy_protocol', 'proxy_host', 'proxy_port', 'proxy_username',
    'proxy_password', 'refresh_interval', 'image_cache_ttl_hours', 'image_cache_max_mb',
    'availability_missing_scans', 'availability_expiration_days', 'discord_webhook_url',
    'apprise_server_url', 'apprise_urls', 'notification_language'].forEach(k => {
     const el = document.getElementById(k);
-    if (el) cfg[k] = el.value;
+    if (el) cfg[k] = k === 'tmdb_language' ? (el.value.trim() || 'fr-FR') : el.value;
   });
 
   ['rpdb_enabled', 'postersplus_enabled', 'image_cache_enabled', 'proxy_enabled', 'auto_refresh_enabled',

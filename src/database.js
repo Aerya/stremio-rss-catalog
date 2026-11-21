@@ -608,6 +608,7 @@ class DatabaseManager {
       mdblist_guides: '[]',
       manifest_revision: '0',
       tmdb_api_key: '',
+      tmdb_language: 'fr-FR',
       tmdb_match_min_confidence: '58',
       tvdb_api_key: '',
       proxy_enabled: 'false',
