@@ -109,6 +109,7 @@ kiegészítő nem ellenőrzi valós időben a seedereket, a debrid gyorsítótá
 | **Discord értesítések** | Bővített értesítések posztergalériával minden szinkronizáláskor; elsőként PostersPlus, majd RPDB vagy az eredeti poszter |
 | **Apprise értesítések** | Több szolgáltatásra kiterjedő értesítések Apprise kiszolgálón keresztül (opcionális) |
 | **Értesítések nyelve** | A Discord/Apprise nyelve a WebUI-tól függetlenül állítható (FR/EN/DE/HU) |
+| **TMDB metaadat nyelv** | A WebUI-ban beállítható locale a TMDB-kérésekhez (alapértelmezés: fr-FR, pl. sv-SE) |
 | **Egyértelmű automatikus szinkronizálás** | Az esedékes források begyűjtése saját ütemezésük szerint → normalizálás és azonosítás → nem befagyasztott katalógusok → a Stremio-gyorsítótár érvénytelenítése |
 | **Modern WebUI** | Oldalsáv, sötét/világos téma, többnyelvű FR/EN/DE/HU |
 | **Médiatár** | Új kialakítás: poszter/lista nézet, rendezés, évszűrő (gyorsgombok + szabad bevitel/tartomány), beágyazott kiadások, RPDB poszterek, megmaradó lapozás |

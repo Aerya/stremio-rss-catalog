@@ -1157,6 +1157,38 @@
             <input type="text" id="tmdb_api_key" name="tmdb_api_key">
           </div>
           <div class="field">
+            <label for="tmdb_language" data-i18n="config_tmdb_language">Langue des métadonnées TMDB</label>
+            <input type="text" id="tmdb_language" name="tmdb_language" list="tmdbLanguageOptions"
+              placeholder="fr-FR" pattern="[A-Za-z]{2,3}(-[A-Za-z]{2,4})?"
+              title="fr-FR, en-US, de-DE, sv-SE…">
+            <datalist id="tmdbLanguageOptions">
+              <option value="fr-FR">Français (France)</option>
+              <option value="en-US">English (United States)</option>
+              <option value="en-GB">English (United Kingdom)</option>
+              <option value="de-DE">Deutsch (Deutschland)</option>
+              <option value="es-ES">Español (España)</option>
+              <option value="it-IT">Italiano (Italia)</option>
+              <option value="pt-BR">Português (Brasil)</option>
+              <option value="pt-PT">Português (Portugal)</option>
+              <option value="nl-NL">Nederlands (Nederland)</option>
+              <option value="pl-PL">Polski (Polska)</option>
+              <option value="ru-RU">Русский (Россия)</option>
+              <option value="hu-HU">Magyar (Magyarország)</option>
+              <option value="sv-SE">Svenska (Sverige)</option>
+              <option value="da-DK">Dansk (Danmark)</option>
+              <option value="nb-NO">Norsk bokmål (Norge)</option>
+              <option value="fi-FI">Suomi (Suomi)</option>
+              <option value="ja-JP">日本語 (日本)</option>
+              <option value="zh-CN">中文 (中国)</option>
+              <option value="ko-KR">한국어 (대한민국)</option>
+            </datalist>
+            <small data-i18n="config_tmdb_language_hint">
+              Code langue-région envoyé aux requêtes TMDB (ex. fr-FR, en-US, sv-SE).
+              Par défaut : fr-FR. S’applique aux nouvelles identifications, aux relances et aux
+              identifications manuelles ; les médias déjà indexés conservent leurs métadonnées.
+            </small>
+          </div>
+          <div class="field">
             <label>
               <span data-i18n="config_tvdb_key">Clé API TVDB (optionnel)</span>
               <a href="https://www.thetvdb.com/api-information" target="_blank" class="label-link">Obtenir une clé</a>

@@ -119,6 +119,13 @@ function parseStoredReasons(value) {
   }
 }
 
+function normalizeTmdbLanguage(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^([a-z]{2,3})(?:-([a-z]{2,4}))?$/i);
+  if (!match) return 'fr-FR';
+  return `${match[1].toLowerCase()}${match[2] ? `-${match[2].toUpperCase()}` : ''}`;
+}
+
 class TMDBMatcher {
   constructor(db) {
     this.db   = db;
@@ -167,6 +174,10 @@ class TMDBMatcher {
 
   getApiKey() {
     return this.db.getConfig('tmdb_api_key');
+  }
+
+  getTmdbLanguage() {
+    return normalizeTmdbLanguage(this.db.getConfig('tmdb_language'));
   }
 
   getAxiosConfig() {
@@ -222,12 +233,16 @@ class TMDBMatcher {
     throw new Error(`Max retries (${maxRetries}) exceeded for ${url}`);
   }
 
-  async searchMovie(title, year = null, language = 'fr-FR', expectedTitle = title, expectedYear = year) {
-    return this.searchMediaCandidates('movie', title, year, language, expectedTitle, expectedYear);
+  async searchMovie(title, year = null, language = null, expectedTitle = title, expectedYear = year) {
+    return this.searchMediaCandidates(
+      'movie', title, year, language || this.getTmdbLanguage(), expectedTitle, expectedYear
+    );
   }
 
-  async searchTVShow(title, year = null, language = 'fr-FR', expectedTitle = title, expectedYear = year) {
-    return this.searchMediaCandidates('tv', title, year, language, expectedTitle, expectedYear);
+  async searchTVShow(title, year = null, language = null, expectedTitle = title, expectedYear = year) {
+    return this.searchMediaCandidates(
+      'tv', title, year, language || this.getTmdbLanguage(), expectedTitle, expectedYear
+    );
   }
 
   scoreCandidate(candidate, expectedTitle, expectedYear, mediaType) {
@@ -271,13 +286,16 @@ class TMDBMatcher {
   }
 
   async searchMediaCandidates(
-    mediaType, title, year = null, language = 'fr-FR',
+    mediaType, title, year = null, language = null,
     expectedTitle = title, expectedYear = year
   ) {
     const apiKey = this.getApiKey();
     if (!apiKey) return null;
+    const tmdbLanguage = language || this.getTmdbLanguage();
     try {
-      const params = { api_key: apiKey, query: title, language, include_adult: true };
+      const params = {
+        api_key: apiKey, query: title, language: tmdbLanguage, include_adult: true
+      };
       if (year) params[mediaType === 'tv' ? 'first_air_date_year' : 'year'] = year;
       const response = await this._fetchWithRetry(
         `${this.baseUrl}/search/${mediaType}`, params, this.getAxiosConfig()
@@ -296,7 +314,7 @@ class TMDBMatcher {
         }
         return null;
       }
-      const detailed = await this.fetchByTmdbId(best.candidate.id, mediaType, language);
+      const detailed = await this.fetchByTmdbId(best.candidate.id, mediaType, tmdbLanguage);
       if (!detailed) return null;
       detailed.match_confidence = Math.round(best.score * 10) / 10;
       detailed.match_reasons = best.reasons;
@@ -324,9 +342,11 @@ class TMDBMatcher {
     }
   }
 
-  // Stratégie multi-tentatives : exact FR → sans année FR → sans année EN → titre simplifié EN
+  // Stratégie multi-tentatives : langue configurée → sans année → repli EN → titre simplifié
   async matchItem(item) {
     const isTV = item.type === 'series';
+    const language = this.getTmdbLanguage();
+    const fallbackLanguage = /^en(?:-|$)/i.test(language) ? null : 'en-US';
     const search = isTV
       ? (t, y, l) => this.searchTVShow(t, y, l, item.cleanName, item.year)
       : (t, y, l) => this.searchMovie(t, y, l, item.cleanName, item.year);
@@ -340,8 +360,8 @@ class TMDBMatcher {
       && item.cleanName
     ) {
       const [movieCandidate, tvCandidate] = await Promise.all([
-        this.searchMovie(item.cleanName, item.year, 'fr-FR', item.cleanName, item.year),
-        this.searchTVShow(item.cleanName, item.year, 'fr-FR', item.cleanName, item.year)
+        this.searchMovie(item.cleanName, item.year, language, item.cleanName, item.year),
+        this.searchTVShow(item.cleanName, item.year, language, item.cleanName, item.year)
       ]);
       const candidates = [movieCandidate, tvCandidate].filter(Boolean)
         .sort((left, right) => (right.match_confidence || 0) - (left.match_confidence || 0));
@@ -355,16 +375,20 @@ class TMDBMatcher {
     }
 
     const attempts = [
-      // 1. Exact + année, français
-      () => search(item.cleanName, item.year, 'fr-FR'),
-      // 2. Sans année, français
-      () => item.year ? search(item.cleanName, null, 'fr-FR') : null,
-      // 3. Sans année, anglais
-      () => search(item.cleanName, null, 'en-US'),
-      // 4. Titre simplifié, anglais (utile pour les titres avec tokens parasites)
-      () => simplifiedName !== item.cleanName ? search(simplifiedName, item.year, 'en-US') : null,
-      // 5. Titre simplifié sans année, anglais
-      () => simplifiedName !== item.cleanName ? search(simplifiedName, null, 'en-US') : null,
+      // 1. Exact + année, langue configurée
+      () => search(item.cleanName, item.year, language),
+      // 2. Sans année, langue configurée
+      () => item.year ? search(item.cleanName, null, language) : null,
+      // 3. Sans année, anglais (sauf si la langue configurée est déjà l'anglais)
+      ...(fallbackLanguage ? [() => search(item.cleanName, null, fallbackLanguage)] : []),
+      // 4. Titre simplifié (utile pour les titres avec tokens parasites)
+      () => simplifiedName !== item.cleanName
+        ? search(simplifiedName, item.year, fallbackLanguage || language)
+        : null,
+      // 5. Titre simplifié sans année
+      () => simplifiedName !== item.cleanName
+        ? search(simplifiedName, null, fallbackLanguage || language)
+        : null,
     ];
 
     for (let i = 0; i < attempts.length; i++) {
@@ -1011,13 +1035,17 @@ class TMDBMatcher {
 
   // ─── Override manuel ────────────────────────────────────────────────────────
 
-  async fetchByImdbId(imdbId) {
+  async fetchByImdbId(imdbId, language = null) {
     const apiKey = this.getApiKey();
     if (!apiKey) return null;
     try {
       const response = await this._fetchWithRetry(
         `${this.baseUrl}/find/${imdbId}`,
-        { api_key: apiKey, external_source: 'imdb_id' },
+        {
+          api_key: apiKey,
+          external_source: 'imdb_id',
+          language: language || this.getTmdbLanguage()
+        },
         this.getAxiosConfig()
       );
       const data = response.data;
@@ -1054,14 +1082,18 @@ class TMDBMatcher {
     }
   }
 
-  async fetchByTmdbId(tmdbId, mediaType, language = 'fr-FR') {
+  async fetchByTmdbId(tmdbId, mediaType, language = null) {
     const apiKey = this.getApiKey();
     if (!apiKey) return null;
     try {
       const endpoint = mediaType === 'tv' ? 'tv' : 'movie';
       const response = await this._fetchWithRetry(
         `${this.baseUrl}/${endpoint}/${tmdbId}`,
-        { api_key: apiKey, language, append_to_response: 'external_ids,keywords' },
+        {
+          api_key: apiKey,
+          language: language || this.getTmdbLanguage(),
+          append_to_response: 'external_ids,keywords'
+        },
         this.getAxiosConfig()
       );
       const d = response.data;

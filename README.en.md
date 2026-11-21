@@ -105,6 +105,7 @@ does not provide streams itself.
 | **Discord notifs** | Enhanced notifications with a poster gallery on each sync; PostersPlus first, then RPDB or the original poster |
 | **Apprise notifs** | Multi-service notifications via Apprise server (optional) |
 | **Notification language** | Discord/Apprise language configurable independently from the WebUI (FR/EN/DE/HU) |
+| **TMDB metadata language** | TMDB request locale configurable in the WebUI (defaults to fr-FR, e.g. sv-SE) |
 | **Explicit auto sync** | Collect due sources on their own schedules → normalize and match → unfrozen catalogs → invalidate the Stremio cache |
 | **Modern WebUI** | Sidebar, dark/light theme, multilingual FR/EN/DE/HU |
 | **Media Library** | Redesign: poster/list view, sort, year filter (shortcuts + free input/range), inline releases, RPDB posters, persistent pagination |
